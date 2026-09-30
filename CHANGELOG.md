@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-30
+
 ### Changed
 - "Protected applications" and "Exclusion rules" no longer take free text: type to search the programs installed or running on
   this PC and pick one from the list, or use "Browse for a file…" to choose an `.exe` (only its name is kept). The list
