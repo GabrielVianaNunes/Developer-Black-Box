@@ -1,5 +1,152 @@
 # Developer Black Box
 
+**English** | [Português (Brasil)](#português-brasil)
+
+A local "black box" for **Windows 11**: it records technical process events (start, exit, CPU,
+memory, crashes and hangs), preserves incident evidence and helps you investigate software problems.
+**Privacy first:** everything stays on your computer, encrypted, with no cloud, and the app never
+captures passwords, typed text, page content, window titles, URLs, file paths or command lines.
+
+## What it does
+
+- **Tray icon** (a black cube with a light beside it): green only when recording is actually active;
+  red when paused, suspended by privacy rules or failing. The tooltip and the window explain why.
+- **Pause and resume** from the tray, even with the window closed. Resuming never bypasses the
+  Privacy Guard.
+- **Privacy Guard:** suspends recording when a browser or password manager is in the foreground, the
+  session is locked or the detector is unavailable. The absence of a signal is never treated as "safe".
+- **Incidents:** manual capture, sustained CPU, high memory, crashes and hangs (Windows Event Log),
+  with evidence from the window before and after.
+- **Dashboard:** overview, activity with filters, processes, incidents (timeline, notes, export),
+  privacy, storage and integrity verification.
+- **Test mode:** a temporary, revocable authorization to collect technical data from a browser, so you
+  can test a web application of your own. Page content, forms and requests are never recorded.
+- **Open with Windows** (optional): starts hidden in the tray and stays paused.
+
+## Installation (use it on your PC)
+
+1. Download the installer `Developer Black Box_<version>_x64-setup.exe` from the **Releases** tab of
+   this repository (and `SHA256SUMS.txt` if you want to verify the file).
+2. Run the installer. It installs **for your user only** (no administrator rights needed).
+3. The installer is **not digitally signed**, so Windows SmartScreen may warn "Windows protected your
+   PC". That is expected for a personal project without a code-signing certificate: choose "More info"
+   > "Run anyway" if you trust the file. To check that it is the same file as the Release, compare
+   the hash:
+
+```powershell
+(Get-FileHash ".\Developer Black Box_0.1.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+```
+
+On first run the app **starts paused**: nothing is recorded until you click "Resume recording" (or turn
+on "Start recording when the app opens" under Privacy). To uninstall, use Windows "Installed apps".
+Your recorded data is **not** deleted: use "Delete everything" in the Storage tab before uninstalling,
+or delete `%LOCALAPPDATA%\DeveloperBlackBox`.
+
+## Building it yourself
+
+Requirements: Windows 11, [Rust](https://rustup.rs) + Visual Studio Build Tools (C++), Node 22+ and
+WebView2 (already included in Windows 11).
+
+```bash
+npm install
+npx tauri build                            # builds the installer (NSIS target set in tauri.conf.json)
+# installer: target/release/bundle/nsis/
+```
+
+Executable only, without an installer:
+
+```bash
+npm run build && cargo build -p bb-app --release --features tauri/custom-protocol
+# target/release/developer-blackbox.exe
+```
+
+The first time you build the installer, Tauri downloads the NSIS tooling (from GitHub).
+
+### Tests
+
+```bash
+cargo test --workspace   # all Rust tests, including tests/privacy/
+npm test                 # tests for the repository safety scripts
+npm run check:repo       # no sensitive files tracked + secret scanner
+```
+
+The privacy tests use **synthetic data only** and cover, among other things: manual pause, resume that
+respects the Guard, excluded apps, temporary authorizations, encryption on disk, export with
+re-filtering, crash recovery and the absence of network libraries in the core.
+
+### Publishing a Release (maintainer)
+
+The workflow `.github/workflows/release.yml` runs the tests, builds the installer and attaches it to
+the Release when you create a tag (it has not been run on GitHub yet; try it with "Run workflow" first):
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Before publishing, run `npm run check:repo` and `npm run check:history` (they look for sensitive files
+and secrets in the repository and in its whole history) and, preferably, a dedicated scanner such as
+`gitleaks`.
+
+## Where the data lives
+
+`%LOCALAPPDATA%\DeveloperBlackBox\`: `key.bin` (DPAPI-protected key), `meta.db`, `recorder\` (encrypted
+segments) and `exports\`. None of it lives in the repository and all of it is in `.gitignore`.
+
+## How privacy is guaranteed
+
+- **Closed schema:** events only have numeric fields, the PID and the **executable name**. There is no
+  free-text field, so there is nowhere for a secret to go.
+- **Every event goes through the Privacy Guard** before reaching the recorder (the event type can only
+  be created by the Guard).
+- **No reconstruction:** what happens during a pause or block is never recorded afterwards, including
+  crashes logged by Windows in that interval.
+- **Encryption at rest:** events and the sensitive database fields use AES-256-GCM, with a key protected
+  by DPAPI (tied to your Windows account). Deleted content is overwritten in the file.
+- **Re-filtered export:** it applies today's privacy rules again and never includes notes.
+- **No cloud and no telemetry.** The core does not depend on any network library.
+
+## Limitations
+
+- A power loss or a Windows crash can lose the last events still in the disk cache (a crash of the app
+  process alone loses nothing).
+- Protected or elevated processes are not seen.
+- Protection depends on your Windows account: whoever uses your signed-in account can use the key.
+- The export file is **not encrypted** (the interface warns about it).
+- Metadata such as the number of incidents and their times sit in the database unencrypted (only app
+  names, notes and settings are encrypted).
+- Sensitive-context detection is per foreground application, not per password field.
+- ETW is not implemented (the Windows Application log and process snapshots cover crashes, hangs and
+  resources).
+- The tray is verified by tests only at the logic level; the visual result is checked manually.
+
+## Structure
+
+```
+crates/bb-core       events, state machine, Privacy Guard and test-mode authorizations
+crates/bb-recorder   encrypted segment recording, hash chain, retention, recovery, DPAPI
+crates/bb-collector  processes, metrics, Windows context, Event Log, start with Windows
+crates/bb-store      SQLite (incidents, notes, settings) with sensitive fields encrypted
+crates/bb-query      read-only queries and re-filtered export
+crates/bb-engine     collection cycle, incidents, settings and export
+crates/bb-tray       icon, texts and tray menu rules
+src-tauri            Tauri application (tray, window and commands)
+src                  React + TypeScript interface
+tests/privacy        privacy and security tests (synthetic data)
+scripts              repository safety checks
+```
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE): the code is public for study and noncommercial use.
+Commercial use is not permitted. It is not an open source license in the OSI sense. The license file
+also includes an unofficial Portuguese translation; the English text is the one that governs.
+
+---
+
+# Português (Brasil)
+
+[English](#developer-black-box) | **Português (Brasil)**
+
 Caixa-preta local para o **Windows 11**: registra eventos técnicos de processos (início, fim, CPU,
 memória, falhas e travamentos), preserva evidências de incidentes e ajuda a investigar problemas de
 software. **Privacidade em primeiro lugar:** tudo fica no seu computador, cifrado, sem nuvem, e o app
@@ -137,4 +284,5 @@ scripts              verificações de segurança do repositório
 ## Licença
 
 [PolyForm Noncommercial 1.0.0](LICENSE): o código é público para estudo e uso não comercial. Uso
-comercial não é permitido. Não é uma licença open source no sentido da OSI.
+comercial não é permitido. Não é uma licença open source no sentido da OSI. O arquivo da licença também
+traz uma tradução não oficial em português; vale o texto em inglês.
