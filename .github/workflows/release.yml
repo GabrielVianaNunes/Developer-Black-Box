@@ -1,0 +1,62 @@
+name: Release
+
+# Gera o instalador do Windows e o anexa a uma Release do GitHub.
+#   - Ao criar uma tag `v*` (ex.: v0.1.0): roda os testes, gera o instalador e publica a Release.
+#   - Manualmente (workflow_dispatch): só roda os testes e gera o instalador como artefato.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Tests and repository safety checks
+        run: |
+          cargo test --workspace
+          npm test
+          npm run check:repo
+
+      - name: Build the installer (NSIS)
+        run: npx tauri build
+
+      - name: SHA-256 checksums
+        shell: pwsh
+        run: |
+          $dir = "target/release/bundle/nsis"
+          Get-ChildItem "$dir/*.exe" | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File -Append -Encoding ascii "$dir/SHA256SUMS.txt"
+          }
+          Get-Content "$dir/SHA256SUMS.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: target/release/bundle/nsis/*
+
+      - name: Publish the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/release/bundle/nsis/*
+          generate_release_notes: true

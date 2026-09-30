@@ -1,0 +1,19 @@
+//! Collector: amostras de processos e sinais de contexto, sem conteúdo.
+
+pub mod differ;
+pub mod eventlog;
+pub mod sample;
+#[cfg(windows)]
+pub mod eventlog_win;
+#[cfg(windows)]
+pub mod startup;
+#[cfg(windows)]
+pub mod windows_impl;
+
+pub use differ::{Differ, MetricsConfig};
+pub use eventlog::{CrashKind, CrashRecord, CrashSource};
+pub use sample::{CollectError, ContextSource, ProcessSample, ProcessSource, SystemSample};
+#[cfg(windows)]
+pub use eventlog_win::WindowsCrashSource;
+#[cfg(windows)]
+pub use windows_impl::{WindowsContextSource, WindowsProcessSource};

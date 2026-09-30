@@ -1,0 +1,33 @@
+[package]
+name = "bb-app"
+version = "0.1.0"
+edition.workspace = true
+license-file = "../LICENSE"
+publish.workspace = true
+
+[lib]
+name = "bb_app_lib"
+
+[[bin]]
+name = "developer-blackbox"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+bb-tray = { path = "../crates/bb-tray" }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2"
+serde.workspace = true
+bb-core = { path = "../crates/bb-core" }
+bb-collector = { path = "../crates/bb-collector" }
+bb-recorder = { path = "../crates/bb-recorder" }
+bb-store = { path = "../crates/bb-store" }
+bb-engine = { path = "../crates/bb-engine" }
+bb-query = { path = "../crates/bb-query" }
+bb-tray = { path = "../crates/bb-tray" }
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.61"
+features = ["Win32_UI_WindowsAndMessaging"]

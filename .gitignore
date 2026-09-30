@@ -1,0 +1,106 @@
+# === Developer Black Box: nada de dados reais no repositório ===
+# Dados reais vivem em %LOCALAPPDATA%\DeveloperBlackBox\, fora daqui.
+# Não dependa só deste arquivo: scripts/check-tracked.* verifica arquivos já rastreados.
+
+# Segredos e credenciais
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+secrets/
+credentials*
+*.token
+
+# Bancos locais
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Gravações e evidências
+*.bbseg
+*.bbseg.*
+*.bbwal
+*.bbwal.*
+*.bbmanifest
+*.corrupt
+*.keep
+key.bin
+pruned.log
+segments/
+evidence/
+exports/
+recordings/
+data/
+
+# Logs, dumps, capturas
+*.log
+logs/
+*.dmp
+*.mdmp
+*.hdmp
+*.pcap
+*.etl
+*.png.local
+screenshots/
+Screenshot*
+
+# Backups e temporários
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+*.temp
+*.swp
+*~
+backups/
+tmp/
+temp/
+
+# Configuração local
+config.local.*
+*.local.json
+*.local.toml
+settings.local.*
+
+# Ambientes e dependências
+node_modules/
+.venv/
+venv/
+__pycache__/
+target/
+dist/
+build/
+.vite/
+coverage/
+
+# Tauri gerado (o ícone é gerado no build a partir de crates/bb-tray)
+src-tauri/gen/
+src-tauri/icons/
+src-tauri/WixTools/
+
+# Dados de teste reais (fixtures sintéticas ficam em tests/fixtures/)
+tests/real-data/
+
+# Documentação interna e anotações de trabalho (ficam só na máquina, não vão para o repositório)
+docs/
+notes/
+
+# Sistema
+desktop.ini
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
