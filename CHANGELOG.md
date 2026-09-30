@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- In-app update download: GitHub answers 404 to release downloads requested with `Accept: application/octet-stream`,
+  so a signed release was reported as unsigned. Found by testing against the real release; `0.1.1-rc.1` has this bug.
+
 ## [0.1.1-rc.1] - 2026-09-30
 
 ### Added
