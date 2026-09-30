@@ -1,0 +1,53 @@
+name: CI
+
+# Roda os testes em todo pull request para `develop` ou `main` (e manualmente).
+# Só lê o repositório: sem segredos, sem publicar nada. O nome do job ("Tests") é o que as
+# branches protegidas exigem antes do merge.
+
+on:
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Type-check and build the interface
+        run: npm run build
+
+      - name: Rust tests (unit and privacy)
+        # --locked: falha se o Cargo.lock estiver desatualizado em relação aos Cargo.toml.
+        run: cargo test --workspace --locked
+
+      - name: JavaScript tests (i18n, versioning, signing, repository safety)
+        run: npm test
+
+      - name: Repository safety checks
+        run: npm run check:repo
+
+      - name: Version files are consistent
+        run: node scripts/version.mjs check
