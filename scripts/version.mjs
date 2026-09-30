@@ -117,8 +117,14 @@ export function setVersion(root, version, { refreshLock = true } = {}) {
     writeFileSync(join(root, f), JSON.stringify(json, null, 2) + (text.endsWith("\n") ? "\n" : ""));
   }
   if (!refreshLock) return;
-  // Atualiza o Cargo.lock sem acessar a rede.
-  execFileSync("cargo", ["metadata", "--format-version", "1", "--offline"], { cwd: root, stdio: "ignore", maxBuffer: 256 * 1024 * 1024 });
+  // Atualiza o Cargo.lock. Tenta sem rede (mais rápido); se faltar algum pacote em cache, tenta com rede.
+  const run = (extra) =>
+    execFileSync("cargo", ["metadata", "--format-version", "1", ...extra], { cwd: root, stdio: "ignore", maxBuffer: 256 * 1024 * 1024 });
+  try {
+    run(["--offline"]);
+  } catch {
+    run([]);
+  }
 }
 
 function main(argv) {
