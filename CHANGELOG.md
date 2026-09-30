@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Fixed
+- "Open with Windows" failed on a Windows account whose `Run` registry key did not exist yet ("file not found"); the key is now created when needed.
+  Found by the pull-request CI on a fresh GitHub runner.
+
+### Fixed
 - In-app update download: GitHub answers 404 to release downloads requested with `Accept: application/octet-stream`,
   so a signed release was reported as unsigned. Found by testing against the real release; `0.1.1-rc.1` has this bug.
 
