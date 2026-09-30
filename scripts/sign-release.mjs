@@ -5,6 +5,8 @@
 // Uso: node scripts/sign-release.mjs keygen <arquivo-da-chave-privada>   gera o par; a privada NUNCA fica no repositório
 //      node scripts/sign-release.mjs sign <instalador> <versão>          grava <instalador>.sig (chave: --key-file ou signing.local.json)
 //      node scripts/sign-release.mjs verify <instalador> <versão>        confere o .sig com as chaves embutidas no app
+//      node scripts/sign-release.mjs protect <chave> <saída> --dpapi|--passphrase [--remove-original]   protege a chave em repouso
+//      node scripts/sign-release.mjs check-key [--key-file <arquivo>]     abre a chave e confere com a chave pública do app
 //      node scripts/sign-release.mjs release <tag>                       baixa o instalador da Release, confere o SHA-256, assina AQUI e envia só o .sig
 //
 // A chave privada nunca sai do seu computador: o CI só constrói e publica o instalador; quem assina é você.
@@ -18,6 +20,7 @@ import { tmpdir } from "node:os";
 import { createInterface } from "node:readline/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { encryptWithPassphrase, parseEnvelope, promptHidden, protectWithDpapi, readKeyFile, wipeFile } from "./key-protect.mjs";
 import { isVersion } from "./version.mjs";
 
 export const MESSAGE_PREFIX = "DeveloperBlackBox-release-v1";
@@ -95,9 +98,13 @@ export function resolveKeyFile({ flag, root = ROOT } = {}) {
  * Assina uma Release já publicada pelo CI: baixa o instalador, confere com o SHA256SUMS.txt, mostra o hash,
  * pede confirmação, assina com a chave local e envia SOMENTE o .sig. `gh(args)` executa o GitHub CLI e devolve a saída.
  */
-export async function signRelease({ tag, gh, keyFile, confirm, trusted = trustedKeys(), resign = false, log = console.log }) {
+const askPassphrase = () => promptHidden("Passphrase of the signing key: ");
+const defaultLoadKey = (file) => readKeyFile(file, { passphrase: askPassphrase });
+
+export async function signRelease({ tag, gh, keyFile, confirm, trusted = trustedKeys(), resign = false, log = console.log, loadKey = defaultLoadKey }) {
   const version = tag.startsWith("v") ? tag.slice(1) : "";
   if (!isVersion(version)) throw new Error(`invalid tag: ${tag} (expected vX.Y.Z)`);
+  const key = await loadKey(keyFile); // antes de tocar na rede: senha errada ou arquivo ilegível falham aqui
   const info = JSON.parse(gh(["release", "view", tag, "--json", "assets,isDraft"]));
   const names = info.assets.map((a) => a.name);
   const installers = names.filter((n) => n.endsWith("-setup.exe"));
@@ -122,7 +129,6 @@ SHA-256   ${sha}  (matches SHA256SUMS.txt)`);
     if ((await confirm(`Sign this installer as version ${version}? Type "yes" to continue: `)).trim().toLowerCase() !== "yes") {
       throw new Error("cancelled; nothing was signed or uploaded");
     }
-    const key = createPrivateKey(readFileSync(keyFile, "utf8"));
     const sig = signFile(key, version, bytes);
     if (!verifyFile(trusted, version, bytes, sig)) {
       throw new Error("this signing key is not among the app's trusted public keys; the app would reject the update");
@@ -138,11 +144,43 @@ SHA-256   ${sha}  (matches SHA256SUMS.txt)`);
   }
 }
 
-function loadPrivateKey(args) {
+async function loadPrivateKey(args) {
   const i = args.indexOf("--key-file");
   const flag = i >= 0 ? args[i + 1] : undefined;
-  const pem = flag || !process.env.BB_SIGNING_KEY ? readFileSync(resolveKeyFile({ flag }), "utf8") : process.env.BB_SIGNING_KEY;
-  return createPrivateKey(pem);
+  if (!flag && process.env.BB_SIGNING_KEY) return createPrivateKey(process.env.BB_SIGNING_KEY);
+  return defaultLoadKey(resolveKeyFile({ flag }));
+}
+
+/**
+ * Protege uma chave em repouso (DPAPI ou senha), confere que a cópia protegida abre e corresponde à mesma chave
+ * pública e só então, se pedido, apaga o original. Nunca escreve dentro do repositório nem sobrescreve arquivos.
+ */
+export async function protectKeyFile({ input, output, mode, removeOriginal = false, passphrase, log = console.log }) {
+  assertOutsideRepo(output);
+  if (existsSync(output)) throw new Error(`${output} already exists; refusing to overwrite a key file`);
+  const key = await readKeyFile(input, { passphrase: passphrase ?? askPassphrase });
+  const pem = key.export({ type: "pkcs8", format: "pem" });
+  let pass = null;
+  if (mode === "passphrase") {
+    pass = passphrase ? await passphrase() : await promptHidden("New passphrase (at least 12 characters): ");
+    const again = passphrase ? pass : await promptHidden("Repeat the passphrase: ");
+    if (pass !== again) throw new Error("the two passphrases do not match; nothing was written");
+  }
+  const envelope = mode === "dpapi" ? protectWithDpapi(pem) : await encryptWithPassphrase(pem, pass);
+  writeFileSync(output, JSON.stringify(envelope, null, 2) + "\n", { flag: "wx" });
+  // A cópia protegida tem de abrir e ser a MESMA chave antes de qualquer coisa ser apagada.
+  const reopened = await readKeyFile(output, { passphrase: () => pass });
+  if (publicKeyHex(reopened) !== publicKeyHex(key)) {
+    wipeFile(output);
+    throw new Error("the protected copy does not match the original key; it was discarded and nothing else was changed");
+  }
+  log(`Protected copy written (${mode}) and verified: it opens and is the same key.`);
+  if (removeOriginal && resolve(input) !== resolve(output)) {
+    if (parseEnvelope(readFileSync(input, "utf8"))) log("The original is already a protected file; removing it as requested.");
+    wipeFile(input);
+    log("The original file was overwritten and deleted.");
+  }
+  return { mode, publicKey: publicKeyHex(key) };
 }
 
 async function main([cmd, a, b, ...rest]) {
@@ -158,7 +196,7 @@ async function main([cmd, a, b, ...rest]) {
   }
   if (cmd === "sign") {
     if (!a || !b) throw new Error("usage: sign <installer> <version> [--key-file <file>]");
-    const key = loadPrivateKey(rest);
+    const key = await loadPrivateKey(rest);
     const bytes = readFileSync(a);
     const sig = signFile(key, b, bytes);
     // Trava de segurança: uma assinatura que o app não aceitaria não pode ser publicada.
@@ -174,6 +212,22 @@ async function main([cmd, a, b, ...rest]) {
     const sig = readFileSync(`${a}.sig`, "utf8").trim();
     if (!verifyFile(trustedKeys(), b, readFileSync(a), sig)) throw new Error("signature does NOT match");
     console.log("OK: signature is valid for this installer and version.");
+    return;
+  }
+  if (cmd === "protect") {
+    const [input, output] = [a, b];
+    const mode = rest.includes("--dpapi") ? "dpapi" : rest.includes("--passphrase") ? "passphrase" : null;
+    if (!input || !output || !mode) throw new Error("usage: protect <key file> <output file> --dpapi | --passphrase [--remove-original]");
+    await protectKeyFile({ input, output, mode, removeOriginal: rest.includes("--remove-original") });
+    return;
+  }
+  if (cmd === "check-key") {
+    const i = [a, b, ...rest].indexOf("--key-file");
+    const file = resolveKeyFile({ flag: i >= 0 ? [a, b, ...rest][i + 1] : undefined });
+    const key = await defaultLoadKey(file);
+    const trusted = trustedKeys().includes(publicKeyHex(key));
+    console.log(trusted ? "OK: the key opens and matches the public key embedded in the app." : "WARNING: the key opens, but it is NOT among the app's trusted public keys.");
+    if (!trusted) process.exit(1);
     return;
   }
   if (cmd === "release") {

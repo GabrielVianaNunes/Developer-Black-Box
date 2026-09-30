@@ -86,3 +86,23 @@ The script reads the key location from `signing.local.json` at the repository ro
 `.gitignore` and rejected by the repository safety checks, so it cannot be committed. Its shape is
 `{ "keyFile": "<absolute path outside the repository>" }`. `--key-file <file>` overrides it. The scripts refuse to
 create or use a private key inside the repository.
+
+### Protecting the key at rest
+
+The key file can be stored encrypted, and every signing command reads either form:
+
+- **DPAPI** (Windows, current user): no password to type; the file only opens for the Windows account that created it.
+  Good for the working copy on the maintainer's PC.
+- **Passphrase** (scrypt + AES-256-GCM): portable, meant for backup copies. Without the passphrase the copy is useless,
+  so keep the passphrase somewhere safe too.
+
+```bash
+node scripts/sign-release.mjs protect <key file> <new file> --dpapi
+node scripts/sign-release.mjs protect <key file> <new file> --passphrase --remove-original
+node scripts/sign-release.mjs check-key            # opens the configured key and compares it with the app's public key
+```
+
+`protect` only writes outside the repository, never overwrites, re-opens the protected copy and checks it is the same
+key, and deletes the original (`--remove-original`) only after that check. The passphrase is typed at a hidden prompt
+and is never a command-line argument. When the key is passphrase-protected, `release` asks for it first, before any
+download.

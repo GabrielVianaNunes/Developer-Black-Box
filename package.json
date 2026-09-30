@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
-    "test": "node --experimental-strip-types --no-warnings --test scripts/repo-safety.test.mjs scripts/i18n.test.mjs scripts/version.test.mjs scripts/changelog.test.mjs scripts/sign-release.test.mjs scripts/sign-release-flow.test.mjs scripts/sign-release-config.test.mjs",
+    "test": "node --experimental-strip-types --no-warnings --test scripts/repo-safety.test.mjs scripts/i18n.test.mjs scripts/version.test.mjs scripts/changelog.test.mjs scripts/sign-release.test.mjs scripts/sign-release-flow.test.mjs scripts/sign-release-config.test.mjs scripts/key-protect.test.mjs",
     "version": "node scripts/version.mjs",
     "check:version": "node scripts/version.mjs check",
     "check:repo": "node scripts/check-tracked.mjs && node scripts/scan-secrets.mjs",
