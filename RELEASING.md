@@ -68,6 +68,18 @@ for a typed `yes`, signs it with the local key, verifies the result against the 
 **only** the `.sig` file. It refuses an installer that does not match its checksum, a key the app does not trust, and
 a release that is already signed (`--resign` replaces the signature).
 
+### Check the real download path (optional but recommended for pre-releases)
+
+After signing, prove that the app's own download and verification accept the published release, using the key
+embedded in the app and GitHub's real assets:
+
+```bash
+BB_LIVE_VERSION=0.2.0 BB_LIVE_EXPECT=signed cargo test -p bb-update -- --ignored --nocapture live_prepare
+```
+
+Without `BB_LIVE_EXPECT=signed` the same test expects the release to be **unsigned** and checks that the app refuses it
+and leaves nothing on disk.
+
 ### Where the key is
 
 The script reads the key location from `signing.local.json` at the repository root: a local file that is listed in
