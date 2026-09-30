@@ -366,6 +366,7 @@ pub fn run() {
             commands::delete_incident,
             commands::capture_incident,
             commands::export_incident,
+            commands::get_app_version,
             commands::get_language,
             commands::set_language,
             commands::get_settings,

@@ -6,6 +6,7 @@ import type { en } from "./en";
 export const ptBR: Record<keyof typeof en, string> = {
   // ---- estrutura do app ----
   "app.title": "Developer Black Box",
+  "app.version": "Versão {version}",
   "app.loading": "Carregando…",
   "app.statusReadError": "Não foi possível ler o estado da gravação.",
   "app.hintManualPause": "A pausa manual tem prioridade e continua até você retomar.",

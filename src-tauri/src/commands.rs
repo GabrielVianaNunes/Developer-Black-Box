@@ -36,6 +36,12 @@ fn with_engine<T>(app: &AppHandle, f: impl FnOnce(&mut WinEngine) -> Result<T, S
 
 // ---- idioma ----
 
+/// Versão instalada do app (a mesma do Cargo.toml do workspace).
+#[tauri::command]
+pub fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 /// Idioma atual da interface ("en" ou "pt-BR").
 #[tauri::command]
 pub fn get_language(app: AppHandle) -> String {

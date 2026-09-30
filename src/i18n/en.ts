@@ -3,6 +3,7 @@
 export const en = {
   // ---- app shell ----
   "app.title": "Developer Black Box",
+  "app.version": "Version {version}",
   "app.loading": "Loading…",
   "app.statusReadError": "Could not read the recording status.",
   "app.hintManualPause": "Manual pause takes priority and lasts until you resume.",

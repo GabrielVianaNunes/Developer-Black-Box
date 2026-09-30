@@ -8,7 +8,7 @@ import { PrivacyView } from "../features/privacy/PrivacyView";
 import { ProcessesView } from "../features/processes/ProcessesView";
 import { StorageView } from "../features/storage/StorageView";
 import { useI18n, type Key } from "../i18n";
-import { getStatus, onNavigate, onStatus, pauseRecording, resumeRecording } from "../services/backend";
+import { getAppVersion, getStatus, onNavigate, onStatus, pauseRecording, resumeRecording } from "../services/backend";
 import type { Status } from "../types/status";
 
 const VIEWS = [
@@ -28,10 +28,12 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<ViewId>("overview");
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     const unlisten: Array<() => void> = [];
+    getAppVersion().then((v) => alive && setVersion(v)).catch(() => {});
     getStatus()
       .then((s) => alive && setStatus(s))
       .catch((e) => alive && setNotice(errorText(e)));
@@ -63,7 +65,10 @@ export function App() {
 
   const toprow = (
     <div className="toprow">
-      <h1 className="brand">{t("app.title")}</h1>
+      <div className="brandrow">
+        <h1 className="brand">{t("app.title")}</h1>
+        {version && <span className="version muted small">{t("app.version", { version })}</span>}
+      </div>
       <LanguageSwitch />
     </div>
   );
