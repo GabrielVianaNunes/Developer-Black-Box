@@ -23,6 +23,7 @@ use bb_store::Store;
 use bb_tray::{icon, light_for, menu_labels, menu_model, tooltip, Lang, Light};
 
 mod commands;
+mod updates;
 
 /// Chave da configuração salva com o idioma escolhido (guardada cifrada, como as demais).
 pub const LANGUAGE_SETTING: &str = "language";
@@ -352,6 +353,7 @@ pub fn run() {
         // Duas instâncias disputariam o mesmo journal.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .manage(rt.clone())
+        .manage(Arc::new(updates::Updates::default()))
         .invoke_handler(tauri::generate_handler![
             get_status,
             pause_recording,
@@ -367,6 +369,10 @@ pub fn run() {
             commands::capture_incident,
             commands::export_incident,
             commands::get_app_version,
+            updates::get_update_state,
+            updates::set_update_check,
+            updates::check_for_updates,
+            updates::open_release_page,
             commands::get_language,
             commands::set_language,
             commands::get_settings,
@@ -397,6 +403,8 @@ pub fn run() {
             if !std::env::args().any(|a| a == MINIMIZED_ARG) {
                 show_main(app.handle());
             }
+
+            updates::spawn_background(app.handle().clone(), rt.clone());
 
             let handle = app.handle().clone();
             let worker = rt.clone();
