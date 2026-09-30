@@ -55,19 +55,6 @@ jobs:
           }
           Get-Content "$dir/SHA256SUMS.txt"
 
-      - name: Sign the installer (Ed25519)
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        env:
-          # Segredo do repositório (Settings > Secrets). Sem ele a Release NAO e publicada: falha fechada.
-          BB_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          for f in target/release/bundle/nsis/*-setup.exe; do
-            node scripts/sign-release.mjs sign "$f" "$VERSION"
-            node scripts/sign-release.mjs verify "$f" "$VERSION"
-          done
-
       - uses: actions/upload-artifact@v4
         with:
           name: installer

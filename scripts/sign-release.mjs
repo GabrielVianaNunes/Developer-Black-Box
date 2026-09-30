@@ -5,12 +5,18 @@
 // Uso: node scripts/sign-release.mjs keygen <arquivo-da-chave-privada>   gera o par; a privada NUNCA fica no repositório
 //      node scripts/sign-release.mjs sign <instalador> <versão>          grava <instalador>.sig (chave em BB_SIGNING_KEY ou --key-file)
 //      node scripts/sign-release.mjs verify <instalador> <versão>        confere o .sig com as chaves embutidas no app
+//      node scripts/sign-release.mjs release <tag>                       baixa o instalador da Release, confere o SHA-256, assina AQUI e envia só o .sig
+//
+// A chave privada nunca sai do seu computador: o CI só constrói e publica o instalador; quem assina é você.
 //
 // A assinatura cobre "DeveloperBlackBox-release-v1\n<versão>\n<sha256 do instalador>\n": amarra o arquivo à
 // versão, então um instalador antigo (assinado) não pode ser apresentado como uma versão mais nova.
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { createInterface } from "node:readline/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isVersion } from "./version.mjs";
 
@@ -63,6 +69,55 @@ export function assertOutsideRepo(file) {
   if (!rel.startsWith("..") && !isAbsolute(rel)) throw new Error(`refusing to put a private key inside the repository (${rel})`);
 }
 
+export const DEFAULT_KEY_FILE = join(homedir(), ".developer-blackbox-signing", "release-signing.key");
+
+/**
+ * Assina uma Release já publicada pelo CI: baixa o instalador, confere com o SHA256SUMS.txt, mostra o hash,
+ * pede confirmação, assina com a chave local e envia SOMENTE o .sig. `gh(args)` executa o GitHub CLI e devolve a saída.
+ */
+export async function signRelease({ tag, gh, keyFile, confirm, trusted = trustedKeys(), resign = false, log = console.log }) {
+  const version = tag.startsWith("v") ? tag.slice(1) : "";
+  if (!isVersion(version)) throw new Error(`invalid tag: ${tag} (expected vX.Y.Z)`);
+  const info = JSON.parse(gh(["release", "view", tag, "--json", "assets,isDraft"]));
+  const names = info.assets.map((a) => a.name);
+  const installers = names.filter((n) => n.endsWith("-setup.exe"));
+  if (installers.length !== 1) throw new Error(`expected exactly one *-setup.exe asset in ${tag}, found ${installers.length}`);
+  const installer = installers[0];
+  if (!names.includes("SHA256SUMS.txt")) throw new Error(`${tag} has no SHA256SUMS.txt asset`);
+  if (names.includes(`${installer}.sig`) && !resign) throw new Error(`${installer} is already signed (use --resign to replace the signature)`);
+
+  const dir = mkdtempSync(join(tmpdir(), "bb-release-sign-"));
+  try {
+    gh(["release", "download", tag, "--dir", dir, "--pattern", installer, "--pattern", "SHA256SUMS.txt", "--clobber"]);
+    const bytes = readFileSync(join(dir, installer));
+    const sha = sha256Hex(bytes);
+    const lines = readFileSync(join(dir, "SHA256SUMS.txt"), "utf8").split(/\r?\n/);
+    const listed = lines.map((l) => l.trim()).find((l) => l.endsWith("  " + installer));
+    if (!listed || listed.split(/\s+/)[0].toLowerCase() !== sha) {
+      throw new Error("the downloaded installer does not match SHA256SUMS.txt; refusing to sign");
+    }
+    log(`Release   ${tag}
+Installer ${installer} (${bytes.length} bytes)
+SHA-256   ${sha}  (matches SHA256SUMS.txt)`);
+    if ((await confirm(`Sign this installer as version ${version}? Type "yes" to continue: `)).trim().toLowerCase() !== "yes") {
+      throw new Error("cancelled; nothing was signed or uploaded");
+    }
+    const key = createPrivateKey(readFileSync(keyFile, "utf8"));
+    const sig = signFile(key, version, bytes);
+    if (!verifyFile(trusted, version, bytes, sig)) {
+      throw new Error("this signing key is not among the app's trusted public keys; the app would reject the update");
+    }
+    const sigPath = join(dir, `${installer}.sig`);
+    writeFileSync(sigPath, `${sig}
+`);
+    gh(["release", "upload", tag, sigPath, "--clobber"]);
+    log(`Uploaded ${basename(sigPath)} to ${tag}. The release is now installable by apps that verify signatures.`);
+    return { sha, installer, sig };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function loadPrivateKey(args) {
   const i = args.indexOf("--key-file");
   const pem = i >= 0 ? readFileSync(args[i + 1], "utf8") : process.env.BB_SIGNING_KEY;
@@ -70,7 +125,7 @@ function loadPrivateKey(args) {
   return createPrivateKey(pem);
 }
 
-function main([cmd, a, b, ...rest]) {
+async function main([cmd, a, b, ...rest]) {
   if (cmd === "keygen") {
     if (!a) throw new Error("usage: keygen <private-key-file>");
     assertOutsideRepo(a);
@@ -101,14 +156,30 @@ function main([cmd, a, b, ...rest]) {
     console.log("OK: signature is valid for this installer and version.");
     return;
   }
-  throw new Error("usage: sign-release.mjs keygen <file> | sign <installer> <version> | verify <installer> <version>");
+  if (cmd === "release") {
+    if (!a) throw new Error("usage: release <tag> [--key-file <file>] [--resign]");
+    const args = [b, ...rest].filter(Boolean);
+    const i = args.indexOf("--key-file");
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      await signRelease({
+        tag: a,
+        gh: (g) => execFileSync("gh", g, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }),
+        keyFile: i >= 0 ? args[i + 1] : DEFAULT_KEY_FILE,
+        confirm: (q) => rl.question(q),
+        resign: args.includes("--resign"),
+      });
+    } finally {
+      rl.close();
+    }
+    return;
+  }
+  throw new Error("usage: sign-release.mjs keygen <file> | sign <installer> <version> | verify <installer> <version> | release <tag>");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  try {
-    main(process.argv.slice(2));
-  } catch (e) {
+  main(process.argv.slice(2)).catch((e) => {
     console.error(`FAIL: ${e.message}`);
     process.exit(1);
-  }
+  });
 }
