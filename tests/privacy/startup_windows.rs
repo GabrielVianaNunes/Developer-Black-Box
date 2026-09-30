@@ -63,3 +63,34 @@ fn the_apps_own_entry_is_untouched_by_these_tests() {
     e.0.enable(&fake_exe(), "--minimized").unwrap();
     assert_eq!(StartupEntry::app().command(), before);
 }
+
+/// Apaga a subchave de teste inteira (mesmo se o teste falhar no meio).
+struct KeyCleanup(String);
+impl Drop for KeyCleanup {
+    fn drop(&mut self) {
+        use windows::core::PCWSTR;
+        use windows::Win32::System::Registry::{RegDeleteTreeW, HKEY_CURRENT_USER};
+        let path: Vec<u16> = self.0.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: cadeia UTF-16 terminada em zero que vive durante a chamada.
+        let _ = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, PCWSTR(path.as_ptr())) };
+    }
+}
+
+/// Regressão achada pelo CI do GitHub: num Windows em que a chave `Run` ainda não existe, ligar o início
+/// automático falhava com "arquivo não encontrado". Agora a chave é criada quando falta.
+#[test]
+fn enable_creates_the_run_key_when_it_does_not_exist_yet() {
+    let root = format!("Software\\BlackBoxTest-{}", std::process::id());
+    let _cleanup = KeyCleanup(root.clone());
+    let e = StartupEntry::in_key(&format!("{root}\\Run"), "DeveloperBlackBoxTest-missing-key");
+
+    // Com a chave ausente: nada registrado, e desligar não é erro.
+    assert!(!e.is_enabled());
+    assert_eq!(e.command(), None);
+    e.disable().expect("disable on a missing key is not an error");
+
+    e.enable(&fake_exe(), "--minimized").expect("enable must create the missing key");
+    assert_eq!(e.command().unwrap(), format!("\"{}\" --minimized", fake_exe().display()));
+    e.disable().unwrap();
+    assert!(!e.is_enabled());
+}

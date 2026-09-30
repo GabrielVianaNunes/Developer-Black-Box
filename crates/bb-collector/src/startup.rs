@@ -5,11 +5,11 @@
 
 use std::path::Path;
 
-use windows::core::{w, PCWSTR};
+use windows::core::PCWSTR;
 use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
-    KEY_QUERY_VALUE, KEY_SET_VALUE, REG_SZ, REG_VALUE_TYPE,
+    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY,
+    HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
 };
 
 use crate::sample::CollectError;
@@ -17,7 +17,11 @@ use crate::sample::CollectError;
 /// Nome do valor usado pelo app.
 pub const APP_VALUE_NAME: &str = "DeveloperBlackBox";
 
+/// Chave de programas que iniciam com o Windows, no registro do usuário atual.
+pub const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+
 pub struct StartupEntry {
+    subkey: String,
     value_name: String,
 }
 
@@ -31,20 +35,25 @@ impl Drop for Key {
     }
 }
 
-fn open_run_key() -> Result<Key, CollectError> {
+/// Abre a chave. `create` cria a chave se ela não existir (num Windows novo a chave `Run` pode não existir
+/// ainda); sem `create`, uma chave ausente devolve `None`: não há nada registrado.
+fn open_key(subkey: &str, create: bool) -> Result<Option<Key>, CollectError> {
+    let path = wide(subkey);
     let mut h = HKEY::default();
-    // SAFETY: `h` recebe um handle válido quando a chamada tem êxito.
+    let access = KEY_SET_VALUE | KEY_QUERY_VALUE;
+    // SAFETY: `path` é terminado em NUL e vive durante a chamada; `h` recebe um handle válido se houver êxito.
     let status = unsafe {
-        RegOpenKeyExW(
-            HKEY_CURRENT_USER,
-            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
-            None,
-            KEY_SET_VALUE | KEY_QUERY_VALUE,
-            &mut h,
-        )
+        if create {
+            RegCreateKeyExW(HKEY_CURRENT_USER, PCWSTR(path.as_ptr()), None, PCWSTR::null(), REG_OPTION_NON_VOLATILE, access, None, &mut h, None)
+        } else {
+            RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(path.as_ptr()), None, access, &mut h)
+        }
     };
+    if !create && status == ERROR_FILE_NOT_FOUND {
+        return Ok(None);
+    }
     status.ok().map_err(|e| CollectError(format!("open Run key: {e}")))?;
-    Ok(Key(h))
+    Ok(Some(Key(h)))
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -53,7 +62,13 @@ fn wide(s: &str) -> Vec<u16> {
 
 impl StartupEntry {
     pub fn new(value_name: &str) -> Self {
-        Self { value_name: value_name.to_owned() }
+        Self { subkey: RUN_KEY.to_owned(), value_name: value_name.to_owned() }
+    }
+
+    /// Como `new`, mas numa subchave de `HKEY_CURRENT_USER` à escolha (usado em testes, para exercitar
+    /// uma chave que ainda não existe sem tocar na chave `Run` real).
+    pub fn in_key(subkey: &str, value_name: &str) -> Self {
+        Self { subkey: subkey.to_owned(), value_name: value_name.to_owned() }
     }
 
     /// A entrada do próprio aplicativo.
@@ -71,7 +86,7 @@ impl StartupEntry {
         let command = if args.is_empty() { format!("\"{exe_str}\"") } else { format!("\"{exe_str}\" {args}") };
         let data: Vec<u8> = wide(&command).iter().flat_map(|c| c.to_le_bytes()).collect();
         let name = wide(&self.value_name);
-        let key = open_run_key()?;
+        let key = open_key(&self.subkey, true)?.ok_or_else(|| CollectError("open Run key: not created".into()))?;
         // SAFETY: `name` e `data` são terminados em NUL e vivem durante a chamada.
         unsafe { RegSetValueExW(key.0, PCWSTR(name.as_ptr()), None, REG_SZ, Some(&data)) }
             .ok()
@@ -81,7 +96,8 @@ impl StartupEntry {
     /// Remove a entrada. Não é erro se ela já não existir.
     pub fn disable(&self) -> Result<(), CollectError> {
         let name = wide(&self.value_name);
-        let key = open_run_key()?;
+        // Chave ausente: não há entrada a remover.
+        let Some(key) = open_key(&self.subkey, false)? else { return Ok(()) };
         // SAFETY: `name` é terminado em NUL.
         let status = unsafe { RegDeleteValueW(key.0, PCWSTR(name.as_ptr())) };
         if status == ERROR_FILE_NOT_FOUND {
@@ -93,7 +109,7 @@ impl StartupEntry {
     /// Comando registrado, se houver.
     pub fn command(&self) -> Option<String> {
         let name = wide(&self.value_name);
-        let key = open_run_key().ok()?;
+        let key = open_key(&self.subkey, false).ok()??;
         let mut kind = REG_VALUE_TYPE::default();
         let mut len = 0u32;
         // SAFETY: primeira chamada só pergunta o tamanho.
