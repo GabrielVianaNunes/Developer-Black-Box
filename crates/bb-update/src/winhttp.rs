@@ -27,7 +27,8 @@ const TIMEOUT_MS: i32 = 10_000;
 /// Em downloads grandes cada leitura pode demorar mais; o total é limitado pelo tamanho máximo.
 const DOWNLOAD_RECEIVE_TIMEOUT_MS: i32 = 30_000;
 const API_HEADERS: &str = "Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n";
-const DOWNLOAD_HEADERS: &str = "Accept: application/octet-stream\r\n";
+// Atenção: o GitHub responde 404 (e não 302) a downloads de arquivos da Release com "Accept: application/octet-stream".
+const DOWNLOAD_HEADERS: &str = "Accept: */*\r\n";
 
 /// Fecha o identificador do WinHTTP ao sair de escopo, em qualquer caminho de erro.
 struct Handle(*mut c_void);
@@ -225,10 +226,44 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Caminho COMPLETO com a Release real (chave real embutida no app): baixa a assinatura e o instalador do
+    /// GitHub, verifica e entrega. Use com a versão publicada em `BB_LIVE_VERSION`:
+    ///   BB_LIVE_VERSION=0.1.1-rc.1 cargo test -p bb-update -- --ignored --nocapture live_prepare
+    /// Se a Release ainda não foi assinada, o resultado esperado é `NotSigned` (falha fechada).
+    #[test]
+    #[ignore = "usa a internet e precisa de BB_LIVE_VERSION"]
+    fn live_prepare_of_a_published_release() {
+        let Ok(text) = std::env::var("BB_LIVE_VERSION") else { panic!("set BB_LIVE_VERSION, e.g. 0.1.1-rc.1") };
+        let version = crate::Version::parse(&text).expect("valid version");
+        let dir = tempfile_dir().join("updates");
+        let fetcher = WinHttpFetcher::new("0.0.0");
+        let result = crate::prepare(&version, &dir, &fetcher);
+        println!("live prepare of {version}: {result:?}");
+        let expect_signed = std::env::var("BB_LIVE_EXPECT").as_deref() == Ok("signed");
+        if expect_signed {
+            let path = result.expect("a signed release must download and verify with the real embedded key");
+            assert!(path.exists());
+            assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2, "installer + signature only");
+            assert!(crate::reverify(&version, &dir).is_ok());
+        } else {
+            assert_eq!(result, Err(UpdateError::NotSigned));
+            assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0, "nothing is left behind");
+        }
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+    }
+
     fn tempfile_dir() -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("bb-update-test-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    /// Regressão: o GitHub responde 404 a downloads de Release com "Accept: application/octet-stream"
+    /// (só o teste contra o GitHub real pegou isso). Downloads usam um Accept que ele aceita.
+    #[test]
+    fn downloads_do_not_send_the_accept_header_that_makes_github_answer_404() {
+        assert!(!DOWNLOAD_HEADERS.contains("octet-stream"));
+        assert!(DOWNLOAD_HEADERS.starts_with("Accept: */*"));
     }
 
     /// Falha de rede vira erro, não pânico nem "atualização".
