@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { CONFIG_CHANGE_LABEL, CONFIG_KEY_LABEL, fmtTime } from "../../app/format";
 import { usePolling } from "../../app/hooks";
+import { useI18n } from "../../i18n";
 import { getConfigHistory, getSettings, setSettings } from "../../services/backend";
 import type { Settings } from "../../types/dashboard";
 import type { Status } from "../../types/status";
@@ -8,19 +8,23 @@ import { AuthorizationsCard } from "./AuthorizationsCard";
 import { StartupCard } from "./StartupCard";
 
 export function PrivacyView({ status }: { status: Status }) {
+  const { t, f, errorText, label } = useI18n();
   const [saved, setSaved] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const history = usePolling(getConfigHistory, 5000);
 
   useEffect(() => {
-    getSettings().then((s) => {
-      setSaved(s);
-      setDraft(s);
-    });
+    getSettings()
+      .then((s) => {
+        setSaved(s);
+        setDraft(s);
+      })
+      .catch((e) => setMsg(errorText(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!draft || !saved) return <p className="muted">Carregando…</p>;
+  if (!draft || !saved) return <p className="muted">{msg ?? t("app.loading")}</p>;
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   async function save() {
@@ -30,43 +34,38 @@ export function PrivacyView({ status }: { status: Status }) {
       const s = await setSettings(draft);
       setSaved(s);
       setDraft(s);
-      setMsg("Configurações aplicadas. A regra nova já vale; a gravação só volta depois de uma nova janela de estabilidade.");
+      setMsg(t("privacy.applied"));
       void history.reload();
     } catch (e) {
-      setMsg(typeof e === "string" ? e : "Não foi possível salvar.");
+      setMsg(errorText(e));
     }
   }
 
   return (
-    <section aria-label="Privacidade">
+    <section aria-label={t("nav.privacy")}>
       <div className="card">
-        <h2>Privacy Guard</h2>
-        <p>
-          Estado atual: <strong>{status.text}</strong>
-        </p>
-        <p className="muted">
-          O Guard avalia o contexto o tempo todo, inclusive durante a pausa manual. Ausência de sinal nunca é tratada como
-          seguro, e uma falha do detector suspende a gravação.
-        </p>
+        <h2>{t("privacy.guardTitle")}</h2>
+        <p>{t("privacy.currentState", { text: status.text })}</p>
+        <p className="muted">{t("privacy.guardText")}</p>
       </div>
 
       <AppList
-        title="Aplicativos protegidos"
-        help="Se um destes estiver em primeiro plano, a gravação é suspensa e nada dele é gravado. Remover um item reduz a proteção."
+        title={t("privacy.protectedTitle")}
+        help={t("privacy.protectedHelp")}
         items={draft.protectedApps}
         onChange={(v) => setDraft({ ...draft, protectedApps: v })}
       />
       <AppList
-        title="Regras de exclusão"
-        help="Eventos destes aplicativos nunca são gravados (a gravação dos demais continua)."
+        title={t("privacy.excludedTitle")}
+        help={t("privacy.excludedHelp")}
         items={draft.excludedApps}
         onChange={(v) => setDraft({ ...draft, excludedApps: v })}
       />
 
       <div className="card">
-        <h2>Configurações de gravação</h2>
+        <h2>{t("privacy.recordingTitle")}</h2>
         <label className="inline">
-          Janela de estabilidade (segundos)
+          {t("privacy.stability")}
           <input
             type="number"
             min={1}
@@ -75,21 +74,19 @@ export function PrivacyView({ status }: { status: Status }) {
             onChange={(e) => setDraft({ ...draft, stabilityWindowMs: Math.round(Number(e.target.value) * 1000) })}
           />
         </label>
-        <p className="muted small">Tempo contínuo de contexto seguro exigido antes de gravar ou retomar.</p>
+        <p className="muted small">{t("privacy.stabilityHelp")}</p>
         <label className="check">
           <input
             type="checkbox"
             checked={draft.autoStart}
             onChange={(e) => setDraft({ ...draft, autoStart: e.target.checked })}
           />
-          Começar a gravar ao abrir o aplicativo
+          {t("privacy.autoStart")}
         </label>
-        <p className="muted small">
-          Desligado por padrão: sem isso, o app abre pausado e só grava depois que você clicar em "Retomar gravação".
-        </p>
+        <p className="muted small">{t("privacy.autoStartHelp")}</p>
         <div className="row">
-          <button className="primary" disabled={!dirty} onClick={save}>Aplicar</button>
-          <button disabled={!dirty} onClick={() => setDraft(saved)}>Descartar</button>
+          <button className="primary" disabled={!dirty} onClick={save}>{t("privacy.apply")}</button>
+          <button disabled={!dirty} onClick={() => setDraft(saved)}>{t("privacy.discard")}</button>
         </div>
         {msg && <p className="notice" role="status">{msg}</p>}
       </div>
@@ -99,17 +96,20 @@ export function PrivacyView({ status }: { status: Status }) {
       <AuthorizationsCard protectedApps={saved.protectedApps} />
 
       <div className="card">
-        <h2>Histórico de alterações</h2>
-        <p className="muted small">Só a configuração e o tipo da mudança; os valores não são registrados.</p>
+        <h2>{t("privacy.historyTitle")}</h2>
+        <p className="muted small">{t("privacy.historyHelp")}</p>
         <ul className="plain">
           {(history.data ?? []).map((h, i) => (
             <li key={i}>
-              <span className="muted small">{fmtTime(h.atUtcMs)}</span> {CONFIG_KEY_LABEL[h.key] ?? h.key}:{" "}
-              {CONFIG_CHANGE_LABEL[h.change] ?? h.change}
+              <span className="muted small">{f.time(h.atUtcMs)}</span>{" "}
+              {t("privacy.historyEntry", {
+                key: label("configKey", h.key),
+                change: label("configChange", h.change),
+              })}
             </li>
           ))}
         </ul>
-        {history.data && history.data.length === 0 && <p className="muted">Nenhuma alteração.</p>}
+        {history.data && history.data.length === 0 && <p className="muted">{t("privacy.historyEmpty")}</p>}
       </div>
     </section>
   );
@@ -126,6 +126,7 @@ function AppList({
   items: string[];
   onChange: (v: string[]) => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const add = () => {
     const n = name.trim().toLowerCase();
@@ -140,20 +141,22 @@ function AppList({
         {items.map((a) => (
           <span key={a} className="chip">
             {a}
-            <button aria-label={`Remover ${a}`} onClick={() => onChange(items.filter((x) => x !== a))}>×</button>
+            <button aria-label={t("privacy.remove", { name: a })} onClick={() => onChange(items.filter((x) => x !== a))}>
+              ×
+            </button>
           </span>
         ))}
-        {items.length === 0 && <span className="muted small">Nenhum.</span>}
+        {items.length === 0 && <span className="muted small">{t("privacy.none")}</span>}
       </div>
       <div className="row">
         <input
           className="grow"
           value={name}
-          placeholder="nome do executável, ex.: app.exe"
+          placeholder={t("privacy.appPlaceholder")}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && add()}
         />
-        <button onClick={add} disabled={!name.trim()}>Adicionar</button>
+        <button onClick={add} disabled={!name.trim()}>{t("privacy.add")}</button>
       </div>
     </div>
   );

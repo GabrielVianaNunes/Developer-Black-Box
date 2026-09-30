@@ -39,22 +39,26 @@ const MAX_APPS: usize = 200;
 
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
-        for (label, list) in [("protected apps", &self.protected_apps), ("excluded apps", &self.excluded_apps)] {
+        // Os erros são CÓDIGOS (a interface os traduz), nunca texto de um idioma.
+        for (list, too_many, bad_name) in [
+            (&self.protected_apps, "settings.too_many_protected", "settings.bad_protected_name"),
+            (&self.excluded_apps, "settings.too_many_excluded", "settings.bad_excluded_name"),
+        ] {
             if list.len() > MAX_APPS {
-                return Err(format!("too many {label} (max {MAX_APPS})"));
+                return Err(too_many.into());
             }
             for n in list {
-                ExeName::new(n).map_err(|e| format!("invalid name in {label}: {e:?}"))?;
+                ExeName::new(n).map_err(|_| bad_name.to_string())?;
             }
         }
         if !(1_000..=60_000).contains(&self.stability_window_ms) {
-            return Err("stability window must be between 1 and 60 seconds".into());
+            return Err("settings.stability_range".into());
         }
         if !(16..=10_240).contains(&self.retention_max_mb) {
-            return Err("storage limit must be between 16 MB and 10 GB".into());
+            return Err("settings.storage_range".into());
         }
         if !(1..=720).contains(&self.retention_max_hours) {
-            return Err("retention must be between 1 and 720 hours".into());
+            return Err("settings.retention_range".into());
         }
         Ok(())
     }
@@ -163,6 +167,28 @@ mod tests {
         let mut s = Settings::default();
         s.retention_max_mb = 1;
         assert!(s.validate().is_err());
+    }
+
+    #[test]
+    fn validation_errors_are_language_neutral_codes() {
+        let mut s = Settings::default();
+        s.excluded_apps = vec!["C:\\x\\a.exe".into()];
+        assert_eq!(s.validate(), Err("settings.bad_excluded_name".to_string()));
+        let mut s = Settings::default();
+        s.protected_apps = vec!["bad/name.exe".into()];
+        assert_eq!(s.validate(), Err("settings.bad_protected_name".to_string()));
+        let mut s = Settings::default();
+        s.stability_window_ms = 5;
+        assert_eq!(s.validate(), Err("settings.stability_range".to_string()));
+        let mut s = Settings::default();
+        s.retention_max_mb = 1;
+        assert_eq!(s.validate(), Err("settings.storage_range".to_string()));
+        let mut s = Settings::default();
+        s.retention_max_hours = 0;
+        assert_eq!(s.validate(), Err("settings.retention_range".to_string()));
+        let mut s = Settings::default();
+        s.excluded_apps = (0..201).map(|i| format!("a{i}.exe")).collect();
+        assert_eq!(s.validate(), Err("settings.too_many_excluded".to_string()));
     }
 
     #[test]

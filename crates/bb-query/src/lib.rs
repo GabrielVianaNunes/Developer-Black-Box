@@ -56,13 +56,20 @@ fn exe_map(events: &[Ev]) -> HashMap<(u64, i64), String> {
         .collect()
 }
 
-/// Números no formato pt-BR (vírgula decimal), como o resto da interface.
-fn mb(kb: u64) -> String {
-    format!("{:.1} MB", kb as f64 / 1024.0).replace('.', ",")
-}
-
-fn pct(permille: u64) -> String {
-    format!("{:.1}%", permille as f64 / 10.0).replace('.', ",")
+/// Detalhe de um evento, sem texto: só um código e números. A interface o formata no idioma
+/// escolhido, e a exportação fica neutra em relação a idioma.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "code", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum Detail {
+    ProcessStarted { parent_pid: u64 },
+    ProcessExited { exit_code: Option<i64> },
+    ProcessMetrics { cpu_permille: u64, working_set_kb: u64 },
+    SystemMetrics { cpu_permille: u64, mem_used_kb: u64, mem_total_kb: u64 },
+    AppCrash { exception_code: u64 },
+    AppHang,
+    UserMarker { marker: u64 },
+    RecorderStateChanged,
+    Unknown,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -84,7 +91,7 @@ pub struct ActivityRow {
     pub kind: String,
     pub pid: Option<u32>,
     pub exe_name: Option<String>,
-    pub detail: String,
+    pub detail: Detail,
 }
 
 fn row_of(e: &Ev, exes: &HashMap<(u64, i64), String>) -> ActivityRow {
@@ -95,20 +102,21 @@ fn row_of(e: &Ev, exes: &HashMap<(u64, i64), String>) -> ActivityRow {
     };
     let n = |k: &str| e.body.get(k).and_then(Value::as_u64).unwrap_or(0);
     let detail = match e.kind.as_str() {
-        "ProcessStarted" => format!("PID pai {}", n("parent_pid")),
-        "ProcessExited" => match e.body.get("exit_code").and_then(Value::as_i64) {
-            Some(c) => format!("código de saída {c}"),
-            None => "código de saída indisponível".into(),
-        },
-        "ProcessMetrics" => format!("CPU {} · {}", pct(n("cpu_permille")), mb(n("working_set_kb"))),
-        "SystemMetrics" => {
-            format!("CPU {} · memória {} de {}", pct(n("cpu_permille")), mb(n("mem_used_kb")), mb(n("mem_total_kb")))
+        "ProcessStarted" => Detail::ProcessStarted { parent_pid: n("parent_pid") },
+        "ProcessExited" => Detail::ProcessExited { exit_code: e.body.get("exit_code").and_then(Value::as_i64) },
+        "ProcessMetrics" => {
+            Detail::ProcessMetrics { cpu_permille: n("cpu_permille"), working_set_kb: n("working_set_kb") }
         }
-        "AppCrash" => format!("código de exceção 0x{:08X}", n("exception_code")),
-        "AppHang" => "aplicativo deixou de responder".into(),
-        "UserMarker" => format!("marcador {}", n("code")),
-        "RecorderStateChanged" => "estado do recorder alterado".into(),
-        _ => String::new(),
+        "SystemMetrics" => Detail::SystemMetrics {
+            cpu_permille: n("cpu_permille"),
+            mem_used_kb: n("mem_used_kb"),
+            mem_total_kb: n("mem_total_kb"),
+        },
+        "AppCrash" => Detail::AppCrash { exception_code: n("exception_code") },
+        "AppHang" => Detail::AppHang,
+        "UserMarker" => Detail::UserMarker { marker: n("code") },
+        "RecorderStateChanged" => Detail::RecorderStateChanged,
+        _ => Detail::Unknown,
     };
     ActivityRow {
         seq: e.seq,

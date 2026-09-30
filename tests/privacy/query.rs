@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::fs;
 
 use bb_core::{EventKind, ExeName, GuardConfig, Observation, PrivacyGuard, ProcessKey};
-use bb_query::{activity, incident_detail, overview, processes, ActivityFilter};
+use bb_query::{activity, incident_detail, overview, processes, ActivityFilter, Detail};
 use bb_recorder::{Recorder, RecorderConfig, StaticKey};
 use bb_store::{IncidentKind, NewIncident, Severity, Store};
 
@@ -96,16 +96,37 @@ fn rows_expose_only_allowlisted_fields() {
     }
 }
 
+// O detalhe é estruturado (código + números), sem texto de idioma nenhum: quem o exibe decide o idioma.
 #[test]
-fn details_are_human_readable_numbers_only() {
+fn details_are_language_neutral_codes_and_numbers() {
     let (rec, _d) = scenario();
     let rows = activity(&rec, &f(100));
     let metric = rows.iter().find(|r| r.kind == "ProcessMetrics" && r.pid == Some(1)).unwrap();
-    assert_eq!(metric.detail, "CPU 25,0% · 20,0 MB");
+    assert_eq!(metric.detail, Detail::ProcessMetrics { cpu_permille: 250, working_set_kb: 20_480 });
     let sys = rows.iter().find(|r| r.kind == "SystemMetrics").unwrap();
-    assert!(sys.detail.starts_with("CPU 30,0%"));
+    assert_eq!(sys.detail, Detail::SystemMetrics { cpu_permille: 300, mem_used_kb: 4_096_000, mem_total_kb: 8_192_000 });
     let exited = rows.iter().find(|r| r.kind == "ProcessExited").unwrap();
-    assert_eq!(exited.detail, "código de saída indisponível");
+    assert_eq!(exited.detail, Detail::ProcessExited { exit_code: None });
+    let started = rows.iter().find(|r| r.kind == "ProcessStarted" && r.pid == Some(2)).unwrap();
+    assert_eq!(started.detail, Detail::ProcessStarted { parent_pid: 1 });
+}
+
+#[test]
+fn serialized_details_hold_only_a_code_and_numeric_fields() {
+    let (rec, _d) = scenario();
+    let allowed: BTreeSet<&str> =
+        ["code", "parentPid", "exitCode", "cpuPermille", "workingSetKb", "memUsedKb", "memTotalKb", "exceptionCode", "marker"]
+            .into_iter()
+            .collect();
+    for r in activity(&rec, &f(100)) {
+        let v = serde_json::to_value(&r.detail).unwrap();
+        for (k, val) in v.as_object().unwrap() {
+            assert!(allowed.contains(k.as_str()), "unexpected detail field: {k}");
+            if k != "code" {
+                assert!(val.is_number() || val.is_null(), "detail field {k} must be numeric, got {val}");
+            }
+        }
+    }
 }
 
 #[test]

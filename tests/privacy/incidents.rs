@@ -227,6 +227,7 @@ fn sustained_cpu_opens_an_incident_with_facts_only() {
     assert_eq!(inc.kind, IncidentKind::CpuSustained);
     assert_eq!(inc.exe_name.as_deref(), Some("synth-editor.exe"));
     assert!(!inc.summary.contains("synth"));
+    assert_eq!(inc.summary, "cpu_sustained|900|3", "a code with numeric parameters, no language");
     assert!(!inc.summary.to_lowercase().contains("caus"), "incidents state facts, not causes");
 }
 
@@ -312,7 +313,7 @@ fn a_crash_logged_while_recording_is_persisted_and_opens_an_unexpected_exit_inci
     let inc = r.store().list_incidents().unwrap().remove(0);
     assert_eq!((inc.kind, inc.severity), (IncidentKind::UnexpectedExit, Severity::Critical));
     assert_eq!(inc.exe_name.as_deref(), Some("synth-editor.exe"));
-    assert!(inc.summary.contains("0xC0000005"));
+    assert_eq!(inc.summary, "app_crash|3221225477");
     assert!(!inc.summary.contains("synth"), "summaries state facts, never names");
 }
 
@@ -563,6 +564,24 @@ fn exporting_an_unknown_incident_fails() {
 }
 
 // ---- autorizações de teste no engine ----
+
+#[test]
+fn engine_errors_reach_the_interface_as_language_neutral_codes() {
+    let mut r = rig();
+    let code = |res: Result<(), bb_engine::EngineError>| res.unwrap_err().code();
+    assert_eq!(code(r.engine.authorize_app("synth-editor.exe", 10, true, true, r.now, 1)), "auth.not_protected");
+    assert_eq!(code(r.engine.authorize_app("chrome.exe", 0, true, true, r.now, 1)), "auth.bad_duration");
+    assert_eq!(code(r.engine.authorize_app("chrome.exe", 10, false, false, r.now, 1)), "auth.no_source");
+    assert_eq!(code(r.engine.authorize_app("bad/name", 10, true, true, r.now, 1)), "auth.bad_name");
+    let mut s = quick_settings();
+    s.stability_window_ms = 1;
+    assert_eq!(code(r.engine.apply_settings(s, 1)), "settings.stability_range");
+    let out = r._dir.path().join("exports");
+    assert_eq!(r.engine.export_incident(999, &out, 0, 0).unwrap_err().code(), "export.not_found");
+    // um erro interno nunca vaza detalhes (podem conter caminhos)
+    let internal = bb_engine::EngineError::Store(bb_store::StoreError("C:\\secret\\path failed".into()));
+    assert_eq!(internal.code(), "store.error");
+}
 
 #[test]
 fn engine_authorizations_are_validated_listed_revoked_and_logged_without_names() {

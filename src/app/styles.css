@@ -59,6 +59,14 @@ ul.plain li { padding: 3px 0; }
 .light-red { background: var(--red); }
 .light-gray { background: var(--gray); }
 
+.toprow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.brand { margin: 0; font-size: 18px; }
+.langswitch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.langswitch .lang { border: 0; border-radius: 0; background: var(--card); color: var(--muted); padding: 6px 12px; }
+.langswitch .lang + .lang { border-left: 1px solid var(--border); }
+.langswitch .lang.active { background: var(--accent); color: #fff; font-weight: 600; }
+.langswitch .lang:focus-visible { outline-offset: -3px; }
+
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 12px 0 0; }
 .tab { background: transparent; color: var(--muted); border: 1px solid transparent; border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
 .tab.active { color: var(--text); border-color: var(--border); background: var(--card); }

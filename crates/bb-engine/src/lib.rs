@@ -27,8 +27,22 @@ pub enum EngineError {
     Collect(CollectError),
     Recorder(RecorderError),
     Store(StoreError),
-    /// Entrada do usuário rejeitada (configuração inválida).
+    /// Entrada do usuário rejeitada. Carrega um CÓDIGO (ex. `auth.not_protected`), nunca um texto
+    /// de idioma: a interface o traduz.
     Invalid(String),
+}
+
+impl EngineError {
+    /// Código estável para a interface traduzir. Erros internos não expõem detalhes (podem citar
+    /// caminhos); só um código genérico.
+    pub fn code(&self) -> String {
+        match self {
+            EngineError::Invalid(c) => c.clone(),
+            EngineError::Store(_) => "store.error".into(),
+            EngineError::Recorder(_) => "recorder.error".into(),
+            EngineError::Collect(_) => "collect.error".into(),
+        }
+    }
 }
 
 impl fmt::Display for EngineError {
@@ -175,16 +189,17 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         mono_ms: u64,
         utc_ms: i64,
     ) -> Result<(), EngineError> {
-        let name = ExeName::new(exe.trim().to_lowercase().as_str()).map_err(|_| EngineError::Invalid("nome de executável inválido".into()))?;
+        let name = ExeName::new(exe.trim().to_lowercase().as_str())
+            .map_err(|_| EngineError::Invalid("auth.bad_name".into()))?;
         self.guard
             .authorize(mono_ms, name, minutes.saturating_mul(60_000), allow_metrics, allow_crashes)
             .map_err(|e| {
                 EngineError::Invalid(
                     match e {
-                        AuthError::NotProtectedApp => "só aplicativos protegidos (como navegadores) podem ser autorizados",
-                        AuthError::ExcludedApp => "este aplicativo está nas regras de exclusão, que vencem qualquer autorização",
-                        AuthError::BadDuration => "a duração deve ficar entre 1 minuto e 8 horas",
-                        AuthError::NoSource => "escolha pelo menos uma fonte de diagnóstico",
+                        AuthError::NotProtectedApp => "auth.not_protected",
+                        AuthError::ExcludedApp => "auth.excluded",
+                        AuthError::BadDuration => "auth.bad_duration",
+                        AuthError::NoSource => "auth.no_source",
                     }
                     .into(),
                 )
@@ -269,7 +284,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         utc_ms: i64,
     ) -> Result<ExportResult, EngineError> {
         let Some(inc) = self.incidents.as_ref() else {
-            return Err(EngineError::Store(StoreError("incident storage unavailable".into())));
+            return Err(EngineError::Invalid("store.unavailable".into()));
         };
         let cfg = self.guard.config();
         let rules = bb_query::ExportRules {
@@ -278,11 +293,11 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             authorized_now: self.guard.authorizations(mono_ms).into_iter().map(|a| a.exe.as_str().to_owned()).collect(),
         };
         let doc = bb_query::export_incident(&self.recorder, &inc.store, id, &rules, utc_ms)
-            .ok_or_else(|| EngineError::Invalid("incidente não encontrado".into()))?;
-        std::fs::create_dir_all(out_dir).map_err(|e| EngineError::Invalid(format!("pasta de exportação: {e}")))?;
+            .ok_or_else(|| EngineError::Invalid("export.not_found".into()))?;
+        std::fs::create_dir_all(out_dir).map_err(|_| EngineError::Invalid("export.folder".into()))?;
         let path = out_dir.join(format!("incident-{id}-{utc_ms}.json"));
-        let json = serde_json::to_vec_pretty(&doc).map_err(|e| EngineError::Invalid(e.to_string()))?;
-        std::fs::write(&path, json).map_err(|e| EngineError::Invalid(format!("gravar exportação: {e}")))?;
+        let json = serde_json::to_vec_pretty(&doc).map_err(|_| EngineError::Invalid("export.write".into()))?;
+        std::fs::write(&path, json).map_err(|_| EngineError::Invalid("export.write".into()))?;
         Ok(ExportResult { path, events: doc.events.len(), dropped: doc.dropped_events })
     }
 
@@ -312,7 +327,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
     /// Captura manual: preserva a janela anterior agora e a posterior quando vencer.
     /// Não coleta nada novo: com a gravação pausada só preserva o que já existia.
     pub fn capture_manual(&mut self, utc_ms: i64) -> Result<i64, EngineError> {
-        self.open_incident(IncidentKind::Manual, Severity::Info, None, "Captura manual".into(), utc_ms)
+        self.open_incident(IncidentKind::Manual, Severity::Info, None, "manual".into(), utc_ms)
     }
 
     /// Remove o incidente e libera a marca de preservação dos segmentos que
@@ -340,7 +355,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         utc_ms: i64,
     ) -> Result<i64, EngineError> {
         let Some(inc) = self.incidents.as_ref() else {
-            return Err(EngineError::Store(StoreError("incident engine not enabled".into())));
+            return Err(EngineError::Invalid("store.unavailable".into()));
         };
         let cfg = inc.detector.config().clone();
         let id = inc.store.create_incident(&NewIncident {
