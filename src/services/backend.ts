@@ -75,3 +75,5 @@ export const checkForUpdates = () => invoke<UpdateState>("check_for_updates");
 export const openReleasePage = () => invoke<void>("open_release_page");
 export const onUpdate = (cb: (s: UpdateState) => void): Promise<UnlistenFn> =>
   listen<UpdateState>("update", (e) => cb(e.payload));
+export const downloadUpdate = () => invoke<UpdateState>("download_update");
+export const installUpdate = () => invoke<void>("install_update");

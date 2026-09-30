@@ -31,7 +31,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<ViewId>("overview");
   const [version, setVersion] = useState<string | null>(null);
-  const { state: update } = useUpdate();
+  const updates = useUpdate();
 
   useEffect(() => {
     let alive = true;
@@ -88,7 +88,7 @@ export function App() {
   return (
     <main className="page">
       {toprow}
-      <UpdateBanner state={update} />
+      <UpdateBanner state={updates.state} download={updates.download} install={updates.install} installing={updates.installing} actionError={updates.actionError} />
       <header className="statusbar card" aria-live="polite">
         <div className="state-row">
           <StatusLight light={status.light} />

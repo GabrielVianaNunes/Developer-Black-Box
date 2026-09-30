@@ -218,7 +218,7 @@ fn do_resume(app: &AppHandle) -> StatusDto {
     refresh(app)
 }
 
-fn quit(app: &AppHandle) {
+pub(crate) fn quit(app: &AppHandle) {
     let rt = app.state::<Arc<Runtime>>();
     rt.stop.store(true, Ordering::SeqCst);
     // Sela o journal e finaliza capturas pendentes antes de sair.
@@ -241,7 +241,7 @@ fn resume_recording(app: AppHandle) -> StatusDto {
     do_resume(&app)
 }
 
-fn data_dir() -> Result<PathBuf, String> {
+pub(crate) fn data_dir() -> Result<PathBuf, String> {
     let base = std::env::var_os("LOCALAPPDATA").ok_or("LOCALAPPDATA is not set")?;
     Ok(PathBuf::from(base).join("DeveloperBlackBox"))
 }
@@ -373,6 +373,8 @@ pub fn run() {
             updates::set_update_check,
             updates::check_for_updates,
             updates::open_release_page,
+            updates::download_update,
+            updates::install_update,
             commands::get_language,
             commands::set_language,
             commands::get_settings,

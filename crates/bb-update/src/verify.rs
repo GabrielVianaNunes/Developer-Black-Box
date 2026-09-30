@@ -86,10 +86,24 @@ pub fn verify_release(trusted_hex: &[&str], version: &Version, sha256_hex: &str,
     if ok { Ok(()) } else { Err(VerifyError::Mismatch) }
 }
 
+/// Chaves em que o app confia: as embutidas acima. Num build de TESTE (feature `e2e`) aceita também a chave
+/// pública em `BB_E2E_TRUSTED_KEY`; em builds normais essa variável é ignorada e nem existe no código.
+pub fn trusted_keys() -> Vec<String> {
+    #[allow(unused_mut)]
+    let mut keys: Vec<String> = TRUSTED_PUBLIC_KEYS.iter().map(|k| (*k).to_owned()).collect();
+    #[cfg(feature = "e2e")]
+    if let Ok(extra) = std::env::var("BB_E2E_TRUSTED_KEY") {
+        keys.push(extra);
+    }
+    keys
+}
+
 /// Verificação completa de um instalador já baixado, com as chaves embutidas no app.
 pub fn verify_installer(version: &Version, installer: impl Read, signature_hex: &str) -> Result<(), VerifyError> {
     let sha = sha256_hex(installer)?;
-    verify_release(&TRUSTED_PUBLIC_KEYS, version, &sha, signature_hex)
+    let keys = trusted_keys();
+    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+    verify_release(&keys, version, &sha, signature_hex)
 }
 
 #[cfg(test)]

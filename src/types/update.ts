@@ -9,4 +9,8 @@ export interface UpdateState {
   /** Código de erro do backend (ex. "update.network"); a tela o traduz. */
   error: string | null;
   checking: boolean;
+  /** Baixando e verificando o instalador. */
+  downloading: boolean;
+  /** Instalador baixado e verificado (SHA-256 + assinatura), pronto para instalar. */
+  ready: boolean;
 }
