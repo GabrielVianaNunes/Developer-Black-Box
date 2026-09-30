@@ -16,6 +16,9 @@ import type {
   Verify,
 } from "../types/dashboard";
 
+// Versão instalada do app
+export const getAppVersion = () => invoke<string>("get_app_version");
+
 // Idioma da interface: o backend é a fonte da verdade (salva a escolha e retraduz a bandeja)
 export const getLanguage = () => invoke<string>("get_language");
 export const setLanguage = (language: string) => invoke<string>("set_language", { language });

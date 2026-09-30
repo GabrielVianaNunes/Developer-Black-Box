@@ -60,6 +60,7 @@ ul.plain li { padding: 3px 0; }
 .light-gray { background: var(--gray); }
 
 .toprow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.brandrow { display: flex; align-items: baseline; gap: 10px; }
 .brand { margin: 0; font-size: 18px; }
 .langswitch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .langswitch .lang { border: 0; border-radius: 0; background: var(--card); color: var(--muted); padding: 6px 12px; }
