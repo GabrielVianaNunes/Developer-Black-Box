@@ -39,7 +39,7 @@
       "webviewInstallMode": { "type": "downloadBootstrapper" },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["PortugueseBR"],
+        "languages": ["English", "PortugueseBR"],
         "displayLanguageSelector": false,
         "installerHooks": "windows/hooks.nsh"
       }

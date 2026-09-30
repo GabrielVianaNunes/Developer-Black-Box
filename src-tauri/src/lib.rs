@@ -20,9 +20,25 @@ use bb_core::{GuardConfig, ReasonCode, RecorderState};
 use bb_engine::{Engine, IncidentConfig};
 use bb_recorder::{DpapiKeyStore, KeyProvider, Recorder, RecorderConfig};
 use bb_store::Store;
-use bb_tray::{icon, light_for, menu_model, tooltip, Light};
+use bb_tray::{icon, light_for, menu_labels, menu_model, tooltip, Lang, Light};
 
 mod commands;
+
+/// Chave da configuração salva com o idioma escolhido (guardada cifrada, como as demais).
+pub const LANGUAGE_SETTING: &str = "language";
+
+/// Idioma do Windows do usuário: português (qualquer variante) usa pt-BR; o resto usa inglês.
+/// Só vale na primeira execução, até o usuário escolher um idioma no app.
+fn detect_system_language() -> Lang {
+    use windows::Win32::Globalization::GetUserDefaultLocaleName;
+    let mut buf = [0u16; 85];
+    // SAFETY: buffer local com o tamanho máximo de nome de localidade (LOCALE_NAME_MAX_LENGTH).
+    let n = unsafe { GetUserDefaultLocaleName(&mut buf) };
+    if n <= 1 {
+        return Lang::En;
+    }
+    Lang::from_locale(&String::from_utf16_lossy(&buf[..(n - 1) as usize]))
+}
 
 /// Argumento com que o Windows abre o app no login: janela escondida, só a bandeja.
 pub const MINIMIZED_ARG: &str = "--minimized";
@@ -49,11 +65,17 @@ struct Runtime {
     engine: Mutex<WinEngine>,
     start: Instant,
     stop: AtomicBool,
+    /// Idioma atual da interface (o painel e os textos da bandeja).
+    lang: Mutex<Lang>,
 }
 
 impl Runtime {
     fn mono_ms(&self) -> u64 {
         self.start.elapsed().as_millis() as u64
+    }
+
+    fn lang(&self) -> Lang {
+        *self.lang.lock().expect("lang lock")
     }
 }
 
@@ -64,10 +86,15 @@ fn utc_ms() -> i64 {
 /// Partes da interface que precisam ser atualizadas quando o estado muda.
 struct Ui {
     tray: TrayIcon,
+    open: MenuItem<Wry>,
     status: MenuItem<Wry>,
     pause: MenuItem<Wry>,
     resume: MenuItem<Wry>,
+    privacy: MenuItem<Wry>,
+    quit: MenuItem<Wry>,
     last_light: Mutex<Option<Light>>,
+    /// Idioma com que os textos fixos do menu foram escritos pela última vez.
+    last_lang: Mutex<Option<Lang>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -82,12 +109,12 @@ struct StatusDto {
     can_resume: bool,
 }
 
-fn status_dto(state: RecorderState, reason: ReasonCode, manually_paused: bool) -> StatusDto {
-    let model = menu_model(state, reason, manually_paused);
+fn status_dto(lang: Lang, state: RecorderState, reason: ReasonCode, manually_paused: bool) -> StatusDto {
+    let model = menu_model(lang, state, reason, manually_paused);
     StatusDto {
         state: format!("{state:?}"),
         reason: format!("{reason:?}"),
-        text: bb_tray::describe(state, reason),
+        text: bb_tray::describe(lang, state, reason),
         light: match light_for(state) {
             Light::Green => "green",
             Light::Red => "red",
@@ -119,14 +146,27 @@ fn refresh(app: &AppHandle) -> StatusDto {
         let (s, r) = e.state(rt.mono_ms());
         (s, r, e.is_manually_paused())
     };
-    let model = menu_model(state, reason, paused);
+    let lang = rt.lang();
+    let model = menu_model(lang, state, reason, paused);
     let light = light_for(state);
 
     if let Some(ui) = app.try_state::<Ui>() {
+        // Textos fixos do menu: reescritos só quando o idioma muda.
+        let mut last_lang = ui.last_lang.lock().expect("lang lock");
+        if *last_lang != Some(lang) {
+            let labels = menu_labels(lang);
+            let _ = ui.open.set_text(labels.open);
+            let _ = ui.pause.set_text(labels.pause);
+            let _ = ui.resume.set_text(labels.resume);
+            let _ = ui.privacy.set_text(labels.privacy);
+            let _ = ui.quit.set_text(labels.quit);
+            *last_lang = Some(lang);
+        }
+        drop(last_lang);
         let _ = ui.status.set_text(&model.status);
         let _ = ui.pause.set_enabled(model.can_pause);
         let _ = ui.resume.set_enabled(model.can_resume);
-        let _ = ui.tray.set_tooltip(Some(tooltip(state, reason)));
+        let _ = ui.tray.set_tooltip(Some(tooltip(lang, state, reason)));
         let mut last = ui.last_light.lock().expect("light lock");
         if *last != Some(light) {
             let _ = ui.tray.set_icon(Some(make_icon(light, system_icon_size(false))));
@@ -137,7 +177,7 @@ fn refresh(app: &AppHandle) -> StatusDto {
         }
     }
 
-    let dto = status_dto(state, reason, paused);
+    let dto = status_dto(lang, state, reason, paused);
     let _ = app.emit("status", dto.clone());
     dto
 }
@@ -193,7 +233,7 @@ fn data_dir() -> Result<PathBuf, String> {
     Ok(PathBuf::from(base).join("DeveloperBlackBox"))
 }
 
-fn build_engine() -> Result<WinEngine, String> {
+fn build_engine() -> Result<(WinEngine, Lang), String> {
     let dir = data_dir()?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("data dir: {e}"))?;
     let keys = DpapiKeyStore::new(dir.join("key.bin"));
@@ -219,23 +259,30 @@ fn build_engine() -> Result<WinEngine, String> {
     if !engine.settings().auto_start {
         engine.pause();
     }
-    Ok(engine)
+    // Idioma: o que você escolheu (salvo); na primeira execução, o do Windows.
+    let lang = engine
+        .store()
+        .and_then(|s| s.get_setting(LANGUAGE_SETTING).ok().flatten())
+        .and_then(|code| Lang::parse(&code))
+        .unwrap_or_else(detect_system_language);
+    Ok((engine, lang))
 }
 
-fn build_tray(app: &tauri::App) -> tauri::Result<Ui> {
-    let open = MenuItem::with_id(app, "open", "Abrir Black Box", true, None::<&str>)?;
-    let status = MenuItem::with_id(app, "status", "Status: iniciando", false, None::<&str>)?;
-    let pause = MenuItem::with_id(app, "pause", "Pausar gravação", true, None::<&str>)?;
-    let resume = MenuItem::with_id(app, "resume", "Retomar gravação", true, None::<&str>)?;
-    let privacy = MenuItem::with_id(app, "privacy", "Abrir configurações de privacidade", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
+fn build_tray(app: &tauri::App, lang: Lang) -> tauri::Result<Ui> {
+    let l = menu_labels(lang);
+    let open = MenuItem::with_id(app, "open", l.open, true, None::<&str>)?;
+    let status = MenuItem::with_id(app, "status", l.starting_status, false, None::<&str>)?;
+    let pause = MenuItem::with_id(app, "pause", l.pause, true, None::<&str>)?;
+    let resume = MenuItem::with_id(app, "resume", l.resume, true, None::<&str>)?;
+    let privacy = MenuItem::with_id(app, "privacy", l.privacy, true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", l.quit, true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&open, &sep1, &status, &pause, &resume, &sep2, &privacy, &quit_item])?;
 
     let tray = TrayIconBuilder::with_id("main")
         .icon(make_icon(Light::Gray, system_icon_size(false)))
-        .tooltip("Developer Black Box: iniciando")
+        .tooltip(l.starting_tooltip)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -260,11 +307,21 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Ui> {
         })
         .build(app)?;
 
-    Ok(Ui { tray, status, pause, resume, last_light: Mutex::new(None) })
+    Ok(Ui {
+        tray,
+        open,
+        status,
+        pause,
+        resume,
+        privacy,
+        quit: quit_item,
+        last_light: Mutex::new(None),
+        last_lang: Mutex::new(Some(lang)),
+    })
 }
 
 pub fn run() {
-    let engine = match build_engine() {
+    let (engine, lang) = match build_engine() {
         Ok(e) => e,
         Err(msg) => {
             // Sem chave/recorder seguro não há como gravar: não inicia (fail-closed).
@@ -272,7 +329,12 @@ pub fn run() {
             std::process::exit(1);
         }
     };
-    let rt = Arc::new(Runtime { engine: Mutex::new(engine), start: Instant::now(), stop: AtomicBool::new(false) });
+    let rt = Arc::new(Runtime {
+        engine: Mutex::new(engine),
+        start: Instant::now(),
+        stop: AtomicBool::new(false),
+        lang: Mutex::new(lang),
+    });
 
     tauri::Builder::default()
         // Duas instâncias disputariam o mesmo journal.
@@ -292,6 +354,8 @@ pub fn run() {
             commands::delete_incident,
             commands::capture_incident,
             commands::export_incident,
+            commands::get_language,
+            commands::set_language,
             commands::get_settings,
             commands::set_settings,
             commands::get_config_history,
@@ -312,7 +376,7 @@ pub fn run() {
             }
         })
         .setup(move |app| {
-            let ui = build_tray(app)?;
+            let ui = build_tray(app, rt.lang())?;
             app.manage(ui);
             refresh(app.handle());
             heal_startup_entry();

@@ -3,6 +3,9 @@
 //! O detector só enxerga eventos já aprovados pelo Guard, então não pode criar
 //! um incidente sobre um app protegido, excluído ou coletado durante uma pausa.
 //! Um incidente registra fatos ("CPU alta por N amostras"), nunca causas.
+//!
+//! O resumo é um CÓDIGO com parâmetros numéricos (`cpu_sustained|900|3`), sem texto de idioma:
+//! a interface o traduz ao exibir, então trocar o idioma também traduz incidentes já gravados.
 
 use std::collections::HashMap;
 
@@ -96,7 +99,7 @@ impl Detector {
                     kind: IncidentKind::UnexpectedExit,
                     severity: Severity::Critical,
                     exe_name: exe_name.clone(),
-                    summary: format!("Aplicativo encerrado com erro (código de exceção 0x{exception_code:08X})"),
+                    summary: format!("app_crash|{exception_code}"),
                 })
             }
             EventKind::AppHang { exe_name } => {
@@ -107,7 +110,7 @@ impl Detector {
                     kind: IncidentKind::AppHang,
                     severity: Severity::Warning,
                     exe_name: exe_name.clone(),
-                    summary: "Aplicativo deixou de responder".into(),
+                    summary: "app_hang".into(),
                 })
             }
             EventKind::ProcessExited { key, .. } => {
@@ -131,12 +134,7 @@ impl Detector {
                         kind: IncidentKind::CpuSustained,
                         severity: Severity::Warning,
                         exe_name: exe,
-                        summary: format!(
-                            "CPU em {},{}% ou mais por {} amostras consecutivas",
-                            self.cfg.cpu_threshold_permille / 10,
-                            self.cfg.cpu_threshold_permille % 10,
-                            streak
-                        ),
+                        summary: format!("cpu_sustained|{}|{}", self.cfg.cpu_threshold_permille, streak),
                     });
                 }
                 if *working_set_kb >= self.cfg.memory_threshold_kb
@@ -146,7 +144,7 @@ impl Detector {
                         kind: IncidentKind::MemoryHigh,
                         severity: Severity::Warning,
                         exe_name: exe,
-                        summary: format!("Memória em uso de {} MB ou mais", self.cfg.memory_threshold_kb / 1024),
+                        summary: format!("memory_high|{}", self.cfg.memory_threshold_kb / 1024),
                     });
                 }
                 None
@@ -230,8 +228,25 @@ mod tests {
             .observe(&EventKind::AppCrash { exe_name: ExeName::new("synth.exe").unwrap(), exception_code: 0xc000_0005 }, 10)
             .unwrap();
         assert_eq!((f.kind, f.severity), (IncidentKind::UnexpectedExit, Severity::Critical));
-        assert!(f.summary.contains("0xC0000005"));
+        assert_eq!(f.summary, "app_crash|3221225477", "0xC0000005 as a decimal parameter");
         assert!(!f.summary.contains("synth"));
+    }
+
+    #[test]
+    fn summaries_are_language_neutral_codes() {
+        let mut d = Detector::new(cfg());
+        d.observe(&started(1), 0);
+        d.observe(&m(1, 950, 1), 1);
+        d.observe(&m(1, 950, 1), 2);
+        let cpu = d.observe(&m(1, 950, 1), 3).unwrap();
+        assert_eq!(cpu.summary, "cpu_sustained|900|3");
+        let mem = d.observe(&m(1, 0, 5_000_000), 4).unwrap();
+        assert_eq!(mem.summary, "memory_high|3906");
+        let hang = d.observe(&EventKind::AppHang { exe_name: ExeName::new("synth.exe").unwrap() }, 5).unwrap();
+        assert_eq!(hang.summary, "app_hang");
+        for s in [&cpu.summary, &mem.summary, &hang.summary] {
+            assert!(s.is_ascii() && s.split('|').next().unwrap().chars().all(|c| c.is_ascii_lowercase() || c == '_'));
+        }
     }
 
     #[test]

@@ -1,23 +1,74 @@
 //! Comandos do dashboard: uma camada fina sobre `bb-query` e o `Engine`.
 //! Nenhum comando devolve conteúdo além do que o modelo de eventos permite.
+//!
+//! Erros são sempre CÓDIGOS estáveis (ex. `auth.not_protected`), nunca texto de um idioma nem
+//! detalhes internos (que poderiam citar caminhos): a interface os traduz.
 
 use std::sync::Arc;
 
-use bb_engine::Settings;
+use bb_engine::{EngineError, Settings};
 use bb_query::{ActivityFilter, ActivityRow, IncidentDetail, IncidentDto, Overview, ProcessRow, SegmentDto};
+use bb_recorder::RecorderError;
 use bb_store::InvestigationState;
+use bb_tray::Lang;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::{refresh, utc_ms, Runtime, WinEngine};
+use crate::{refresh, utc_ms, Runtime, WinEngine, LANGUAGE_SETTING};
 
 const MAX_NOTE_CHARS: usize = 2000;
 
+const NO_STORE: &str = "store.unavailable";
+
+fn engine_err(e: EngineError) -> String {
+    e.code()
+}
+
+fn store_err<E>(_: E) -> String {
+    "store.error".into()
+}
+
 fn with_engine<T>(app: &AppHandle, f: impl FnOnce(&mut WinEngine) -> Result<T, String>) -> Result<T, String> {
     let rt = app.state::<Arc<Runtime>>();
-    let mut e = rt.engine.lock().map_err(|_| "internal error".to_string())?;
+    let mut e = rt.engine.lock().map_err(|_| "internal".to_string())?;
     f(&mut e)
 }
+
+// ---- idioma ----
+
+/// Idioma atual da interface ("en" ou "pt-BR").
+#[tauri::command]
+pub fn get_language(app: AppHandle) -> String {
+    app.state::<Arc<Runtime>>().lang().code().to_string()
+}
+
+/// Troca o idioma na hora (painel e bandeja), salva a escolha (cifrada) e registra a mudança no
+/// histórico de configuração (só "language: changed", sem valor).
+#[tauri::command]
+pub fn set_language(app: AppHandle, language: String) -> Result<String, String> {
+    let lang = Lang::parse(&language).ok_or("language.invalid")?;
+    let changed = {
+        let rt = app.state::<Arc<Runtime>>();
+        let mut cur = rt.lang.lock().map_err(|_| "internal".to_string())?;
+        let changed = *cur != lang;
+        *cur = lang;
+        changed
+    };
+    if changed {
+        with_engine(&app, |e| {
+            if let Some(store) = e.store() {
+                store.set_setting(LANGUAGE_SETTING, lang.code()).map_err(store_err)?;
+                let _ = store.log_config_change(utc_ms(), "language", "changed");
+            }
+            Ok(())
+        })?;
+    }
+    // Retraduz o menu e o tooltip da bandeja e emite o estado já no novo idioma.
+    refresh(&app);
+    Ok(lang.code().to_string())
+}
+
+// ---- painel ----
 
 #[tauri::command]
 pub fn get_overview(app: AppHandle) -> Result<Overview, String> {
@@ -54,8 +105,8 @@ pub fn get_processes(app: AppHandle) -> Result<Vec<ProcessRow>, String> {
 #[tauri::command]
 pub fn list_incidents(app: AppHandle) -> Result<Vec<IncidentDto>, String> {
     with_engine(&app, |e| {
-        let store = e.store().ok_or("incident storage unavailable")?;
-        let all = store.list_incidents().map_err(|e| e.to_string())?;
+        let store = e.store().ok_or(NO_STORE)?;
+        let all = store.list_incidents().map_err(store_err)?;
         Ok(all.iter().map(IncidentDto::from).collect())
     })
 }
@@ -63,36 +114,32 @@ pub fn list_incidents(app: AppHandle) -> Result<Vec<IncidentDto>, String> {
 #[tauri::command]
 pub fn get_incident(app: AppHandle, id: i64) -> Result<Option<IncidentDetail>, String> {
     with_engine(&app, |e| {
-        let store = e.store().ok_or("incident storage unavailable")?;
+        let store = e.store().ok_or(NO_STORE)?;
         Ok(bb_query::incident_detail(e.recorder(), store, id))
     })
 }
 
 #[tauri::command]
 pub fn set_incident_state(app: AppHandle, id: i64, state: String) -> Result<(), String> {
-    let s = InvestigationState::parse(&state).ok_or("invalid investigation state")?;
-    with_engine(&app, |e| {
-        e.store().ok_or("incident storage unavailable")?.set_investigation_state(id, s).map_err(|e| e.to_string())
-    })
+    let s = InvestigationState::parse(&state).ok_or("incident.bad_state")?;
+    with_engine(&app, |e| e.store().ok_or(NO_STORE)?.set_investigation_state(id, s).map_err(store_err))
 }
 
 #[tauri::command]
 pub fn add_incident_note(app: AppHandle, id: i64, text: String) -> Result<(), String> {
     let text = text.trim().to_owned();
     if text.is_empty() {
-        return Err("empty note".into());
+        return Err("note.empty".into());
     }
     if text.chars().count() > MAX_NOTE_CHARS {
-        return Err(format!("note too long (max {MAX_NOTE_CHARS} characters)"));
+        return Err("note.too_long".into());
     }
-    with_engine(&app, |e| {
-        e.store().ok_or("incident storage unavailable")?.add_note(id, utc_ms(), &text).map(|_| ()).map_err(|e| e.to_string())
-    })
+    with_engine(&app, |e| e.store().ok_or(NO_STORE)?.add_note(id, utc_ms(), &text).map(|_| ()).map_err(store_err))
 }
 
 #[tauri::command]
 pub fn delete_incident(app: AppHandle, id: i64) -> Result<(), String> {
-    with_engine(&app, |e| e.delete_incident(id).map_err(|e| e.to_string()))
+    with_engine(&app, |e| e.delete_incident(id).map_err(engine_err))
 }
 
 #[derive(Serialize)]
@@ -104,20 +151,20 @@ pub struct ExportDto {
 }
 
 /// Exporta as evidências do incidente para `%LOCALAPPDATA%\DeveloperBlackBox\exports`,
-/// aplicando de novo as regras de privacidade de agora.
+/// aplicando de novo as regras de privacidade de agora. O arquivo é neutro quanto a idioma.
 #[tauri::command]
 pub fn export_incident(app: AppHandle, id: i64) -> Result<ExportDto, String> {
-    let out = crate::data_dir()?.join("exports");
+    let out = crate::data_dir().map_err(|_| "internal".to_string())?.join("exports");
     let mono = app.state::<Arc<Runtime>>().mono_ms();
     with_engine(&app, |e| {
-        let r = e.export_incident(id, &out, mono, utc_ms()).map_err(|e| e.to_string())?;
+        let r = e.export_incident(id, &out, mono, utc_ms()).map_err(engine_err)?;
         Ok(ExportDto { path: r.path.display().to_string(), events: r.events, dropped: r.dropped })
     })
 }
 
 #[tauri::command]
 pub fn capture_incident(app: AppHandle) -> Result<i64, String> {
-    with_engine(&app, |e| e.capture_manual(utc_ms()).map_err(|e| e.to_string()))
+    with_engine(&app, |e| e.capture_manual(utc_ms()).map_err(engine_err))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -165,7 +212,7 @@ pub fn get_settings(app: AppHandle) -> Result<SettingsDto, String> {
 #[tauri::command]
 pub fn set_settings(app: AppHandle, settings: SettingsDto) -> Result<SettingsDto, String> {
     let out = with_engine(&app, |e| {
-        e.apply_settings(settings.into(), utc_ms()).map_err(|e| e.to_string())?;
+        e.apply_settings(settings.into(), utc_ms()).map_err(engine_err)?;
         Ok(SettingsDto::from(e.settings()))
     })?;
     // A regra nova já vale; a bandeja e a janela refletem o estado resultante.
@@ -183,11 +230,14 @@ pub fn get_launch_at_login() -> bool {
 #[tauri::command]
 pub fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
     let entry = bb_collector::startup::StartupEntry::app();
+    fn startup_err<E>(_: E) -> String {
+        "startup.error".into()
+    }
     if enabled {
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        entry.enable(&exe, crate::MINIMIZED_ARG).map_err(|e| e.to_string())?;
+        let exe = std::env::current_exe().map_err(startup_err)?;
+        entry.enable(&exe, crate::MINIMIZED_ARG).map_err(startup_err)?;
     } else {
-        entry.disable().map_err(|e| e.to_string())?;
+        entry.disable().map_err(startup_err)?;
     }
     with_engine(&app, |e| {
         if let Some(store) = e.store() {
@@ -233,7 +283,7 @@ pub fn authorize_app(
 ) -> Result<(), String> {
     let mono = app.state::<Arc<Runtime>>().mono_ms();
     with_engine(&app, |e| {
-        e.authorize_app(&exe, minutes, allow_metrics, allow_crashes, mono, utc_ms()).map_err(|e| e.to_string())
+        e.authorize_app(&exe, minutes, allow_metrics, allow_crashes, mono, utc_ms()).map_err(engine_err)
     })?;
     refresh(&app);
     Ok(())
@@ -241,7 +291,7 @@ pub fn authorize_app(
 
 #[tauri::command]
 pub fn revoke_authorization(app: AppHandle, exe: String) -> Result<bool, String> {
-    let existed = with_engine(&app, |e| e.revoke_authorization(&exe, utc_ms()).map_err(|e| e.to_string()))?;
+    let existed = with_engine(&app, |e| e.revoke_authorization(&exe, utc_ms()).map_err(engine_err))?;
     refresh(&app);
     Ok(existed)
 }
@@ -257,8 +307,8 @@ pub struct ConfigChangeDto {
 #[tauri::command]
 pub fn get_config_history(app: AppHandle) -> Result<Vec<ConfigChangeDto>, String> {
     with_engine(&app, |e| {
-        let store = e.store().ok_or("storage unavailable")?;
-        let h = store.config_history(50).map_err(|e| e.to_string())?;
+        let store = e.store().ok_or(NO_STORE)?;
+        let h = store.config_history(50).map_err(store_err)?;
         Ok(h.into_iter().map(|c| ConfigChangeDto { at_utc_ms: c.at_utc_ms, key: c.key, change: c.change }).collect())
     })
 }
@@ -278,7 +328,7 @@ pub fn get_storage(app: AppHandle) -> Result<StorageDto, String> {
         let rec = e.recorder();
         let segments = rec
             .list_segments()
-            .map_err(|e| e.to_string())?
+            .map_err(|_| "recorder.error".to_string())?
             .into_iter()
             .map(|s| SegmentDto { index: s.index, size: s.size, preserved: s.preserved })
             .collect();
@@ -297,7 +347,19 @@ pub struct VerifyDto {
     ok: bool,
     segments: usize,
     events: u64,
+    /// Código do problema (a interface o traduz), nunca o texto interno do erro.
     error: Option<String>,
+}
+
+/// Código traduzível para uma falha de integridade. Não expõe detalhes internos.
+fn verify_code(err: &RecorderError) -> &'static str {
+    match err {
+        RecorderError::Crypto => "verify.auth_failed",
+        RecorderError::Corrupt("hash chain broken") => "verify.chain_broken",
+        RecorderError::Corrupt("missing segment") => "verify.missing_segment",
+        RecorderError::Corrupt(_) => "verify.corrupt",
+        _ => "verify.io",
+    }
 }
 
 #[tauri::command]
@@ -305,12 +367,12 @@ pub fn verify_integrity(app: AppHandle) -> Result<VerifyDto, String> {
     with_engine(&app, |e| {
         Ok(match e.recorder().verify() {
             Ok(r) => VerifyDto { ok: true, segments: r.segments, events: r.events, error: None },
-            Err(err) => VerifyDto { ok: false, segments: 0, events: 0, error: Some(err.to_string()) },
+            Err(err) => VerifyDto { ok: false, segments: 0, events: 0, error: Some(verify_code(&err).into()) },
         })
     })
 }
 
 #[tauri::command]
 pub fn delete_activity(app: AppHandle, include_preserved: bool) -> Result<usize, String> {
-    with_engine(&app, |e| e.delete_activity(include_preserved).map_err(|e| e.to_string()))
+    with_engine(&app, |e| e.delete_activity(include_preserved).map_err(engine_err))
 }

@@ -22,6 +22,9 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
 - **Test mode:** a temporary, revocable authorization to collect technical data from a browser, so you
   can test a web application of your own. Page content, forms and requests are never recorded.
 - **Open with Windows** (optional): starts hidden in the tray and stays paused.
+- **English and Portuguese (Brazil):** every screen, the tray menu and the messages are available in
+  both languages. Switch at any time with the language selector at the top of the window; the choice is
+  remembered. On first run the app follows your Windows language. The installer also follows it.
 
 ## Installation (use it on your PC)
 
@@ -130,7 +133,7 @@ crates/bb-query      read-only queries and re-filtered export
 crates/bb-engine     collection cycle, incidents, settings and export
 crates/bb-tray       icon, texts and tray menu rules
 src-tauri            Tauri application (tray, window and commands)
-src                  React + TypeScript interface
+src                  React + TypeScript interface (src/i18n: English and Portuguese dictionaries)
 tests/privacy        privacy and security tests (synthetic data)
 scripts              repository safety checks
 ```
@@ -168,6 +171,9 @@ de comando.
 - **Modo de teste:** autorização temporária e revogável da coleta técnica de um navegador, para testar
   uma aplicação web sua. Nunca há conteúdo de páginas, formulários ou requisições.
 - **Abrir com o Windows** (opcional): abre escondido na bandeja e continua pausado.
+- **Inglês e português (Brasil):** todas as telas, o menu da bandeja e as mensagens existem nos dois
+  idiomas. Troque a qualquer momento no seletor de idioma no topo da janela; a escolha fica salva. Na
+  primeira execução o app segue o idioma do seu Windows. O instalador também segue.
 
 ## Instalação (usar no seu PC)
 
@@ -276,7 +282,7 @@ crates/bb-query      consultas de leitura e exportação com nova filtragem
 crates/bb-engine     ciclo de coleta, incidentes, configurações e exportação
 crates/bb-tray       ícone, textos e regras do menu da bandeja
 src-tauri            aplicativo Tauri (bandeja, janela e comandos)
-src                  interface React + TypeScript
+src                  interface React + TypeScript (src/i18n: dicionários em inglês e português)
 tests/privacy        testes de privacidade e segurança (dados sintéticos)
 scripts              verificações de segurança do repositório
 ```

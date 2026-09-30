@@ -1,12 +1,24 @@
 /** Espelham os DTOs do backend. Só campos do modelo de eventos; nunca conteúdo. */
 
+/** Detalhe de um evento: um código e números, sem texto de idioma (a interface o formata). */
+export type Detail =
+  | { code: "processStarted"; parentPid: number }
+  | { code: "processExited"; exitCode: number | null }
+  | { code: "processMetrics"; cpuPermille: number; workingSetKb: number }
+  | { code: "systemMetrics"; cpuPermille: number; memUsedKb: number; memTotalKb: number }
+  | { code: "appCrash"; exceptionCode: number }
+  | { code: "appHang" }
+  | { code: "userMarker"; marker: number }
+  | { code: "recorderStateChanged" }
+  | { code: "unknown" };
+
 export interface ActivityRow {
   seq: number;
   tsUtcMs: number;
   kind: string;
   pid: number | null;
   exeName: string | null;
-  detail: string;
+  detail: Detail;
 }
 
 export interface ActivityFilter {
