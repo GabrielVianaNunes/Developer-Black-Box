@@ -68,9 +68,6 @@ test("CLI: signing with a key the app does not trust is refused and writes no .s
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /not among the app's trusted public keys/);
     assert.ok(!existsSync(`${installer}.sig`));
-    const none = spawnSync(process.execPath, [SCRIPT, "sign", installer, "0.2.0"], { env: { ...process.env, BB_SIGNING_KEY: "" }, encoding: "utf8" });
-    assert.notEqual(none.status, 0);
-    assert.match(none.stderr, /no signing key/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

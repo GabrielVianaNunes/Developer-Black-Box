@@ -104,3 +104,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Caminho local da chave de assinatura das Releases (nunca versionar)
+signing.local.json

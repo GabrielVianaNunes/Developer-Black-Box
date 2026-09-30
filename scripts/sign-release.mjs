@@ -3,7 +3,7 @@
 // consegue publicar uma atualização que os apps aceitam.
 //
 // Uso: node scripts/sign-release.mjs keygen <arquivo-da-chave-privada>   gera o par; a privada NUNCA fica no repositório
-//      node scripts/sign-release.mjs sign <instalador> <versão>          grava <instalador>.sig (chave em BB_SIGNING_KEY ou --key-file)
+//      node scripts/sign-release.mjs sign <instalador> <versão>          grava <instalador>.sig (chave: --key-file ou signing.local.json)
 //      node scripts/sign-release.mjs verify <instalador> <versão>        confere o .sig com as chaves embutidas no app
 //      node scripts/sign-release.mjs release <tag>                       baixa o instalador da Release, confere o SHA-256, assina AQUI e envia só o .sig
 //
@@ -14,7 +14,7 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { createInterface } from "node:readline/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,7 +69,27 @@ export function assertOutsideRepo(file) {
   if (!rel.startsWith("..") && !isAbsolute(rel)) throw new Error(`refusing to put a private key inside the repository (${rel})`);
 }
 
-export const DEFAULT_KEY_FILE = join(homedir(), ".developer-blackbox-signing", "release-signing.key");
+/** Arquivo LOCAL (fora do Git, veja .gitignore) que diz onde está a chave privada: { "keyFile": "<caminho absoluto>" }. */
+export const LOCAL_CONFIG = "signing.local.json";
+
+/** Caminho da chave privada: --key-file ou, se não houver, o que está em signing.local.json. */
+export function resolveKeyFile({ flag, root = ROOT } = {}) {
+  if (flag) return flag;
+  const config = join(root, LOCAL_CONFIG);
+  if (!existsSync(config)) {
+    throw new Error(`no signing key configured: create ${LOCAL_CONFIG} (local, not versioned) with {"keyFile": "<absolute path>"} or pass --key-file <file>`);
+  }
+  let keyFile;
+  try {
+    keyFile = JSON.parse(readFileSync(config, "utf8")).keyFile;
+  } catch {
+    throw new Error(`${LOCAL_CONFIG} is not valid JSON`);
+  }
+  if (typeof keyFile !== "string" || !isAbsolute(keyFile)) throw new Error(`${LOCAL_CONFIG}: "keyFile" must be an absolute path`);
+  assertOutsideRepo(keyFile);
+  if (!existsSync(keyFile)) throw new Error(`the key file named in ${LOCAL_CONFIG} does not exist`);
+  return keyFile;
+}
 
 /**
  * Assina uma Release já publicada pelo CI: baixa o instalador, confere com o SHA256SUMS.txt, mostra o hash,
@@ -120,8 +140,8 @@ SHA-256   ${sha}  (matches SHA256SUMS.txt)`);
 
 function loadPrivateKey(args) {
   const i = args.indexOf("--key-file");
-  const pem = i >= 0 ? readFileSync(args[i + 1], "utf8") : process.env.BB_SIGNING_KEY;
-  if (!pem) throw new Error("no signing key: set BB_SIGNING_KEY or pass --key-file <file>");
+  const flag = i >= 0 ? args[i + 1] : undefined;
+  const pem = flag || !process.env.BB_SIGNING_KEY ? readFileSync(resolveKeyFile({ flag }), "utf8") : process.env.BB_SIGNING_KEY;
   return createPrivateKey(pem);
 }
 
@@ -160,12 +180,13 @@ async function main([cmd, a, b, ...rest]) {
     if (!a) throw new Error("usage: release <tag> [--key-file <file>] [--resign]");
     const args = [b, ...rest].filter(Boolean);
     const i = args.indexOf("--key-file");
+    const keyFile = resolveKeyFile({ flag: i >= 0 ? args[i + 1] : undefined }); // falha cedo, antes de baixar qualquer coisa
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
       await signRelease({
         tag: a,
         gh: (g) => execFileSync("gh", g, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }),
-        keyFile: i >= 0 ? args[i + 1] : DEFAULT_KEY_FILE,
+        keyFile,
         confirm: (q) => rl.question(q),
         resign: args.includes("--resign"),
       });
