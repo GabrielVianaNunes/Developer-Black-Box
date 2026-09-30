@@ -31,7 +31,8 @@ bb-store = { path = "../crates/bb-store" }
 bb-engine = { path = "../crates/bb-engine" }
 bb-query = { path = "../crates/bb-query" }
 bb-tray = { path = "../crates/bb-tray" }
+bb-update = { path = "../crates/bb-update" }
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.61"
-features = ["Win32_UI_WindowsAndMessaging", "Win32_Globalization"]
+features = ["Win32_UI_WindowsAndMessaging", "Win32_Globalization", "Win32_UI_Shell"]

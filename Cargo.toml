@@ -8,6 +8,7 @@ members = [
     "crates/bb-query",
     "crates/bb-tray",
     "crates/bb-engine",
+    "crates/bb-update",
     "src-tauri",
 ]
 

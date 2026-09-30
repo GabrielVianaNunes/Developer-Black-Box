@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { LanguageSwitch } from "../components/LanguageSwitch";
 import { StatusLight } from "../components/StatusLight";
+import { UpdateBanner } from "../components/UpdateBanner";
+import { useUpdate } from "./useUpdate";
 import { ActivityView } from "../features/activity/ActivityView";
 import { IncidentsView } from "../features/incidents/IncidentsView";
 import { OverviewView } from "../features/overview/OverviewView";
@@ -29,6 +31,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<ViewId>("overview");
   const [version, setVersion] = useState<string | null>(null);
+  const { state: update } = useUpdate();
 
   useEffect(() => {
     let alive = true;
@@ -85,6 +88,7 @@ export function App() {
   return (
     <main className="page">
       {toprow}
+      <UpdateBanner state={update} />
       <header className="statusbar card" aria-live="polite">
         <div className="state-row">
           <StatusLight light={status.light} />

@@ -6,6 +6,7 @@ import type { Settings } from "../../types/dashboard";
 import type { Status } from "../../types/status";
 import { AuthorizationsCard } from "./AuthorizationsCard";
 import { StartupCard } from "./StartupCard";
+import { UpdatesCard } from "./UpdatesCard";
 
 export function PrivacyView({ status }: { status: Status }) {
   const { t, f, errorText, label } = useI18n();
@@ -92,6 +93,7 @@ export function PrivacyView({ status }: { status: Status }) {
       </div>
 
       <StartupCard />
+      <UpdatesCard />
 
       <AuthorizationsCard protectedApps={saved.protectedApps} />
 
