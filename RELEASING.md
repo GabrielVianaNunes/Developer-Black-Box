@@ -32,6 +32,7 @@ below keep `Cargo.lock`, `package.json` and `package-lock.json` in sync, and `np
    The **Release** workflow then checks the tag against the version and the changelog, runs the tests,
    builds the installer, and publishes the GitHub Release with the changelog section as its notes.
    Pre-release versions (`0.2.0-rc.1`) are published as pre-releases.
+   Then **sign the Release on your machine** (see "Release signing" below): `node scripts/sign-release.mjs release v0.2.0`.
 6. Back-merge into `develop` with a pull request `main` -> `develop`, then delete `release/0.2.0`.
 
 ## Hotfix
@@ -46,23 +47,38 @@ node scripts/version.mjs check v0.2.0    # version files consistent, tag matches
 node scripts/changelog.mjs notes 0.2.0   # the text that becomes the Release notes
 ```
 
-## Release signing (Ed25519)
+## Release signing (Ed25519), done on your own machine
 
 Every installer is signed, and the app only accepts an update whose signature matches one of the public keys
 embedded in it (`TRUSTED_PUBLIC_KEYS` in `crates/bb-update/src/verify.rs`). The signature covers the **version and
 the installer's SHA-256**, so a tampered file, or an old genuine installer presented as a newer version, is rejected.
 
-- **Private key:** lives only on your machine (`%USERPROFILE%\.developer-blackbox-signing\release-signing.key`, readable
-  only by your user) and in the repository secret `RELEASE_SIGNING_KEY`. It is never committed, and the scripts refuse
-  to create it inside the repository. **Back it up** (password manager or an offline copy).
-- **One-time setup:** add the secret from the key file, without printing it:
-  ```bash
-  gh secret set RELEASE_SIGNING_KEY < "$USERPROFILE/.developer-blackbox-signing/release-signing.key"
-  ```
-- **On a tag:** the workflow signs the installer, verifies the signature against the embedded keys and attaches
-  `…-setup.exe.sig` to the Release. Without the secret the workflow fails **before** publishing (fail closed).
-- **Check a signature by hand:** `node scripts/sign-release.mjs verify <installer> <version>`.
-- **If the key is lost or leaked:** generate a new one (`node scripts/sign-release.mjs keygen <file outside the repo>`),
-  add its public key to `TRUSTED_PUBLIC_KEYS` (keep the old one while installed apps still need it, unless it leaked),
-  publish a release signed with the **old** key that carries the new list, then retire the old key. Apps that never
-  received a release trusting the new key must be reinstalled by hand.
+**The private key never leaves your computer.** It is not a GitHub secret and CI never sees it: the workflow only
+builds and publishes the installer; you sign it locally afterwards. Until you do, the Release has no `.sig` and apps
+refuse to install it (fail closed).
+
+### After the workflow publishes the Release (step 5 above)
+
+```bash
+node scripts/sign-release.mjs release v0.2.0
+```
+
+The command downloads the installer from the Release, checks it against `SHA256SUMS.txt`, shows you its SHA-256 and
+waits for you to type `yes`, signs it with your local key, verifies the result against the keys embedded in the app,
+and uploads **only** the `.sig` file. It refuses an installer that does not match its checksum, a key the app does not
+trust, and a release that is already signed (`--resign` replaces the signature).
+
+### Key custody
+
+- The key lives in `%USERPROFILE%\.developer-blackbox-signing\release-signing.key`, readable only by your user. The
+  scripts refuse to create a private key inside the repository, and the repository safety checks reject key files.
+- **Back it up** (password manager or an offline copy). Anyone who holds it can publish updates your apps will accept,
+  and if you lose it you cannot publish updates existing installs will accept.
+- Other commands: `node scripts/sign-release.mjs keygen <file outside the repo>`, `sign <installer> <version>`,
+  `verify <installer> <version>`.
+
+### If the key is lost or leaked
+
+Generate a new one, add its public key to `TRUSTED_PUBLIC_KEYS` (keep the old one while installed apps still need it,
+unless it leaked), publish a release signed with the **old** key that carries the new list, then retire the old key.
+Apps that never received a release trusting the new key must be reinstalled by hand.
