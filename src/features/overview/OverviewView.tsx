@@ -1,47 +1,51 @@
-import { fmtBytes, fmtClock, fmtKb, fmtPct } from "../../app/format";
 import { usePolling } from "../../app/hooks";
+import { useI18n } from "../../i18n";
 import { getOverview } from "../../services/backend";
 import type { Status } from "../../types/status";
 
 export function OverviewView({ status }: { status: Status }) {
+  const { t, f, errorText } = useI18n();
   const { data: o, error } = usePolling(getOverview, 3000);
 
   return (
-    <section aria-label="Visão geral">
+    <section aria-label={t("nav.overview")}>
       <div className="grid">
-        <Stat label="Estado" value={status.text} />
-        <Stat label="Armazenamento usado" value={o ? fmtBytes(o.storageBytes) : "…"} hint={o ? `${o.sealedSegments} segmentos selados` : ""} />
+        <Stat label={t("overview.state")} value={status.text} />
         <Stat
-          label="Incidentes"
-          value={o ? String(o.incidentsTotal) : "…"}
-          hint={o ? `${o.incidentsOpen} em aberto` : ""}
+          label={t("overview.storageUsed")}
+          value={o ? f.bytes(o.storageBytes) : "…"}
+          hint={o ? t("overview.segmentsSealed", { n: o.sealedSegments }) : ""}
         />
-        <Stat label="Eventos na última hora" value={o ? String(o.eventsLastHour) : "…"} />
+        <Stat
+          label={t("overview.incidents")}
+          value={o ? String(o.incidentsTotal) : "…"}
+          hint={o ? t("overview.incidentsOpen", { n: o.incidentsOpen }) : ""}
+        />
+        <Stat label={t("overview.eventsLastHour")} value={o ? String(o.eventsLastHour) : "…"} />
       </div>
 
       <div className="card">
-        <h2>Atividade técnica (última hora)</h2>
+        <h2>{t("overview.activityTitle")}</h2>
         {o ? (
           <ul className="plain">
-            <li>Processos iniciados: {o.startsLastHour}</li>
-            <li>Processos encerrados: {o.exitsLastHour}</li>
+            <li>{t("overview.started", { n: o.startsLastHour })}</li>
+            <li>{t("overview.exited", { n: o.exitsLastHour })}</li>
             <li>
-              Sistema:{" "}
               {o.latestSystem
-                ? `CPU ${fmtPct(o.latestSystem.cpuPermille)} · memória ${fmtKb(o.latestSystem.memUsedKb)} de ${fmtKb(
-                    o.latestSystem.memTotalKb,
-                  )} (às ${fmtClock(o.latestSystem.tsUtcMs)})`
-                : "sem métricas gravadas ainda"}
+                ? t("overview.system", {
+                    cpu: f.pct(o.latestSystem.cpuPermille),
+                    used: f.kb(o.latestSystem.memUsedKb),
+                    total: f.kb(o.latestSystem.memTotalKb),
+                    time: f.clock(o.latestSystem.tsUtcMs),
+                  })
+                : t("overview.noSystem")}
             </li>
           </ul>
         ) : (
-          <p className="muted">Carregando…</p>
+          <p className="muted">{t("app.loading")}</p>
         )}
-        <p className="muted">
-          Só aparece o que foi gravado com o Privacy Guard ativo. Nada é reconstruído para os períodos de pausa ou
-          bloqueio.
-        </p>
-        {error && <p className="notice">{error}</p>}
+        <p className="muted">{t("overview.footnote")}</p>
+        {error && <p className="notice">{errorText(error)}</p>}
       </div>
     </section>
   );

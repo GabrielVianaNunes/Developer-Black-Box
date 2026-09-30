@@ -1,16 +1,29 @@
 import { useMemo, useState } from "react";
-import { KIND_LABEL, fmtTime } from "../../app/format";
 import { usePolling } from "../../app/hooks";
+import { useI18n, type Key } from "../../i18n";
 import { getActivity } from "../../services/backend";
 import type { ActivityFilter } from "../../types/dashboard";
 
-const PERIODS: Array<{ label: string; ms: number | null }> = [
-  { label: "Última hora", ms: 3_600_000 },
-  { label: "Últimas 24 h", ms: 86_400_000 },
-  { label: "Tudo o que foi gravado", ms: null },
+const PERIODS: Array<{ label: Key; ms: number | null }> = [
+  { label: "activity.periodHour", ms: 3_600_000 },
+  { label: "activity.periodDay", ms: 86_400_000 },
+  { label: "activity.periodAll", ms: null },
+];
+
+/** Tipos de evento que o filtro oferece (o rótulo vem do dicionário: `kind.<tipo>`). */
+const KINDS = [
+  "ProcessStarted",
+  "ProcessExited",
+  "ProcessMetrics",
+  "SystemMetrics",
+  "AppCrash",
+  "AppHang",
+  "RecorderStateChanged",
+  "UserMarker",
 ];
 
 export function ActivityView() {
+  const { t, f, kindLabel, detailText, errorText } = useI18n();
   const [kind, setKind] = useState("");
   const [text, setText] = useState("");
   const [period, setPeriod] = useState(2);
@@ -30,60 +43,69 @@ export function ActivityView() {
   const { data: rows, error } = usePolling(() => getActivity(filter), 3000, [filter]);
 
   return (
-    <section aria-label="Atividade">
+    <section aria-label={t("nav.activity")}>
       <div className="card filters">
         <label>
-          Tipo
+          {t("activity.type")}
           <select value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="">Todos</option>
-            {Object.entries(KIND_LABEL).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
+            <option value="">{t("activity.all")}</option>
+            {KINDS.map((k) => (
+              <option key={k} value={k}>{kindLabel(k)}</option>
             ))}
           </select>
         </label>
         <label>
-          Período
+          {t("activity.period")}
           <select value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
             {PERIODS.map((p, i) => (
-              <option key={p.label} value={i}>{p.label}</option>
+              <option key={p.label} value={i}>{t(p.label)}</option>
             ))}
           </select>
         </label>
         <label className="grow">
-          Buscar por aplicativo
-          <input type="search" value={text} placeholder="ex.: code.exe" onChange={(e) => setText(e.target.value)} />
+          {t("activity.searchApp")}
+          <input
+            type="search"
+            value={text}
+            placeholder={t("activity.searchPlaceholder")}
+            onChange={(e) => setText(e.target.value)}
+          />
         </label>
         <label>
-          Mostrar
+          {t("activity.show")}
           <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
             {[100, 200, 500, 1000].map((n) => (
-              <option key={n} value={n}>{n} eventos</option>
+              <option key={n} value={n}>{t("activity.limitOption", { n })}</option>
             ))}
           </select>
         </label>
       </div>
 
-      {error && <p className="notice">{error}</p>}
+      {error && <p className="notice">{errorText(error)}</p>}
       <div className="card table-wrap">
         <table>
           <thead>
-            <tr><th>Horário</th><th>Tipo</th><th>Aplicativo</th><th>PID</th><th>Detalhe</th></tr>
+            <tr>
+              <th>{t("activity.colTime")}</th>
+              <th>{t("activity.colType")}</th>
+              <th>{t("activity.colApp")}</th>
+              <th>{t("activity.colPid")}</th>
+              <th>{t("activity.colDetail")}</th>
+            </tr>
           </thead>
           <tbody>
             {(rows ?? []).map((r) => (
               <tr key={r.seq}>
-                <td>{fmtTime(r.tsUtcMs)}</td>
-                <td>{KIND_LABEL[r.kind] ?? r.kind}</td>
+                <td>{f.time(r.tsUtcMs)}</td>
+                <td>{kindLabel(r.kind)}</td>
                 <td>{r.exeName ?? "—"}</td>
                 <td>{r.pid ?? "—"}</td>
-                <td>{r.detail}</td>
+                <td>{detailText(r.detail)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {rows && rows.length === 0 && (
-          <p className="muted">Nenhum evento para este filtro. Com a gravação pausada ou suspensa, nada é registrado.</p>
-        )}
+        {rows && rows.length === 0 && <p className="muted">{t("activity.empty")}</p>}
       </div>
     </section>
   );

@@ -16,6 +16,10 @@ import type {
   Verify,
 } from "../types/dashboard";
 
+// Idioma da interface: o backend é a fonte da verdade (salva a escolha e retraduz a bandeja)
+export const getLanguage = () => invoke<string>("get_language");
+export const setLanguage = (language: string) => invoke<string>("set_language", { language });
+
 // Estado da gravação
 export const getStatus = () => invoke<Status>("get_status");
 export const pauseRecording = () => invoke<Status>("pause_recording");
