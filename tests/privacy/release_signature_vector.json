@@ -1,0 +1,7 @@
+{
+  "note": "Synthetic vector signed by a throwaway key that was discarded. See crates/bb-update/src/verify.rs tests.",
+  "publicKey": "99fb064c632d50cc8f7e6679947067d326259b8cfaaffb49b2eec475ac29267f",
+  "version": "0.2.0",
+  "fileUtf8": "synthetic installer bytes for the signature test",
+  "signature": "e4bba5016d587e2f1a08ba4dcaf81b47fea3c2786cbb26b9810ca2860f4c95701e65dfe71f1fbef2b20f59249d92a6a756d42f73ea953edbda9e04fe5e621e0f"
+}

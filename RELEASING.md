@@ -45,3 +45,24 @@ node scripts/version.mjs                 # current version
 node scripts/version.mjs check v0.2.0    # version files consistent, tag matches, changelog section exists
 node scripts/changelog.mjs notes 0.2.0   # the text that becomes the Release notes
 ```
+
+## Release signing (Ed25519)
+
+Every installer is signed, and the app only accepts an update whose signature matches one of the public keys
+embedded in it (`TRUSTED_PUBLIC_KEYS` in `crates/bb-update/src/verify.rs`). The signature covers the **version and
+the installer's SHA-256**, so a tampered file, or an old genuine installer presented as a newer version, is rejected.
+
+- **Private key:** lives only on your machine (`%USERPROFILE%\.developer-blackbox-signing\release-signing.key`, readable
+  only by your user) and in the repository secret `RELEASE_SIGNING_KEY`. It is never committed, and the scripts refuse
+  to create it inside the repository. **Back it up** (password manager or an offline copy).
+- **One-time setup:** add the secret from the key file, without printing it:
+  ```bash
+  gh secret set RELEASE_SIGNING_KEY < "$USERPROFILE/.developer-blackbox-signing/release-signing.key"
+  ```
+- **On a tag:** the workflow signs the installer, verifies the signature against the embedded keys and attaches
+  `…-setup.exe.sig` to the Release. Without the secret the workflow fails **before** publishing (fail closed).
+- **Check a signature by hand:** `node scripts/sign-release.mjs verify <installer> <version>`.
+- **If the key is lost or leaked:** generate a new one (`node scripts/sign-release.mjs keygen <file outside the repo>`),
+  add its public key to `TRUSTED_PUBLIC_KEYS` (keep the old one while installed apps still need it, unless it leaked),
+  publish a release signed with the **old** key that carries the new list, then retire the old key. Apps that never
+  received a release trusting the new key must be reinstalled by hand.
