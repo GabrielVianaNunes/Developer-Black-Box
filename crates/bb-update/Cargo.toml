@@ -8,6 +8,8 @@ publish.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
 
 # Única rede do app: WinHTTP do próprio Windows (TLS do sistema). Nenhum cliente HTTP/TLS de terceiros.
 [target.'cfg(windows)'.dependencies.windows]

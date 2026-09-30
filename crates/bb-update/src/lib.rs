@@ -9,10 +9,12 @@
 //!
 //! A rede usa o WinHTTP do Windows (TLS do sistema); nenhuma biblioteca HTTP/TLS de terceiros entra no app.
 
+mod verify;
 mod version;
 #[cfg(windows)]
 mod winhttp;
 
+pub use verify::{sha256_hex, signed_message, verify_installer, verify_release, VerifyError, MESSAGE_PREFIX, TRUSTED_PUBLIC_KEYS};
 pub use version::{Channel, Version};
 #[cfg(windows)]
 pub use winhttp::WinHttpFetcher;
