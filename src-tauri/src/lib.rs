@@ -22,6 +22,7 @@ use bb_recorder::{DpapiKeyStore, KeyProvider, Recorder, RecorderConfig};
 use bb_store::Store;
 use bb_tray::{icon, light_for, menu_labels, menu_model, tooltip, Lang, Light};
 
+mod apps;
 mod commands;
 mod updates;
 
@@ -369,6 +370,8 @@ pub fn run() {
             commands::capture_incident,
             commands::export_incident,
             commands::get_app_version,
+            apps::list_app_candidates,
+            apps::pick_executable,
             updates::get_update_state,
             updates::set_update_check,
             updates::check_for_updates,

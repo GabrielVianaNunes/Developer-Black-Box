@@ -93,12 +93,13 @@ test("every translation key used in the code exists in the dictionaries", () => 
 const codesIn = (file, re) => [...read(file).matchAll(re)].map((m) => m[1]);
 
 test("every error code the backend can send has a translation", () => {
-  const re = /"((?:auth|settings|export|store|recorder|collect|incident|note|startup|language|verify|update)\.[a-z_]+|internal)"/g;
+  const re = /"((?:auth|settings|export|store|recorder|collect|incident|note|startup|language|verify|update|apps)\.[a-z_]+|internal)"/g;
   const codes = new Set([
     ...codesIn("crates/bb-engine/src/lib.rs", re),
     ...codesIn("crates/bb-engine/src/settings.rs", re),
     ...codesIn("src-tauri/src/commands.rs", re),
     ...codesIn("src-tauri/src/updates.rs", re),
+    ...codesIn("src-tauri/src/apps.rs", re),
     ...codesIn("crates/bb-update/src/lib.rs", re),
     ...codesIn("crates/bb-update/src/verify.rs", re),
   ]);

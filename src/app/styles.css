@@ -121,3 +121,13 @@ tr.before td { color: var(--muted); }
 .bar-fill { height: 100%; background: var(--accent); }
 .update-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 .update-banner .link { border: 0; background: none; padding: 0; color: var(--accent, #4da3ff); text-decoration: underline; cursor: pointer; }
+.picker { margin-top: 4px; }
+.picker-field { position: relative; flex: 1; min-width: 200px; }
+.picker-field input { width: 100%; }
+.picker-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; max-height: 320px; overflow-y: auto; background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); }
+.picker-option { display: flex; align-items: baseline; gap: 10px; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+.picker-option.active { background: var(--accent); color: #fff; }
+.picker-option.active .muted { color: rgba(255, 255, 255, 0.8); }
+.picker-name { font-weight: 600; }
+.picker-note { padding: 8px 10px; }
+.badge { margin-left: auto; font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; opacity: 0.85; }

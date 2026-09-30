@@ -4,6 +4,7 @@ import { useI18n } from "../../i18n";
 import { getConfigHistory, getSettings, setSettings } from "../../services/backend";
 import type { Settings } from "../../types/dashboard";
 import type { Status } from "../../types/status";
+import { AppPicker, useAppCandidates } from "./AppPicker";
 import { AuthorizationsCard } from "./AuthorizationsCard";
 import { StartupCard } from "./StartupCard";
 import { UpdatesCard } from "./UpdatesCard";
@@ -129,37 +130,28 @@ function AppList({
   onChange: (v: string[]) => void;
 }) {
   const { t } = useI18n();
-  const [name, setName] = useState("");
-  const add = () => {
-    const n = name.trim().toLowerCase();
-    if (n && !items.includes(n)) onChange([...items, n].sort());
-    setName("");
-  };
+  // Nome amigável dos itens já escolhidos (quando o programa é conhecido neste PC).
+  const { list } = useAppCandidates(items.length > 0);
+  const friendly = new Map((list ?? []).map((c) => [c.exe, c.name]));
   return (
     <div className="card">
       <h2>{title}</h2>
       <p className="muted small">{help}</p>
       <div className="chips">
-        {items.map((a) => (
-          <span key={a} className="chip">
-            {a}
-            <button aria-label={t("privacy.remove", { name: a })} onClick={() => onChange(items.filter((x) => x !== a))}>
-              ×
-            </button>
-          </span>
-        ))}
+        {items.map((a) => {
+          const name = friendly.get(a);
+          return (
+            <span key={a} className="chip" title={name ? a : undefined}>
+              {name && name.toLowerCase() !== (a.endsWith(".exe") ? a.slice(0, -4) : a) ? name : a}
+              <button aria-label={t("privacy.remove", { name: name ?? a })} onClick={() => onChange(items.filter((x) => x !== a))}>
+                ×
+              </button>
+            </span>
+          );
+        })}
         {items.length === 0 && <span className="muted small">{t("privacy.none")}</span>}
       </div>
-      <div className="row">
-        <input
-          className="grow"
-          value={name}
-          placeholder={t("privacy.appPlaceholder")}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-        />
-        <button onClick={add} disabled={!name.trim()}>{t("privacy.add")}</button>
-      </div>
+      <AppPicker taken={items} onAdd={(exe) => onChange([...items, exe].sort())} />
     </div>
   );
 }
