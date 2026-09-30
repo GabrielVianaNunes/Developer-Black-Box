@@ -9,12 +9,14 @@
 //!
 //! A rede usa o WinHTTP do Windows (TLS do sistema); nenhuma biblioteca HTTP/TLS de terceiros entra no app.
 
+mod install;
 mod verify;
 mod version;
 #[cfg(windows)]
 mod winhttp;
 
-pub use verify::{sha256_hex, signed_message, verify_installer, verify_release, VerifyError, MESSAGE_PREFIX, TRUSTED_PUBLIC_KEYS};
+pub use install::{installer_name, prepare, reverify, DOWNLOAD_HOST, INSTALLER_ARGS, MAX_INSTALLER, MAX_SIGNATURE};
+pub use verify::{sha256_hex, signed_message, trusted_keys, verify_installer, verify_release, VerifyError, MESSAGE_PREFIX, TRUSTED_PUBLIC_KEYS};
 pub use version::{Channel, Version};
 #[cfg(windows)]
 pub use winhttp::WinHttpFetcher;
@@ -50,6 +52,14 @@ pub enum UpdateError {
     BadResponse,
     /// A resposta passou do limite de tamanho.
     TooLarge,
+    /// A Release existe, mas ainda não foi assinada pelo mantenedor (não há `.sig`).
+    NotSigned,
+    /// A Release não tem o instalador esperado.
+    NoInstaller,
+    /// Não foi possível gravar ou ler o arquivo baixado.
+    Disk,
+    /// O instalador baixado não passou na verificação de assinatura e foi descartado.
+    Verify(VerifyError),
 }
 
 impl UpdateError {
@@ -60,6 +70,10 @@ impl UpdateError {
             UpdateError::NoRelease => "update.no_release",
             UpdateError::BadResponse => "update.bad_response",
             UpdateError::TooLarge => "update.too_large",
+            UpdateError::NotSigned => "update.not_signed",
+            UpdateError::NoInstaller => "update.no_installer",
+            UpdateError::Disk => "update.disk",
+            UpdateError::Verify(e) => e.code(),
         }
     }
 }
@@ -79,6 +93,11 @@ pub struct Response {
 pub trait Fetcher {
     /// `GET https://{host}{path}` e devolve status e corpo (no máximo `MAX_BODY` bytes).
     fn get(&self, host: &str, path: &str) -> Result<Response, UpdateError>;
+}
+
+/// Baixa `https://{host}{path}` para um arquivo e devolve o status (o arquivo só tem conteúdo se for 200).
+pub trait Downloader {
+    fn download(&self, host: &str, path: &str, dest: &std::path::Path, max: u64) -> Result<u16, UpdateError>;
 }
 
 #[derive(Deserialize)]
@@ -226,7 +245,19 @@ mod tests {
 
     #[test]
     fn error_codes_are_neutral_and_distinct() {
-        let all = [UpdateError::Network, UpdateError::Status(500), UpdateError::NoRelease, UpdateError::BadResponse, UpdateError::TooLarge];
+        let all = [
+            UpdateError::Network,
+            UpdateError::Status(500),
+            UpdateError::NoRelease,
+            UpdateError::BadResponse,
+            UpdateError::TooLarge,
+            UpdateError::NotSigned,
+            UpdateError::NoInstaller,
+            UpdateError::Disk,
+            UpdateError::Verify(VerifyError::Mismatch),
+            UpdateError::Verify(VerifyError::BadSignatureFormat),
+            UpdateError::Verify(VerifyError::Unreadable),
+        ];
         let codes: std::collections::BTreeSet<_> = all.iter().map(UpdateError::code).collect();
         assert_eq!(codes.len(), all.len());
         assert!(codes.iter().all(|c| c.starts_with("update.") && c.is_ascii()));

@@ -107,10 +107,11 @@ segments) and `exports\`. None of it lives in the repository and all of it is in
   by DPAPI (tied to your Windows account). Deleted content is overwritten in the file.
 - **Re-filtered export:** it applies today's privacy rules again and never includes notes.
 - **No cloud and no telemetry.** The core does not depend on any network library.
-  The only network access is an optional update check, off by default: one HTTPS request to the GitHub Releases
-  of this project (app name and version only) that just tells you a newer version exists. It never downloads or
-  installs anything, uses Windows' own HTTPS stack (no third-party network library) and a test fails if any
-  other code opens a connection. "Check now" is always your own action.
+  The only network access is the optional update feature, off by default: one HTTPS request to the GitHub Releases
+  of this project (app name and version only) tells you a newer version exists. Nothing is downloaded until you
+  click "Download update"; the installer is then checked (SHA-256 and an Ed25519 signature bound to the version)
+  and discarded if it does not verify, and it is only run when you click "Install and restart". It uses Windows'
+  own HTTPS stack (no third-party network library) and a test fails if any other code opens a connection.
 
 ## Limitations
 
@@ -261,10 +262,11 @@ segredos no repositório e em todo o histórico) e, de preferência, também um 
   DPAPI (ligada à sua conta do Windows). Conteúdo apagado é sobrescrito no arquivo.
 - **Exportação refiltrada:** aplica de novo as regras de privacidade de agora e nunca inclui anotações.
 - **Sem nuvem e sem telemetria.** O núcleo não depende de nenhuma biblioteca de rede.
-  O único acesso à rede é uma verificação de atualização opcional, desligada por padrão: uma requisição HTTPS às
-  Releases deste projeto no GitHub (só o nome e a versão do app) que apenas avisa que existe versão nova. Ela nunca
-  baixa nem instala nada, usa o próprio HTTPS do Windows (nenhuma biblioteca de rede de terceiros) e um teste
-  falha se qualquer outro código abrir uma conexão. "Verificar agora" é sempre uma ação sua.
+  O único acesso à rede é o recurso opcional de atualização, desligado por padrão: uma requisição HTTPS às Releases
+  deste projeto no GitHub (só o nome e a versão do app) avisa que existe versão nova. Nada é baixado até você clicar
+  em "Baixar atualização"; o instalador é então conferido (SHA-256 e assinatura Ed25519 amarrada à versão) e
+  descartado se não conferir, e só roda quando você clica em "Instalar e reiniciar". Usa o próprio HTTPS do Windows
+  (nenhuma biblioteca de rede de terceiros) e um teste falha se qualquer outro código abrir uma conexão.
 
 ## Limitações
 

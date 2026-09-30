@@ -12,8 +12,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - The app version is shown next to the title.
 - Release installers are signed (Ed25519) over version + SHA-256 with a key that stays on the maintainer's machine; the app embeds the trusted public key and will only
   accept an update that verifies (groundwork for in-app updates; see `RELEASING.md`).
-- Optional update check (Privacy tab): off by default, one HTTPS request to this project's GitHub Releases, only
-  tells you a newer version exists (nothing is downloaded or installed). "Check now" works even when it is off.
+- Optional update check (Privacy tab): off by default, one HTTPS request to this project's GitHub Releases that tells
+  you a newer version exists. "Check now" works even when it is off.
+- In-app update: "Download update" fetches the installer, checks its SHA-256 and Ed25519 signature (bound to the version)
+  and discards it if anything is off; only "Install and restart" runs it (progress only, then the app reopens).
 - Single source of truth for the version (`scripts/version.mjs`), checked in tests and before every release.
 - `CHANGELOG.md` is now the source of the GitHub Release notes; `RELEASING.md` documents the release procedure.
 

@@ -72,3 +72,25 @@ fn update_check_talks_only_to_the_projects_github_releases() {
     assert_eq!(url, "https://github.com/GabrielVianaNunes/Developer-Black-Box/releases/tag/v1.2.3");
 }
 
+
+// Os ganchos de teste de ponta a ponta (servidor local sem TLS e chave pública extra) só existem com a
+// feature `e2e`, que nunca é padrão nem é usada pelo workflow de release.
+#[test]
+fn e2e_test_hooks_never_ship_in_release_builds() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for manifest in ["crates/bb-update/Cargo.toml", "src-tauri/Cargo.toml"] {
+        let text = fs::read_to_string(root.join(manifest)).unwrap();
+        assert!(text.contains("e2e"), "{manifest} should declare the e2e feature");
+        assert!(!text.lines().any(|l| l.trim_start().starts_with("default") && l.contains("e2e")), "{manifest}: e2e must not be a default feature");
+    }
+    for file in [".github/workflows/release.yml", "src-tauri/tauri.conf.json", "package.json"] {
+        assert!(!fs::read_to_string(root.join(file)).unwrap().contains("e2e"), "{file} must not enable e2e");
+    }
+    // Toda menção às variáveis de teste está ao lado de uma condição `feature = "e2e"` no mesmo arquivo.
+    for file in ["crates/bb-update/src/verify.rs", "crates/bb-update/src/winhttp.rs", "src-tauri/src/updates.rs"] {
+        let text = fs::read_to_string(root.join(file)).unwrap();
+        let hooks = text.matches("BB_E2E_").count() + text.matches("with_local_server").count();
+        let gates = text.matches("feature = \"e2e\"").count();
+        assert!(hooks == 0 || gates > 0, "{file} mentions test hooks without a cfg(feature = \"e2e\") gate");
+    }
+}
