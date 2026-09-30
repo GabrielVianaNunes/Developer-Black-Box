@@ -289,6 +289,7 @@ dependencies = [
  "bb-recorder",
  "bb-store",
  "bb-tray",
+ "bb-update",
  "serde",
  "tauri",
  "tauri-build",
@@ -364,6 +365,15 @@ name = "bb-tray"
 version = "0.1.0"
 dependencies = [
  "bb-core",
+]
+
+[[package]]
+name = "bb-update"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "windows 0.61.3",
 ]
 
 [[package]]

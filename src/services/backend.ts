@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Status } from "../types/status";
+import type { UpdateState } from "../types/update";
 import type {
   ActivityFilter,
   ActivityRow,
@@ -15,6 +16,9 @@ import type {
   Storage,
   Verify,
 } from "../types/dashboard";
+
+// Versão instalada do app
+export const getAppVersion = () => invoke<string>("get_app_version");
 
 // Idioma da interface: o backend é a fonte da verdade (salva a escolha e retraduz a bandeja)
 export const getLanguage = () => invoke<string>("get_language");
@@ -63,3 +67,11 @@ export const revokeAuthorization = (exe: string) => invoke<boolean>("revoke_auth
 export const getStorage = () => invoke<Storage>("get_storage");
 export const verifyIntegrity = () => invoke<Verify>("verify_integrity");
 export const deleteActivity = (includePreserved: boolean) => invoke<number>("delete_activity", { includePreserved });
+
+// Atualizações: só avisa que existe versão nova; nada é baixado nem instalado
+export const getUpdateState = () => invoke<UpdateState>("get_update_state");
+export const setUpdateCheck = (enabled: boolean) => invoke<UpdateState>("set_update_check", { enabled });
+export const checkForUpdates = () => invoke<UpdateState>("check_for_updates");
+export const openReleasePage = () => invoke<void>("open_release_page");
+export const onUpdate = (cb: (s: UpdateState) => void): Promise<UnlistenFn> =>
+  listen<UpdateState>("update", (e) => cb(e.payload));

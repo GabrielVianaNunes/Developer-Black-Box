@@ -93,11 +93,13 @@ test("every translation key used in the code exists in the dictionaries", () => 
 const codesIn = (file, re) => [...read(file).matchAll(re)].map((m) => m[1]);
 
 test("every error code the backend can send has a translation", () => {
-  const re = /"((?:auth|settings|export|store|recorder|collect|incident|note|startup|language|verify)\.[a-z_]+|internal)"/g;
+  const re = /"((?:auth|settings|export|store|recorder|collect|incident|note|startup|language|verify|update)\.[a-z_]+|internal)"/g;
   const codes = new Set([
     ...codesIn("crates/bb-engine/src/lib.rs", re),
     ...codesIn("crates/bb-engine/src/settings.rs", re),
     ...codesIn("src-tauri/src/commands.rs", re),
+    ...codesIn("src-tauri/src/updates.rs", re),
+    ...codesIn("crates/bb-update/src/lib.rs", re),
   ]);
   assert.ok(codes.size >= 20, `expected many error codes, found ${codes.size}`);
   for (const c of codes) assert.ok(`error.${c}` in en, `backend error code "${c}" has no "error.${c}" translation`);
@@ -116,6 +118,7 @@ test("every setting the backend logs to the change history has a translated labe
     ...codesIn("crates/bb-engine/src/settings.rs", /\("([a-z_]+)",\s*"(?:added|removed|changed)"\)/g),
     ...codesIn("crates/bb-engine/src/settings.rs", /list_change\(\s*"([a-z_]+)"/g),
     ...codesIn("crates/bb-engine/src/lib.rs", /log_config_change\([^"]*"([a-z_]+)"/g),
+    ...codesIn("src-tauri/src/updates.rs", /log_config_change\([^"]*"([a-z_]+)"/g),
     ...codesIn("src-tauri/src/commands.rs", /log_config_change\([^"]*"([a-z_]+)"/g),
   ]);
   assert.ok(keysFound.size >= 7, `expected the known settings, found ${[...keysFound]}`);

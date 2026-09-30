@@ -23,6 +23,7 @@ use bb_store::Store;
 use bb_tray::{icon, light_for, menu_labels, menu_model, tooltip, Lang, Light};
 
 mod commands;
+mod updates;
 
 /// Chave da configuração salva com o idioma escolhido (guardada cifrada, como as demais).
 pub const LANGUAGE_SETTING: &str = "language";
@@ -167,6 +168,8 @@ fn refresh(app: &AppHandle) -> StatusDto {
         let _ = ui.pause.set_enabled(model.can_pause);
         let _ = ui.resume.set_enabled(model.can_resume);
         let _ = ui.tray.set_tooltip(Some(tooltip(lang, state, reason)));
+        #[cfg(feature = "e2e")]
+        dump_menu_texts(&ui);
         let mut last = ui.last_light.lock().expect("light lock");
         if *last != Some(light) {
             let _ = ui.tray.set_icon(Some(make_icon(light, system_icon_size(false))));
@@ -180,6 +183,16 @@ fn refresh(app: &AppHandle) -> StatusDto {
     let dto = status_dto(lang, state, reason, paused);
     let _ = app.emit("status", dto.clone());
     dto
+}
+
+/// Verificação manual (feature `e2e`): relê o texto dos itens nativos do menu e grava em disco.
+#[cfg(feature = "e2e")]
+fn dump_menu_texts(ui: &Ui) {
+    let t = |i: &MenuItem<Wry>| i.text().unwrap_or_default();
+    let line = [t(&ui.open), t(&ui.status), t(&ui.pause), t(&ui.resume), t(&ui.privacy), t(&ui.quit)].join("|");
+    if let Ok(dir) = data_dir() {
+        let _ = std::fs::write(dir.join("e2e-tray.txt"), line);
+    }
 }
 
 fn show_main(app: &AppHandle) {
@@ -340,6 +353,7 @@ pub fn run() {
         // Duas instâncias disputariam o mesmo journal.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .manage(rt.clone())
+        .manage(Arc::new(updates::Updates::default()))
         .invoke_handler(tauri::generate_handler![
             get_status,
             pause_recording,
@@ -354,6 +368,11 @@ pub fn run() {
             commands::delete_incident,
             commands::capture_incident,
             commands::export_incident,
+            commands::get_app_version,
+            updates::get_update_state,
+            updates::set_update_check,
+            updates::check_for_updates,
+            updates::open_release_page,
             commands::get_language,
             commands::set_language,
             commands::get_settings,
@@ -384,6 +403,8 @@ pub fn run() {
             if !std::env::args().any(|a| a == MINIMIZED_ARG) {
                 show_main(app.handle());
             }
+
+            updates::spawn_background(app.handle().clone(), rt.clone());
 
             let handle = app.handle().clone();
             let worker = rt.clone();
