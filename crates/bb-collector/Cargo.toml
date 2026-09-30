@@ -30,3 +30,7 @@ features = [
     "Win32_System_StationsAndDesktops",
     "Win32_UI_WindowsAndMessaging",
 ]
+
+[[test]]
+name = "privacy_apps_windows"
+path = "../../tests/privacy/apps_windows.rs"

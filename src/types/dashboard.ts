@@ -133,3 +133,11 @@ export interface Verify {
   events: number;
   error: string | null;
 }
+
+/** Programa deste PC que pode ser escolhido nas listas de privacidade (só existe na memória da tela). */
+export interface AppCandidate {
+  exe: string;
+  name: string;
+  running: boolean;
+  installed: boolean;
+}
