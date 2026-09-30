@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   tooltip and installer follow the language too.
 - The app version is shown next to the title.
 - Single source of truth for the version (`scripts/version.mjs`), checked in tests and before every release.
+- `CHANGELOG.md` is now the source of the GitHub Release notes; `RELEASING.md` documents the release procedure.
 
 ## [0.1.0] - 2026-09-30
 
