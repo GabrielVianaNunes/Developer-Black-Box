@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.1.1-rc.1] - 2026-09-30
+
 ### Added
 - English and Portuguese (Brazil) interface, switchable at any time from the app window; the tray menu,
   tooltip and installer follow the language too.
