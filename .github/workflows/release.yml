@@ -43,6 +43,8 @@ jobs:
         shell: pwsh
         run: |
           $dir = "target/release/bundle/nsis"
+          # GitHub troca espaços por pontos no nome dos anexos; padroniza com hífens.
+          Get-ChildItem "$dir/*.exe" | ForEach-Object { Rename-Item $_.FullName ($_.Name -replace ' ', '-') }
           Get-ChildItem "$dir/*.exe" | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
             "$hash  $($_.Name)" | Out-File -Append -Encoding ascii "$dir/SHA256SUMS.txt"
@@ -58,5 +60,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          # Só anexa os arquivos; nunca sobrescreve as notas da Release, que são escritas à mão.
           files: target/release/bundle/nsis/*
-          generate_release_notes: true
+          fail_on_unmatched_files: true

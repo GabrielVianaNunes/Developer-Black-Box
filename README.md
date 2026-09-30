@@ -25,7 +25,7 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
 
 ## Installation (use it on your PC)
 
-1. Download the installer `Developer Black Box_<version>_x64-setup.exe` from the **Releases** tab of
+1. Download the installer `Developer-Black-Box_<version>_x64-setup.exe` from the **Releases** tab of
    this repository (and `SHA256SUMS.txt` if you want to verify the file).
 2. Run the installer. It installs **for your user only** (no administrator rights needed).
 3. The installer is **not digitally signed**, so Windows SmartScreen may warn "Windows protected your
@@ -34,7 +34,7 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
    the hash:
 
 ```powershell
-(Get-FileHash ".\Developer Black Box_0.1.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash ".\Developer-Black-Box_0.1.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
 ```
 
 On first run the app **starts paused**: nothing is recorded until you click "Resume recording" (or turn
@@ -171,7 +171,7 @@ de comando.
 
 ## Instalação (usar no seu PC)
 
-1. Baixe o instalador `Developer Black Box_<versão>_x64-setup.exe` na aba **Releases** deste
+1. Baixe o instalador `Developer-Black-Box_<versão>_x64-setup.exe` na aba **Releases** deste
    repositório (e o `SHA256SUMS.txt`, se quiser conferir o arquivo).
 2. Rode o instalador. Ele instala **só para o seu usuário** (não pede administrador).
 3. O instalador **não é assinado digitalmente**, então o Windows SmartScreen pode avisar "O Windows
@@ -180,7 +180,7 @@ de comando.
    da Release, compare o hash:
 
 ```powershell
-(Get-FileHash ".\Developer Black Box_0.1.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash ".\Developer-Black-Box_0.1.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
 ```
 
 Na primeira execução o app **começa pausado**: nada é gravado até você clicar em "Retomar gravação"
