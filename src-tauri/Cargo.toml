@@ -5,6 +5,10 @@ edition.workspace = true
 license-file = "../LICENSE"
 publish.workspace = true
 
+[features]
+# Só para verificação manual: grava em disco o texto real dos itens do menu da bandeja.
+e2e = []
+
 [lib]
 name = "bb_app_lib"
 

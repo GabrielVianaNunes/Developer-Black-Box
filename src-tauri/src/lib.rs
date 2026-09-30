@@ -167,6 +167,8 @@ fn refresh(app: &AppHandle) -> StatusDto {
         let _ = ui.pause.set_enabled(model.can_pause);
         let _ = ui.resume.set_enabled(model.can_resume);
         let _ = ui.tray.set_tooltip(Some(tooltip(lang, state, reason)));
+        #[cfg(feature = "e2e")]
+        dump_menu_texts(&ui);
         let mut last = ui.last_light.lock().expect("light lock");
         if *last != Some(light) {
             let _ = ui.tray.set_icon(Some(make_icon(light, system_icon_size(false))));
@@ -180,6 +182,16 @@ fn refresh(app: &AppHandle) -> StatusDto {
     let dto = status_dto(lang, state, reason, paused);
     let _ = app.emit("status", dto.clone());
     dto
+}
+
+/// Verificação manual (feature `e2e`): relê o texto dos itens nativos do menu e grava em disco.
+#[cfg(feature = "e2e")]
+fn dump_menu_texts(ui: &Ui) {
+    let t = |i: &MenuItem<Wry>| i.text().unwrap_or_default();
+    let line = [t(&ui.open), t(&ui.status), t(&ui.pause), t(&ui.resume), t(&ui.privacy), t(&ui.quit)].join("|");
+    if let Ok(dir) = data_dir() {
+        let _ = std::fs::write(dir.join("e2e-tray.txt"), line);
+    }
 }
 
 fn show_main(app: &AppHandle) {
