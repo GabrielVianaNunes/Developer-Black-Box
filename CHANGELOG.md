@@ -10,24 +10,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - "Open with Windows" failed on a Windows account whose `Run` registry key did not exist yet ("file not found"); the key is now created when needed.
   Found by the pull-request CI on a fresh GitHub runner.
 
-### Fixed
-- In-app update download: GitHub answers 404 to release downloads requested with `Accept: application/octet-stream`,
-  so a signed release was reported as unsigned. Found by testing against the real release; `0.1.1-rc.1` has this bug.
-
-## [0.1.1-rc.1] - 2026-09-30
+## [0.1.1] - 2026-09-30
 
 ### Added
 - English and Portuguese (Brazil) interface, switchable at any time from the app window; the tray menu,
   tooltip and installer follow the language too.
 - The app version is shown next to the title.
-- Release installers are signed (Ed25519) over version + SHA-256 with a key that stays on the maintainer's machine; the app embeds the trusted public key and will only
-  accept an update that verifies (groundwork for in-app updates; see `RELEASING.md`).
 - Optional update check (Privacy tab): off by default, one HTTPS request to this project's GitHub Releases that tells
   you a newer version exists. "Check now" works even when it is off.
 - In-app update: "Download update" fetches the installer, checks its SHA-256 and Ed25519 signature (bound to the version)
   and discards it if anything is off; only "Install and restart" runs it (progress only, then the app reopens).
-- Single source of truth for the version (`scripts/version.mjs`), checked in tests and before every release.
-- `CHANGELOG.md` is now the source of the GitHub Release notes; `RELEASING.md` documents the release procedure.
+- Release installers are signed (Ed25519) over version + SHA-256 with a key that stays on the maintainer's machine;
+  the app embeds the trusted public key and will only accept an update that verifies.
+- Single source of truth for the version (`scripts/version.mjs`), checked in tests and before every release;
+  `CHANGELOG.md` is the source of the GitHub Release notes and `RELEASING.md` documents the release procedure.
+- Tests run on every pull request (GitHub Actions).
+
+### Fixed
+- In-app update download: GitHub answers 404 to release downloads requested with `Accept: application/octet-stream`,
+  so a signed release was reported as unsigned. Found by testing against the real release (only `0.1.1-rc.1` was affected).
+
+## [0.1.1-rc.1] - 2026-09-30
+
+Pre-release used to test the release pipeline. Superseded by 0.1.1, which contains everything in it plus the fix above.
 
 ## [0.1.0] - 2026-09-30
 
