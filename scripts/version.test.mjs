@@ -50,9 +50,9 @@ test("bump and compare follow semver", () => {
 test("set updates every file, and check only fails on the Cargo.lock until cargo refreshes it", () => {
   const dir = fixture();
   try {
-    setVersion(dir, "0.2.0", { refreshLock: false });
+    setVersion(dir, "99.9.9", { refreshLock: false });
     const v = readVersions(dir);
-    assert.deepEqual([v.cargo, v.pkg, v.lock, v.lockRoot], ["0.2.0", "0.2.0", "0.2.0", "0.2.0"]);
+    assert.deepEqual([v.cargo, v.pkg, v.lock, v.lockRoot], ["99.9.9", "99.9.9", "99.9.9", "99.9.9"]);
     const problems = check(dir);
     assert.ok(problems.length > 0 && problems.every((p) => p.startsWith("Cargo.lock has")), problems.join("\n"));
   } finally {
