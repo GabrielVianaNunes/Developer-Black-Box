@@ -1,5 +1,6 @@
 //! Collector: amostras de processos e sinais de contexto, sem conteúdo.
 
+pub mod apps;
 pub mod differ;
 pub mod eventlog;
 pub mod sample;

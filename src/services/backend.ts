@@ -5,6 +5,7 @@ import type { UpdateState } from "../types/update";
 import type {
   ActivityFilter,
   ActivityRow,
+  AppCandidate,
   Authorization,
   ConfigChange,
   ExportResult,
@@ -77,3 +78,8 @@ export const onUpdate = (cb: (s: UpdateState) => void): Promise<UnlistenFn> =>
   listen<UpdateState>("update", (e) => cb(e.payload));
 export const downloadUpdate = () => invoke<UpdateState>("download_update");
 export const installUpdate = () => invoke<void>("install_update");
+
+// Escolha de programas para as listas de privacidade (a lista é montada na hora e nunca é gravada)
+export const listAppCandidates = () => invoke<AppCandidate[]>("list_app_candidates");
+export const pickExecutable = (title: string, filterLabel: string) =>
+  invoke<string | null>("pick_executable", { title, filterLabel });
