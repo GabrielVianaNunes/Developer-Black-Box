@@ -100,6 +100,7 @@ test("every error code the backend can send has a translation", () => {
     ...codesIn("src-tauri/src/commands.rs", re),
     ...codesIn("src-tauri/src/updates.rs", re),
     ...codesIn("crates/bb-update/src/lib.rs", re),
+    ...codesIn("crates/bb-update/src/verify.rs", re),
   ]);
   assert.ok(codes.size >= 20, `expected many error codes, found ${codes.size}`);
   for (const c of codes) assert.ok(`error.${c}` in en, `backend error code "${c}" has no "error.${c}" translation`);

@@ -19,3 +19,11 @@ features = ["Win32_Networking_WinHttp"]
 [[test]]
 name = "privacy_network"
 path = "../../tests/privacy/network.rs"
+
+[features]
+# Só para teste de ponta a ponta: aceita um servidor local sem TLS e uma chave pública de teste.
+# Nunca entra em builds de release (não está em `default`; há teste que garante isso).
+e2e = []
+
+[dev-dependencies]
+tempfile = "3"

@@ -6,7 +6,7 @@ import { checkForUpdates, openReleasePage, setUpdateCheck } from "../../services
 /** Atualizações: a verificação automática vem desligada; "Verificar agora" é sempre uma ação sua. */
 export function UpdatesCard() {
   const { t, f, errorText } = useI18n();
-  const { state, setState } = useUpdate();
+  const { state, setState, download, install, installing, actionError } = useUpdate();
   const [msg, setMsg] = useState<string | null>(null);
 
   async function toggle(next: boolean) {
@@ -34,7 +34,9 @@ export function UpdatesCard() {
       ? t("update.checking")
       : state.error
         ? errorText(state.error)
-        : state.available && state.latest
+        : state.available && state.latest && state.ready
+          ? t("update.ready", { version: state.latest })
+          : state.available && state.latest
           ? t("update.available", { version: state.latest })
           : state.checkedUtcMs
             ? t("update.upToDate")
@@ -53,14 +55,24 @@ export function UpdatesCard() {
         <button disabled={!state || state.checking} onClick={checkNow}>
           {state?.checking ? t("update.checking") : t("update.checkNow")}
         </button>
-        {state?.available && (
-          <button className="primary" onClick={() => openReleasePage().catch((e) => setMsg(errorText(e)))}>
-            {t("update.openPage")}
+        {state?.available && !state.ready && (
+          <button className="primary" disabled={state.downloading} onClick={download}>
+            {state.downloading ? t("update.downloading") : t("update.download")}
           </button>
+        )}
+        {state?.available && state.ready && (
+          <button className="primary" disabled={installing} onClick={install}>
+            {installing ? t("update.installing") : t("update.install")}
+          </button>
+        )}
+        {state?.available && (
+          <button onClick={() => openReleasePage().catch((e) => setMsg(errorText(e)))}>{t("update.openPage")}</button>
         )}
       </div>
       {result && <p className="notice" role="status">{result}</p>}
       {state?.checkedUtcMs && <p className="muted small">{t("update.lastChecked", { time: f.time(state.checkedUtcMs) })}</p>}
+      {state?.available && <p className="muted small">{t("update.installNote")}</p>}
+      {actionError && <p className="notice" role="status">{actionError}</p>}
       {msg && <p className="notice" role="status">{msg}</p>}
     </div>
   );
