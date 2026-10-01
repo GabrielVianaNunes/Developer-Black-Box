@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-01
+
 ### Added
 - Welcome guide: new users get a short step-by-step tour on first launch (what the app is, the green/red light, why it starts
   paused, what it never records, incidents, exclusion rules, updates and language). Every step shows an example with made-up
