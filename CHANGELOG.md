@@ -29,6 +29,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   Windows shell calls, nothing resolved or executed); only the program name and the shortcut name are used, in memory.
   Uninstaller shortcuts are left out, and shortcuts that open a generic host (a control panel, a script) show the program
   name instead of what they open.
+- The installer refuses install folders that are known not to work, before copying anything: Program Files (this installer
+  has no administrator rights) and folders directly inside AppData\Local or AppData\Roaming (on one PC Windows showed the
+  generic icon there). The suggested folder (AppData\Local\Programs\Developer Black Box) stays the default and the folder
+  page is unchanged. Updates of an existing installation are never refused, so nobody is left without updates.
 
 ## [0.2.0] - 2026-09-30
 
