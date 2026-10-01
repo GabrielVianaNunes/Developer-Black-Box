@@ -107,17 +107,19 @@ fn toward_white(c: [u8; 3], a: f32) -> [u8; 3] {
     lerp(c, [255, 255, 255], a)
 }
 
-fn sample(l: &Layout, size: u32, x: f32, y: f32, light: [u8; 3]) -> Option<[u8; 3]> {
+fn sample(l: &Layout, size: u32, x: f32, y: f32, light: Option<[u8; 3]>) -> Option<[u8; 3]> {
     let p = (x, y);
 
-    // luz (borda escura fina + preenchimento)
-    let d = ((x - l.dot_cx).powi(2) + (y - l.dot_cy).powi(2)).sqrt();
-    let ring = (l.dot_r * 0.22).max(0.5);
-    if d <= l.dot_r - ring {
-        return Some(light);
-    }
-    if d <= l.dot_r {
-        return Some(DOT_RING);
+    // luz (borda escura fina + preenchimento), quando o ícone tem luz
+    if let Some(light) = light {
+        let d = ((x - l.dot_cx).powi(2) + (y - l.dot_cy).powi(2)).sqrt();
+        let ring = (l.dot_r * 0.22).max(0.5);
+        if d <= l.dot_r - ring {
+            return Some(light);
+        }
+        if d <= l.dot_r {
+            return Some(DOT_RING);
+        }
     }
 
     // cubo
@@ -188,8 +190,28 @@ fn sample(l: &Layout, size: u32, x: f32, y: f32, light: [u8; 3]) -> Option<[u8; 
 
 /// Pixels RGBA (linha a linha, de cima para baixo), `size * size * 4` bytes.
 pub fn render(light: Light, size: u32) -> Vec<u8> {
-    let l = layout(size);
-    let lc = light.rgb();
+    render_with(&layout(size), size, Some(light.rgb()))
+}
+
+/// Só o cubo, maior e centralizado, sem luz. É o ícone do executável: o Windows mostra o ícone do executável (ou do
+/// atalho) no botão da barra de tarefas e não o troca por outro, então ele não pode carregar uma cor que vai ficar
+/// errada. A cor do estado vai no selo (`render_dot`).
+pub fn render_cube(size: u32) -> Vec<u8> {
+    let mut l = layout(size);
+    let s = size as f32;
+    let w = s - 2.0 * l.margin;
+    let r = (0.88 * w / SQRT3).min(w / 2.0);
+    let half_w = r * SQRT3 / 2.0;
+    l.cube_r = r;
+    l.cube_cx = s / 2.0;
+    l.box_left = l.cube_cx - half_w;
+    l.box_right = l.cube_cx + half_w;
+    l.box_top = l.cube_cy - r;
+    l.box_bottom = l.cube_cy + r;
+    render_with(&l, size, None)
+}
+
+fn render_with(l: &Layout, size: u32, lc: Option<[u8; 3]>) -> Vec<u8> {
     let mut out = Vec::with_capacity((size * size * 4) as usize);
     const N: u32 = 4;
     for py in 0..size {
@@ -199,7 +221,7 @@ pub fn render(light: Light, size: u32) -> Vec<u8> {
                 for sx in 0..N {
                     let x = px as f32 + (sx as f32 + 0.5) / N as f32;
                     let y = py as f32 + (sy as f32 + 0.5) / N as f32;
-                    if let Some(c) = sample(&l, size, x, y, lc) {
+                    if let Some(c) = sample(l, size, x, y, lc) {
                         r += u32::from(c[0]);
                         g += u32::from(c[1]);
                         b += u32::from(c[2]);
@@ -217,12 +239,62 @@ pub fn render(light: Light, size: u32) -> Vec<u8> {
     out
 }
 
+/// Selo do botão da barra de tarefas: só a luz, pequena (um disco com borda escura fina), no meio de um quadro
+/// transparente. O Windows o desenha sobre o canto do botão e o respeita mesmo com o ícone do executável fixo.
+pub fn render_dot(light: Light, size: u32) -> Vec<u8> {
+    let s = size as f32;
+    let c = s / 2.0;
+    let r = s * 0.24;
+    let ring = (r * 0.28).max(0.6);
+    let lc = light.rgb();
+    let mut out = Vec::with_capacity((size * size * 4) as usize);
+    const N: u32 = 4;
+    for py in 0..size {
+        for px in 0..size {
+            let (mut rr, mut gg, mut bb, mut n) = (0u32, 0u32, 0u32, 0u32);
+            for sy in 0..N {
+                for sx in 0..N {
+                    let x = px as f32 + (sx as f32 + 0.5) / N as f32;
+                    let y = py as f32 + (sy as f32 + 0.5) / N as f32;
+                    let d = ((x - c).powi(2) + (y - c).powi(2)).sqrt();
+                    let col = if d <= r - ring {
+                        lc
+                    } else if d <= r {
+                        DOT_RING
+                    } else {
+                        continue;
+                    };
+                    rr += u32::from(col[0]);
+                    gg += u32::from(col[1]);
+                    bb += u32::from(col[2]);
+                    n += 1;
+                }
+            }
+            if n == 0 {
+                out.extend_from_slice(&[0, 0, 0, 0]);
+            } else {
+                out.extend_from_slice(&[(rr / n) as u8, (gg / n) as u8, (bb / n) as u8, (n * 255 / (N * N)) as u8]);
+            }
+        }
+    }
+    out
+}
+
 /// Monta um `.ico` com imagens BMP de 32 bits (uma por tamanho).
 pub fn encode_ico(sizes: &[u32], light: Light) -> Vec<u8> {
+    encode_ico_with(sizes, |s| render(light, s))
+}
+
+/// `.ico` só com o cubo (sem luz): o ícone do executável.
+pub fn encode_ico_cube(sizes: &[u32]) -> Vec<u8> {
+    encode_ico_with(sizes, render_cube)
+}
+
+fn encode_ico_with(sizes: &[u32], draw: impl Fn(u32) -> Vec<u8>) -> Vec<u8> {
     let images: Vec<(u32, Vec<u8>)> = sizes
         .iter()
         .map(|&s| {
-            let rgba = render(light, s);
+            let rgba = draw(s);
             let mask_row = ((s + 31) / 32 * 4) as usize;
             let mut dib = Vec::new();
             dib.extend_from_slice(&40u32.to_le_bytes());
@@ -459,5 +531,50 @@ mod tests {
         let total = ico.len();
         let size1 = u32::from_le_bytes(ico[30..34].try_into().unwrap()) as usize;
         assert_eq!(total, off1 + size1);
+    }
+
+    #[test]
+    fn the_executable_icon_is_a_centered_cube_without_any_light() {
+        for size in [16u32, 24, 32, 48, 256] {
+            let img = render_cube(size);
+            assert_eq!(img.len(), (size * size * 4) as usize);
+            for p in img.chunks(4).filter(|p| p[3] == 255) {
+                for light in [Light::Green, Light::Red, Light::Gray] {
+                    assert_ne!([p[0], p[1], p[2]], light.rgb(), "size {size}: a light-colored pixel in the cube-only icon");
+                }
+            }
+            // centralizado: a coluna mais à esquerda e a mais à direita com pixel visível ficam à mesma distância das bordas
+            let col_has = |x: u32| (0..size).any(|y| px(&img, size, x, y)[3] > 0);
+            let left = (0..size).find(|&x| col_has(x)).unwrap();
+            let right = (0..size).rev().find(|&x| col_has(x)).unwrap();
+            assert!((left as i32 - (size - 1 - right) as i32).abs() <= 1, "size {size}: left {left} right {right}");
+            assert!(right - left + 1 >= size * 3 / 4, "size {size}: the cube should fill most of the width");
+        }
+    }
+
+    #[test]
+    fn the_executable_icon_file_has_a_valid_directory_for_the_cube_only_version() {
+        let ico = encode_ico_cube(&[16, 32, 256]);
+        assert_eq!(&ico[..4], &[0, 0, 1, 0]);
+        assert_eq!(u16::from_le_bytes([ico[4], ico[5]]), 3);
+        assert_ne!(ico, encode_ico(&[16, 32, 256], Light::Gray), "no light, so it differs from the lit one");
+    }
+
+    #[test]
+    fn the_taskbar_dot_is_small_centered_and_has_the_light_color_in_the_middle() {
+        for size in [16u32, 20, 24, 32, 40] {
+            for light in [Light::Green, Light::Red, Light::Gray] {
+                let img = render_dot(light, size);
+                assert_eq!(img.len(), (size * size * 4) as usize);
+                let mid = px(&img, size, size / 2, size / 2);
+                assert_eq!([mid[0], mid[1], mid[2]], light.rgb(), "size {size}");
+                assert_eq!(px(&img, size, 0, 0)[3], 0);
+                assert_eq!(px(&img, size, size - 1, size - 1)[3], 0);
+                let seen = img.chunks(4).filter(|p| p[3] > 0).count() as u32;
+                assert!(seen * 100 >= size * size * 10 && seen * 100 <= size * size * 35, "size {size}: {seen} pixels, it must be small");
+            }
+        }
+        assert_ne!(render_dot(Light::Green, 16), render_dot(Light::Red, 16));
+        assert_ne!(render_dot(Light::Gray, 16), render_dot(Light::Red, 16));
     }
 }
