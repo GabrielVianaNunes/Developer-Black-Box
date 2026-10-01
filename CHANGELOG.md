@@ -6,6 +6,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-01
+
+### Added
+- Welcome guide: new users get a short step-by-step tour on first launch (what the app is, the green/red light, why it starts
+  paused, what it never records, incidents, exclusion rules, updates and language). Every step shows an example with made-up
+  data that cannot be clicked, and nothing is recorded or changed. It can always be skipped (button or Esc) and reopened with
+  the ? button at the top. People who already used the app are not forced through it. The guide text lives inside the app,
+  in English and Portuguese, and nothing is fetched from the internet.
+- Exclusion rules by event type: for each excluded program you now choose what is still recorded (start and end,
+  CPU and memory, crashes and hangs). By default nothing is, so adding a program still leaves it out entirely; ticking a
+  box is a deliberate choice to record more. CPU and memory need the start and end (the start carries the program name).
+  Existing exclusions keep meaning "everything", exports re-apply the rules per event type, and unreadable rule data is
+  treated as a full exclusion.
+- What's new after an update: the first time you open the app after an update that changes how it is used, a short
+  step-by-step summary shows what is new (same inert examples with made-up data as the guide; skippable with the button or
+  Esc). It appears once per update, never over the first-run tour, and its text is built into the app in English and
+  Portuguese: nothing is downloaded. In the Privacy tab you can turn it off or show it again. Only two flags and the
+  last version seen are stored, encrypted with the other settings.
+
+### Changed
+- The program search also reads the Start Menu shortcuts, so many more programs show up (about 65% more on a typical PC) with the
+  names you know, such as "Android Studio" or "LibreOffice Writer". Shortcuts are parsed locally by a minimal reader (no
+  Windows shell calls, nothing resolved or executed); only the program name and the shortcut name are used, in memory.
+  Uninstaller shortcuts are left out, and shortcuts that open a generic host (a control panel, a script) show the program
+  name instead of what they open.
+- The installer refuses install folders that are known not to work, before copying anything: Program Files (this installer
+  has no administrator rights) and folders directly inside AppData\Local or AppData\Roaming (on one PC Windows showed the
+  generic icon there). The suggested folder (AppData\Local\Programs\Developer Black Box) stays the default and the folder
+  page is unchanged. Updates of an existing installation are never refused, so nobody is left without updates.
+
 ## [0.2.0] - 2026-09-30
 
 ### Changed

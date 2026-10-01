@@ -24,6 +24,7 @@ use bb_tray::{icon, light_for, menu_labels, menu_model, tooltip, Lang, Light};
 
 mod apps;
 mod commands;
+mod guide;
 mod updates;
 
 /// Chave da configuração salva com o idioma escolhido (guardada cifrada, como as demais).
@@ -370,6 +371,10 @@ pub fn run() {
             commands::capture_incident,
             commands::export_incident,
             commands::get_app_version,
+            guide::get_guide_state,
+            guide::mark_news_seen,
+            guide::set_news_enabled,
+            guide::mark_tour_seen,
             apps::list_app_candidates,
             apps::pick_executable,
             updates::get_update_state,

@@ -19,3 +19,7 @@ path = "../../tests/privacy/authorizations.rs"
 [[test]]
 name = "privacy_repo"
 path = "../../tests/privacy/repo.rs"
+
+[[test]]
+name = "privacy_exclusion_kinds"
+path = "../../tests/privacy/exclusion_kinds.rs"

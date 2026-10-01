@@ -5,8 +5,11 @@
 //! que o Guard aceitaria (`ExeName`), sempre em minúsculas e terminados em `.exe`.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use bb_core::ExeName;
+
+use crate::lnk;
 
 /// Limite de candidatos devolvidos (um PC com milhares de entradas não trava a interface).
 pub const MAX_CANDIDATES: usize = 5000;
@@ -88,8 +91,76 @@ pub fn merge(running: &[String], installed: &[(String, String)]) -> Vec<AppCandi
     out
 }
 
+/// Quantos níveis de pastas do Menu Iniciar são percorridos e quantos atalhos são lidos no máximo.
+const MAX_SHORTCUT_DEPTH: usize = 6;
+const MAX_SHORTCUT_FILES: usize = 5000;
+
+/// Programas genéricos que muitos atalhos abrem com um destino diferente (um painel, uma pasta, um script). O nome do
+/// atalho descreve o que ele abre, não o programa, então nesses casos o nome mostrado é o do próprio executável.
+const GENERIC_HOSTS: &[&str] = &[
+    "cmd.exe", "powershell.exe", "pwsh.exe", "explorer.exe", "control.exe", "mmc.exe", "rundll32.exe", "wscript.exe",
+    "cscript.exe", "conhost.exe", "msiexec.exe", "regedit.exe", "mshta.exe", "wsl.exe", "bash.exe",
+];
+
+/// Atalhos que só servem para desinstalar ou consertar não são programas que o usuário queira escolher.
+fn is_noise(exe: &str, shortcut_name: &str) -> bool {
+    let stem = stem(exe);
+    let name = shortcut_name.to_lowercase();
+    exe == "msiexec.exe"
+        || stem.contains("uninst")
+        || stem.starts_with("unins0")
+        || name.contains("uninstall")
+        || name.contains("desinstal")
+}
+
+/// Programas dos atalhos (`.lnk`) sob `roots`: (nome do executável, nome do atalho). Só lê arquivos pequenos
+/// `.lnk` e não segue links simbólicos; o destino de cada atalho é lido pelo leitor mínimo de `lnk` (sem COM, sem
+/// resolver nada). Nenhum caminho sai daqui: só o nome do `.exe` e o nome que o atalho tem no Menu Iniciar.
+pub fn shortcuts_in(roots: &[PathBuf]) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut files_read = 0usize;
+    let mut stack: Vec<(PathBuf, usize)> = roots.iter().map(|r| (r.clone(), 0)).collect();
+    while let Some((dir, depth)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if kind.is_dir() {
+                if depth < MAX_SHORTCUT_DEPTH {
+                    stack.push((path, depth + 1));
+                }
+                continue;
+            }
+            if !is_lnk(&path) || files_read >= MAX_SHORTCUT_FILES {
+                continue;
+            }
+            files_read += 1;
+            if entry.metadata().map_or(true, |m| m.len() as usize > lnk::MAX_LNK_BYTES) {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(&path) else { continue };
+            let (Some(exe), Some(name)) = (lnk::exe_of(&bytes), path.file_stem().map(|n| n.to_string_lossy().trim().to_owned())) else {
+                continue;
+            };
+            if !name.is_empty() && !is_noise(&exe, &name) {
+                let name = if GENERIC_HOSTS.contains(&exe.as_str()) { stem(&exe) } else { name };
+                out.push((exe, name));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+fn is_lnk(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
+}
+
 #[cfg(windows)]
-pub use win::list_candidates;
+pub use win::{list_candidates, start_menu_programs};
 
 #[cfg(windows)]
 mod win {
@@ -104,6 +175,8 @@ mod win {
         RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE,
         KEY_READ, REG_EXPAND_SZ, REG_SZ, REG_VALUE_TYPE,
     };
+
+    use std::path::PathBuf;
 
     use super::{exe_from_icon_path, merge, AppCandidate};
 
@@ -226,8 +299,24 @@ mod win {
     }
 
     /// Candidatos para as listas de privacidade. Rápido (milissegundos) e sem efeitos colaterais.
+    /// Pastas de atalhos do Menu Iniciar (do usuário e de todos os usuários).
+    fn start_menu_roots() -> Vec<PathBuf> {
+        ["APPDATA", "PROGRAMDATA"]
+            .iter()
+            .filter_map(|v| std::env::var_os(v))
+            .map(|base| PathBuf::from(base).join("Microsoft").join("Windows").join("Start Menu").join("Programs"))
+            .collect()
+    }
+
+    pub fn start_menu_programs() -> Vec<(String, String)> {
+        super::shortcuts_in(&start_menu_roots())
+    }
+
     pub fn list_candidates() -> Vec<AppCandidate> {
-        merge(&running_exes(), &installed())
+        // Os nomes dos atalhos do Menu Iniciar vêm primeiro: são os que o usuário conhece ("Google Chrome").
+        let mut installed = start_menu_programs();
+        installed.extend(self::installed());
+        merge(&running_exes(), &installed)
     }
 }
 
@@ -316,5 +405,87 @@ mod tests {
     fn the_result_is_capped() {
         let running: Vec<String> = (0..MAX_CANDIDATES + 50).map(|i| format!("app{i}.exe")).collect();
         assert_eq!(merge(&running, &[]).len(), MAX_CANDIDATES);
+    }
+
+    // ---- atalhos do Menu Iniciar ----
+
+    use crate::lnk::fixtures::Lnk;
+    use std::fs;
+
+    fn write(dir: &std::path::Path, rel: &str, bytes: &[u8]) {
+        let p = dir.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, bytes).unwrap();
+    }
+
+    #[test]
+    fn programs_are_read_from_shortcuts_in_nested_folders_with_the_shortcut_name() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "App.lnk", &Lnk::local("C:\\Program Files\\App\\app.exe").build());
+        write(dir.path(), "Sub\\Deeper\\Tool.LNK", &Lnk::local("C:\\x\\Tool.exe").build());
+        write(dir.path(), "My Game.lnk", &Lnk::local("D:\\Games\\game.exe").build());
+        let found = shortcuts_in(&[dir.path().to_path_buf()]);
+        assert_eq!(
+            found,
+            vec![(s("app.exe"), s("App")), (s("game.exe"), s("My Game")), (s("tool.exe"), s("Tool"))],
+            "name = shortcut name, exe = lowercase file name, nothing else"
+        );
+    }
+
+    #[test]
+    fn uninstallers_documents_and_garbage_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "Real.lnk", &Lnk::local("C:\\x\\real.exe").build());
+        write(dir.path(), "Uninstall Real.lnk", &Lnk::local("C:\\x\\real.exe").build());
+        write(dir.path(), "Remove.lnk", &Lnk::local("C:\\x\\uninstall.exe").build());
+        write(dir.path(), "Remove2.lnk", &Lnk::local("C:\\x\\unins000.exe").build());
+        write(dir.path(), "Installer.lnk", &Lnk::local("C:\\Windows\\System32\\msiexec.exe").build());
+        write(dir.path(), "Readme.lnk", &Lnk::local("C:\\x\\readme.txt").build());
+        write(dir.path(), "Broken.lnk", b"this is not a shortcut at all");
+        write(dir.path(), "Empty.lnk", b"");
+        write(dir.path(), "Huge.lnk", &vec![0x41u8; crate::lnk::MAX_LNK_BYTES + 10]);
+        write(dir.path(), "notes.txt", &Lnk::local("C:\\x\\sneaky.exe").build()); // não é .lnk
+        assert_eq!(shortcuts_in(&[dir.path().to_path_buf()]), vec![(s("real.exe"), s("Real"))]);
+    }
+
+    #[test]
+    fn missing_folders_and_the_depth_limit_are_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(shortcuts_in(&[dir.path().join("does-not-exist")]).is_empty());
+        let deep = (0..MAX_SHORTCUT_DEPTH + 3).map(|i| format!("d{i}")).collect::<Vec<_>>().join("\\");
+        write(dir.path(), &format!("{deep}\\Too Deep.lnk"), &Lnk::local("C:\\x\\deep.exe").build());
+        write(dir.path(), "d0\\d1\\Shallow.lnk", &Lnk::local("C:\\x\\shallow.exe").build());
+        assert_eq!(shortcuts_in(&[dir.path().to_path_buf()]), vec![(s("shallow.exe"), s("Shallow"))]);
+    }
+
+    #[test]
+    fn shortcuts_to_generic_hosts_show_the_executable_not_what_they_open() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "Administrative Tools.lnk", &Lnk::local("C:\\Windows\\System32\\control.exe").build());
+        write(dir.path(), "My Script.lnk", &Lnk::local("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe").build());
+        write(dir.path(), "Real App.lnk", &Lnk::local("C:\\x\\realapp.exe").build());
+        let found = shortcuts_in(&[dir.path().to_path_buf()]);
+        assert_eq!(
+            found,
+            vec![(s("control.exe"), s("control")), (s("powershell.exe"), s("powershell")), (s("realapp.exe"), s("Real App"))]
+        );
+    }
+
+    #[test]
+    fn shortcut_names_win_in_the_merged_list() {
+        let shortcuts = vec![(s("chrome.exe"), s("Google Chrome"))];
+        let out = merge(&[s("chrome.exe")], &shortcuts);
+        assert_eq!(out[0].name, "Google Chrome");
+        assert!(out[0].installed && out[0].running);
+    }
+
+    #[test]
+    fn a_shortcut_to_an_invalid_name_never_reaches_the_list() {
+        let long = format!("C:\\x\\{}.exe", "a".repeat(80));
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "Long.lnk", &Lnk::local(&long).build());
+        let found = shortcuts_in(&[dir.path().to_path_buf()]);
+        // O leitor devolve o nome; o filtro do Guard (ExeName) o descarta ao montar a lista.
+        assert!(merge(&[], &found).is_empty());
     }
 }

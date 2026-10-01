@@ -6,10 +6,12 @@ import type { Settings } from "../../types/dashboard";
 import type { Status } from "../../types/status";
 import { AppPicker, useAppCandidates } from "./AppPicker";
 import { AuthorizationsCard } from "./AuthorizationsCard";
+import { ExclusionRulesCard } from "./ExclusionRulesCard";
 import { StartupCard } from "./StartupCard";
+import { NewsCard } from "./NewsCard";
 import { UpdatesCard } from "./UpdatesCard";
 
-export function PrivacyView({ status }: { status: Status }) {
+export function PrivacyView({ status, onShowNews }: { status: Status; onShowNews: () => void }) {
   const { t, f, errorText, label } = useI18n();
   const [saved, setSaved] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
@@ -57,12 +59,7 @@ export function PrivacyView({ status }: { status: Status }) {
         items={draft.protectedApps}
         onChange={(v) => setDraft({ ...draft, protectedApps: v })}
       />
-      <AppList
-        title={t("privacy.excludedTitle")}
-        help={t("privacy.excludedHelp")}
-        items={draft.excludedApps}
-        onChange={(v) => setDraft({ ...draft, excludedApps: v })}
-      />
+      <ExclusionRulesCard settings={draft} onChange={(next) => setDraft({ ...draft, ...next })} />
 
       <div className="card">
         <h2>{t("privacy.recordingTitle")}</h2>
@@ -95,6 +92,7 @@ export function PrivacyView({ status }: { status: Status }) {
 
       <StartupCard />
       <UpdatesCard />
+      <NewsCard onShow={onShowNews} />
 
       <AuthorizationsCard protectedApps={saved.protectedApps} />
 
