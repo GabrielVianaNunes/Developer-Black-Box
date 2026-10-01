@@ -37,3 +37,14 @@ test("the README does not carry a personal path, a private key location or an ou
   assert.ok(!/has not been run on GitHub|ainda não foi executado/.test(readme));
   assert.ok(!/Developer-Black-Box_0\.1\.0/.test(readme), "no hard-coded old version in the examples");
 });
+
+test("local project memory and the graphify output are ignored by Git, and the README explains an old cached icon in both languages", () => {
+  const ignore = readFileSync(root + ".gitignore", "utf8");
+  for (const entry of ["PROJECT_STATUS.md", "graphify-out/", ".graphify*"]) {
+    assert.ok(ignore.split(/\r?\n/).includes(entry), `${entry} must be in .gitignore`);
+  }
+  for (const [name, part] of [["en", en], ["pt", pt]]) {
+    assert.ok(part.includes("iconcache"), `${name}: the icon cache steps`);
+    assert.ok(part.includes("taskkill /f /im explorer.exe"), `${name}: the explorer restart step`);
+  }
+});
