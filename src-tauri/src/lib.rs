@@ -141,6 +141,18 @@ fn make_icon(light: Light, size: u32) -> Image<'static> {
     Image::new_owned(icon::render(light, size), size, size)
 }
 
+/// Só a luz, para o selo no botão da barra de tarefas.
+fn make_badge(light: Light, size: u32) -> Image<'static> {
+    Image::new_owned(icon::render_badge(light, size), size, size)
+}
+
+/// Ícone da janela e selo do botão na barra de tarefas. O selo é o que mostra a cor de verdade: quando o programa é
+/// aberto por um atalho, o Windows usa no botão o ícone fixo do atalho e ignora o ícone da janela que trocamos.
+fn apply_window_light(w: &tauri::WebviewWindow, light: Light) {
+    let _ = w.set_icon(make_icon(light, system_icon_size(true)));
+    let _ = w.set_overlay_icon(Some(make_badge(light, system_icon_size(false))));
+}
+
 /// Lê o estado real do engine e atualiza bandeja, ícone da janela e a interface.
 fn refresh(app: &AppHandle) -> StatusDto {
     let rt = app.state::<Arc<Runtime>>();
@@ -176,7 +188,7 @@ fn refresh(app: &AppHandle) -> StatusDto {
         if *last != Some(light) {
             let _ = ui.tray.set_icon(Some(make_icon(light, system_icon_size(false))));
             if let Some(w) = app.get_webview_window("main") {
-                let _ = w.set_icon(make_icon(light, system_icon_size(true)));
+                apply_window_light(&w, light);
             }
             *last = Some(light);
         }
@@ -202,6 +214,12 @@ fn show_main(app: &AppHandle) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+        // Ao reaparecer, o Windows recria o botão da barra de tarefas e o selo se perde: reaplica a cor atual.
+        if let Some(ui) = app.try_state::<Ui>() {
+            if let Some(light) = *ui.last_light.lock().expect("light lock") {
+                apply_window_light(&w, light);
+            }
+        }
     }
 }
 
