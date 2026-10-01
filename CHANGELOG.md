@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- The light (green when recording, red when not) now also shows on the app's button in the taskbar. When the program was opened
+  from a shortcut, Windows kept the shortcut's fixed icon on that button (with a gray light) and ignored the icon the app
+  changes; the button now carries a small colored badge that follows the state and is re-applied when the window comes back
+  from the tray. The tray icon next to the clock already worked.
+
 ### Added
 - Welcome guide: new users get a short step-by-step tour on first launch (what the app is, the green/red light, why it starts
   paused, what it never records, incidents, exclusion rules, updates and language). Every step shows an example with made-up
