@@ -131,3 +131,10 @@ tr.before td { color: var(--muted); }
 .picker-name { font-weight: 600; }
 .picker-note { padding: 8px 10px; }
 .badge { margin-left: auto; font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; opacity: 0.85; }
+.rules { margin: 8px 0; }
+.rule { padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.rule-head { display: flex; align-items: baseline; gap: 10px; }
+.rule-name { font-weight: 600; }
+.rule-remove { margin-left: auto; border: 0; background: transparent; font-size: 18px; color: var(--muted); padding: 0 8px; }
+.rule-kinds { border: 0; padding: 0; margin: 6px 0 2px; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.rule-kinds legend { padding: 0; margin-bottom: 2px; }
