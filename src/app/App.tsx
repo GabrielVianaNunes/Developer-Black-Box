@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { LanguageSwitch } from "../components/LanguageSwitch";
 import { StatusLight } from "../components/StatusLight";
 import { GuideModal } from "../guide/GuideModal";
-import { TOUR } from "../guide/steps";
+import { newsFor } from "../guide/news";
+import { TOUR, type Step } from "../guide/steps";
 import { UpdateBanner } from "../components/UpdateBanner";
 import { useUpdate } from "./useUpdate";
 import { ActivityView } from "../features/activity/ActivityView";
@@ -12,7 +13,7 @@ import { PrivacyView } from "../features/privacy/PrivacyView";
 import { ProcessesView } from "../features/processes/ProcessesView";
 import { StorageView } from "../features/storage/StorageView";
 import { useI18n, type Key } from "../i18n";
-import { getAppVersion, getGuideState, getStatus, markTourSeen, onNavigate, onStatus, pauseRecording, resumeRecording } from "../services/backend";
+import { getAppVersion, getGuideState, getStatus, markNewsSeen, markTourSeen, onNavigate, onStatus, pauseRecording, resumeRecording } from "../services/backend";
 import type { Status } from "../types/status";
 
 const VIEWS = [
@@ -35,12 +36,24 @@ export function App() {
   const [version, setVersion] = useState<string | null>(null);
   const updates = useUpdate();
   const [guideOpen, setGuideOpen] = useState(false);
+  const [news, setNews] = useState<Step[] | null>(null);
   const [tourSeen, setTourSeen] = useState(true); // só abre sozinho depois de o backend dizer que é um usuário novo
 
   useEffect(() => {
     let alive = true;
     const unlisten: Array<() => void> = [];
-    getGuideState().then((g) => alive && (setTourSeen(g.tourSeen), setGuideOpen(!g.tourSeen))).catch(() => {});
+    // Usuário novo: tour. Quem já viu o tour e não desligou as novidades: resumo do que mudou desde a última vez.
+    Promise.all([getGuideState(), getAppVersion()])
+      .then(([g, v]) => {
+        if (!alive) return;
+        setTourSeen(g.tourSeen);
+        setGuideOpen(!g.tourSeen);
+        if (g.tourSeen && g.newsEnabled) {
+          const fresh = newsFor(g.seenVersion, v);
+          if (fresh.length > 0) setNews(fresh);
+        }
+      })
+      .catch(() => {});
     getAppVersion().then((v) => alive && setVersion(v)).catch(() => {});
     getStatus()
       .then((s) => alive && setStatus(s))
@@ -80,6 +93,12 @@ export function App() {
     }
   }
 
+  // Ver ou pular as novidades guarda a versão atual: elas não voltam sozinhas até a próxima atualização.
+  function closeNews() {
+    setNews(null);
+    void markNewsSeen().catch(() => {});
+  }
+
   const toprow = (
     <div className="toprow">
       <div className="brandrow">
@@ -91,6 +110,14 @@ export function App() {
         <LanguageSwitch />
       </div>
       {guideOpen && <GuideModal steps={TOUR} onClose={closeGuide} />}
+      {!guideOpen && news && version && (
+        <GuideModal
+          steps={news}
+          onClose={closeNews}
+          heading={t("guide.news.heading", { version })}
+          labels={{ skip: "guide.news.skip", done: "guide.news.done" }}
+        />
+      )}
     </div>
   );
 
@@ -144,7 +171,7 @@ export function App() {
       {view === "activity" && <ActivityView />}
       {view === "processes" && <ProcessesView />}
       {view === "incidents" && <IncidentsView />}
-      {view === "privacy" && <PrivacyView status={status} />}
+      {view === "privacy" && <PrivacyView status={status} onShowNews={() => setNews(newsFor(null, version ?? ""))} />}
       {view === "storage" && <StorageView />}
     </main>
   );

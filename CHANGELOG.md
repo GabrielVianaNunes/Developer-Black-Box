@@ -17,6 +17,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   box is a deliberate choice to record more. CPU and memory need the start and end (the start carries the program name).
   Existing exclusions keep meaning "everything", exports re-apply the rules per event type, and unreadable rule data is
   treated as a full exclusion.
+- What's new after an update: the first time you open the app after an update that changes how it is used, a short
+  step-by-step summary shows what is new (same inert examples with made-up data as the guide; skippable with the button or
+  Esc). It appears once per update, never over the first-run tour, and its text is built into the app in English and
+  Portuguese: nothing is downloaded. In the Privacy tab you can turn it off or show it again. Only two flags and the
+  last version seen are stored, encrypted with the other settings.
 
 ### Changed
 - The program search also reads the Start Menu shortcuts, so many more programs show up (about 65% more on a typical PC) with the

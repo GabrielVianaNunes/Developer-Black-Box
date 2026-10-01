@@ -88,6 +88,9 @@ export const pickExecutable = (title: string, filterLabel: string) =>
 export interface GuideState {
   tourSeen: boolean;
   seenVersion: string | null;
+  newsEnabled: boolean;
 }
 export const getGuideState = () => invoke<GuideState>("get_guide_state");
 export const markTourSeen = () => invoke<void>("mark_tour_seen");
+export const markNewsSeen = () => invoke<void>("mark_news_seen");
+export const setNewsEnabled = (enabled: boolean) => invoke<GuideState>("set_news_enabled", { enabled });
