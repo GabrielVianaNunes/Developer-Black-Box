@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-01
+
 ### Fixed
 - After updating from an older version, Windows could keep showing the old app icon (the cube with a gray light beside it) on the
   taskbar button and on shortcuts, because it caches executable icons. On the first start of each version the app now asks
