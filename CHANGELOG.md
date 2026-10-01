@@ -13,6 +13,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   Existing exclusions keep meaning "everything", exports re-apply the rules per event type, and unreadable rule data is
   treated as a full exclusion.
 
+### Changed
+- The program search also reads the Start Menu shortcuts, so many more programs show up (about 65% more on a typical PC) with the
+  names you know, such as "Android Studio" or "LibreOffice Writer". Shortcuts are parsed locally by a minimal reader (no
+  Windows shell calls, nothing resolved or executed); only the program name and the shortcut name are used, in memory.
+  Uninstaller shortcuts are left out, and shortcuts that open a generic host (a control panel, a script) show the program
+  name instead of what they open.
+
 ## [0.2.0] - 2026-09-30
 
 ### Changed
