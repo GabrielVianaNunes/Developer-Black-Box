@@ -23,6 +23,14 @@ test("the installer is per-user (default folder under Local\\Programs) and runs 
   assert.ok(!/RMDir \/r/i.test(hooks), "the refusal never deletes recursively");
 });
 
+test("after installing or updating, the installer asks Windows to refresh icons so the taskbar button does not keep an old cached icon", () => {
+  assert.ok(/!macro NSIS_HOOK_POSTINSTALL\s+System::Call 'shell32::SHChangeNotify\(i 0x08000000, i 0x1000, p 0, p 0\)'/.test(hooks), "SHCNE_ASSOCCHANGED after install");
+  const build = readFileSync(join(root, "src-tauri", "build.rs"), "utf8");
+  assert.ok(/encode_ico_cube/.test(build) && !/Light::Gray/.test(build), "the executable icon is the cube without any light");
+  const lib = readFileSync(join(root, "src-tauri", "src", "lib.rs"), "utf8");
+  assert.ok(/set_overlay_icon\(Some\(Image::new_owned\(icon::render_dot\(light, size\)/.test(lib), "the state color goes in the taskbar badge");
+});
+
 const nsis = [process.env.BB_MAKENSIS, join(process.env.LOCALAPPDATA ?? "", "tauri", "NSIS", "makensis.exe")].find((p) => p && existsSync(p));
 
 test("new installs into Program Files or straight into AppData are refused; the suggested folder and others are accepted; updates always pass", { skip: !nsis && "makensis not available" }, () => {

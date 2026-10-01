@@ -141,9 +141,12 @@ fn make_icon(light: Light, size: u32) -> Image<'static> {
     Image::new_owned(icon::render(light, size), size, size)
 }
 
-/// Ícone da janela (título e botão da barra de tarefas): a mesma imagem da bandeja, com a luz atual.
+/// Botão da barra de tarefas: o ícone da janela é só o cubo (o mesmo do executável, fixo) e a cor do estado vai num selo
+/// pequeno por cima do botão. O Windows prefere o ícone do executável/atalho ao ícone da janela, então a cor não pode
+/// depender dele; o selo ele respeita sempre.
 fn apply_window_light(w: &tauri::WebviewWindow, light: Light) {
-    let _ = w.set_icon(make_icon(light, system_icon_size(true)));
+    let size = system_icon_size(false);
+    let _ = w.set_overlay_icon(Some(Image::new_owned(icon::render_dot(light, size), size, size)));
 }
 
 /// Lê o estado real do engine e atualiza bandeja, ícone da janela e a interface.

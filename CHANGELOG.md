@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-01
+
+### Fixed
+- The light on the app's taskbar button follows the state again (green recording, red not). Windows shows the executable's
+  or the shortcut's icon on that button and keeps it in a cache, so the gray light drawn into the old icon never changed. The
+  app and executable icon is now only the cube (no light) and the color is a small badge on the button, which Windows always
+  honors; the tray icon next to the clock is unchanged. The installer also asks Windows to refresh its icons after installing
+  or updating, so the old cached icon is not kept. Taskbar button: cube plus a small colored dot at its corner, not beside it.
+
 ## [0.3.3] - 2026-10-01
 
 ### Fixed

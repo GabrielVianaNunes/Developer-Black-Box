@@ -82,6 +82,13 @@
   !insertmacro BB_CHECK_INSTDIR
 !macroend
 
+; Depois de instalar ou atualizar, pede ao Windows que renove os ícones (SHChangeNotify com SHCNE_ASSOCCHANGED, a
+; notificação oficial de "os ícones mudaram"). Sem isso o Windows continua mostrando no botão da barra de tarefas o
+; ícone do executável que ele guardou em cache de uma versão anterior. Não altera nenhum arquivo nem configuração.
+!macro NSIS_HOOK_POSTINSTALL
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, p 0, p 0)'
+!macroend
+
 !macro NSIS_HOOK_POSTUNINSTALL
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "DeveloperBlackBox"
 !macroend
