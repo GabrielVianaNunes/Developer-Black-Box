@@ -141,16 +141,9 @@ fn make_icon(light: Light, size: u32) -> Image<'static> {
     Image::new_owned(icon::render(light, size), size, size)
 }
 
-/// Só a luz, para o selo no botão da barra de tarefas.
-fn make_badge(light: Light, size: u32) -> Image<'static> {
-    Image::new_owned(icon::render_badge(light, size), size, size)
-}
-
-/// Ícone da janela e selo do botão na barra de tarefas. O selo é o que mostra a cor de verdade: quando o programa é
-/// aberto por um atalho, o Windows usa no botão o ícone fixo do atalho e ignora o ícone da janela que trocamos.
+/// Ícone da janela (título e botão da barra de tarefas): a mesma imagem da bandeja, com a luz atual.
 fn apply_window_light(w: &tauri::WebviewWindow, light: Light) {
     let _ = w.set_icon(make_icon(light, system_icon_size(true)));
-    let _ = w.set_overlay_icon(Some(make_badge(light, system_icon_size(false))));
 }
 
 /// Lê o estado real do engine e atualiza bandeja, ícone da janela e a interface.
