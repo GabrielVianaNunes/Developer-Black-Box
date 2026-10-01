@@ -6,7 +6,8 @@
 
 use std::sync::Arc;
 
-use bb_engine::{EngineError, Settings};
+use bb_core::ExclusionSet;
+use bb_engine::{EngineError, PartialExclusion, Settings};
 use bb_query::{ActivityFilter, ActivityRow, IncidentDetail, IncidentDto, Overview, ProcessRow, SegmentDto};
 use bb_recorder::RecorderError;
 use bb_store::InvestigationState;
@@ -173,11 +174,22 @@ pub fn capture_incident(app: AppHandle) -> Result<i64, String> {
     with_engine(&app, |e| e.capture_manual(utc_ms()).map_err(engine_err))
 }
 
+/// Exclusão parcial na interface: do programa `exe`, os tipos em `kinds` (códigos `lifecycle`, `metrics`,
+/// `crashes`) NÃO são gravados.
+#[derive(Serialize, Deserialize)]
+pub struct PartialExclusionDto {
+    exe: String,
+    kinds: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsDto {
     protected_apps: Vec<String>,
     excluded_apps: Vec<String>,
+    // Sem `#[serde(default)]` de propósito: um cliente que esqueça este campo é recusado em vez de apagar
+    // em silêncio as exclusões parciais (o que deixaria programas menos excluídos do que o usuário quer).
+    partial_exclusions: Vec<PartialExclusionDto>,
     stability_window_ms: u64,
     auto_start: bool,
     retention_max_mb: u64,
@@ -189,6 +201,14 @@ impl From<&Settings> for SettingsDto {
         Self {
             protected_apps: s.protected_apps.clone(),
             excluded_apps: s.excluded_apps.clone(),
+            partial_exclusions: s
+                .partial_exclusions
+                .iter()
+                .map(|r| PartialExclusionDto {
+                    exe: r.exe.clone(),
+                    kinds: r.excluded.kinds().iter().map(|k| k.code().to_owned()).collect(),
+                })
+                .collect(),
             stability_window_ms: s.stability_window_ms,
             auto_start: s.auto_start,
             retention_max_mb: s.retention_max_mb,
@@ -202,6 +222,12 @@ impl From<SettingsDto> for Settings {
         Settings {
             protected_apps: d.protected_apps,
             excluded_apps: d.excluded_apps,
+            // Códigos desconhecidos ou lista vazia viram exclusão TOTAL (falha fechada): nunca menos do que o pedido.
+            partial_exclusions: d
+                .partial_exclusions
+                .into_iter()
+                .map(|r| PartialExclusion { exe: r.exe, excluded: ExclusionSet::from_codes(&r.kinds.join(",")) })
+                .collect(),
             stability_window_ms: d.stability_window_ms,
             auto_start: d.auto_start,
             retention_max_mb: d.retention_max_mb,

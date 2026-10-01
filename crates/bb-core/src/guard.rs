@@ -8,6 +8,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::event::{EventKind, ExeName, ProcessKey, ValidatedEvent};
+use crate::exclusion::{ExclusionKind, ExclusionSet};
 use crate::state::{
     derive, PrivacyContext, ReasonCode, RecorderInputs, RecorderState, SensitiveReason,
 };
@@ -31,6 +32,9 @@ pub struct GuardConfig {
     /// Eventos destes apps nunca são gravados (o contexto não é considerado sensível).
     /// Vence qualquer autorização.
     pub excluded_apps: HashSet<ExeName>,
+    /// Exclusões PARCIAIS: de cada programa listado, só os tipos de evento do conjunto são excluídos; o resto
+    /// continua sendo gravado. Só estreita o que é gravado de um programa que o usuário escolheu excluir.
+    pub partial_exclusions: HashMap<ExeName, ExclusionSet>,
     /// Tempo contínuo de contexto seguro exigido antes de gravar/retomar.
     pub stability_window_ms: u64,
     /// Observação mais velha que isto torna o Guard indisponível (fail-closed).
@@ -45,6 +49,7 @@ impl Default for GuardConfig {
                 .map(|n| ExeName::new(n).expect("valid default"))
                 .collect(),
             excluded_apps: HashSet::new(),
+            partial_exclusions: HashMap::new(),
             stability_window_ms: 5_000,
             max_staleness_ms: 10_000,
         }
@@ -159,6 +164,13 @@ impl PrivacyGuard {
         if !allow_metrics && !allow_crashes {
             return Err(AuthError::NoSource);
         }
+        // Uma exclusão parcial também vence a autorização, fonte por fonte: se tudo o que foi pedido está
+        // excluído, não há o que autorizar.
+        if (!allow_metrics || self.source_excluded(&exe, Source::Metrics))
+            && (!allow_crashes || self.source_excluded(&exe, Source::Crashes))
+        {
+            return Err(AuthError::ExcludedApp);
+        }
         self.authorizations.retain(|a| a.exe != exe);
         self.authorizations.push(Authorization {
             exe,
@@ -187,20 +199,42 @@ impl PrivacyGuard {
         self.authorizations.iter().filter(|a| a.expires_mono_ms > now_ms).cloned().collect()
     }
 
-    fn is_authorized(&self, exe: &ExeName, now_ms: u64) -> bool {
-        !self.config.excluded_apps.contains(exe)
-            && self.authorizations.iter().any(|a| &a.exe == exe && a.expires_mono_ms > now_ms)
+    /// O programa tem este tipo de evento excluído (exclusão total ou parcial)?
+    fn excludes(&self, exe: &ExeName, kind: ExclusionKind) -> bool {
+        self.config.excluded_apps.contains(exe) || self.config.partial_exclusions.get(exe).is_some_and(|s| s.contains(kind))
     }
 
-    /// Este app pode ter eventos desta fonte gravados agora? Excluído: nunca. Protegido: só
-    /// com autorização ativa que inclua a fonte. Os demais: sim.
-    fn permitted(&self, exe: &ExeName, source: Source, now_ms: u64) -> bool {
-        if self.config.excluded_apps.contains(exe) {
+    /// Toda a fonte está excluída? Início/fim e CPU/memória andam juntos (excluir o início exclui as métricas).
+    fn source_excluded(&self, exe: &ExeName, source: Source) -> bool {
+        match source {
+            Source::Metrics => self.excludes(exe, ExclusionKind::Lifecycle),
+            Source::Crashes => self.excludes(exe, ExclusionKind::Crashes),
+        }
+    }
+
+    /// Há autorização ativa que ainda valha para alguma fonte NÃO excluída?
+    fn is_authorized(&self, exe: &ExeName, now_ms: u64) -> bool {
+        self.authorizations.iter().any(|a| {
+            &a.exe == exe
+                && a.expires_mono_ms > now_ms
+                && ((a.allow_metrics && !self.source_excluded(exe, Source::Metrics))
+                    || (a.allow_crashes && !self.source_excluded(exe, Source::Crashes)))
+        })
+    }
+
+    /// Este programa pode ter eventos deste tipo gravados agora? Excluído (por inteiro ou naquele tipo): nunca.
+    /// Protegido: só com autorização ativa que inclua a fonte. Os demais: sim.
+    fn permitted(&self, exe: &ExeName, kind: ExclusionKind, now_ms: u64) -> bool {
+        if self.excludes(exe, kind) {
             return false;
         }
         if !self.config.protected_apps.contains(exe) {
             return true;
         }
+        let source = match kind {
+            ExclusionKind::Lifecycle | ExclusionKind::Metrics => Source::Metrics,
+            ExclusionKind::Crashes => Source::Crashes,
+        };
         self.authorizations.iter().any(|a| {
             &a.exe == exe
                 && a.expires_mono_ms > now_ms
@@ -283,24 +317,25 @@ impl PrivacyGuard {
 
         match &kind {
             EventKind::ProcessStarted { key, exe_name, .. } => {
-                if !self.permitted(exe_name, Source::Metrics, now_ms) || !in_scope(exe_name) {
+                if !self.permitted(exe_name, ExclusionKind::Lifecycle, now_ms) || !in_scope(exe_name) {
                     return None;
                 }
                 self.allowed.insert(*key, exe_name.clone());
             }
             EventKind::ProcessMetrics { key, .. } => {
                 let exe = self.allowed.get(key)?.clone();
-                if !self.permitted(&exe, Source::Metrics, now_ms) {
+                if !self.permitted(&exe, ExclusionKind::Lifecycle, now_ms) {
                     self.allowed.remove(key); // regra nova ou autorização vencida/revogada
                     return None;
                 }
-                if !in_scope(&exe) {
+                // CPU e memória excluídas (só elas): a instância continua acompanhada para o fim ser gravado.
+                if !self.permitted(&exe, ExclusionKind::Metrics, now_ms) || !in_scope(&exe) {
                     return None;
                 }
             }
             EventKind::ProcessExited { key, .. } => {
                 let exe = self.allowed.get(key)?.clone();
-                if !self.permitted(&exe, Source::Metrics, now_ms) {
+                if !self.permitted(&exe, ExclusionKind::Lifecycle, now_ms) {
                     self.allowed.remove(key);
                     return None;
                 }
@@ -311,7 +346,7 @@ impl PrivacyGuard {
             }
             // Falhas e travamentos são sobre um aplicativo: mesma regra, fonte própria.
             EventKind::AppCrash { exe_name, .. } | EventKind::AppHang { exe_name } => {
-                if !self.permitted(exe_name, Source::Crashes, now_ms) || !in_scope(exe_name) {
+                if !self.permitted(exe_name, ExclusionKind::Crashes, now_ms) || !in_scope(exe_name) {
                     return None;
                 }
             }

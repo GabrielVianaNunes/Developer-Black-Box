@@ -282,6 +282,7 @@ export const en = {
   // ---- settings history ----
   "configKey.protected_apps": "Protected applications",
   "configKey.excluded_apps": "Excluded applications",
+  "configKey.partial_exclusions": "Partially excluded applications",
   "configKey.stability_window_ms": "Stability window",
   "configKey.auto_start": "Auto-start recording",
   "configKey.retention_max_mb": "Storage limit",

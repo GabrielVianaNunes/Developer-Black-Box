@@ -92,9 +92,20 @@ export interface IncidentDetail {
   timeline: TimelineRow[];
 }
 
+/** Tipos de evento que uma exclusão parcial pode cobrir (códigos estáveis do backend). */
+export type ExclusionKind = "lifecycle" | "metrics" | "crashes";
+
+/** Do programa `exe`, os tipos em `kinds` NÃO são gravados; o resto continua sendo. */
+export interface PartialExclusion {
+  exe: string;
+  kinds: ExclusionKind[];
+}
+
 export interface Settings {
   protectedApps: string[];
   excludedApps: string[];
+  /** Exclusões por tipo de evento. Precisa voltar intacto ao salvar: o backend recusa um cliente que o omita. */
+  partialExclusions: PartialExclusion[];
   stabilityWindowMs: number;
   autoStart: boolean;
   retentionMaxMb: number;

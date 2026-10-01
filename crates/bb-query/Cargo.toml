@@ -6,13 +6,13 @@ license-file = "../../LICENSE"
 publish.workspace = true
 
 [dependencies]
+bb-core = { path = "../bb-core" }
 bb-recorder = { path = "../bb-recorder" }
 bb-store = { path = "../bb-store" }
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-bb-core = { path = "../bb-core" }
 tempfile = "3"
 
 [[test]]
