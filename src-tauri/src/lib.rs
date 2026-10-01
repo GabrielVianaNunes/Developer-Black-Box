@@ -25,6 +25,7 @@ use bb_tray::{icon, light_for, menu_labels, menu_model, tooltip, Lang, Light};
 mod apps;
 mod commands;
 mod guide;
+mod icons;
 mod updates;
 
 /// Chave da configuração salva com o idioma escolhido (guardada cifrada, como as demais).
@@ -382,6 +383,10 @@ pub fn run() {
             std::process::exit(1);
         }
     };
+    // Primeira abertura desta versão: o Windows relê os ícones (evita ver o do executável antigo em cache).
+    if let Some(store) = engine.store() {
+        icons::refresh_once(store, env!("CARGO_PKG_VERSION"), icons::notify_windows);
+    }
     let rt = Arc::new(Runtime {
         engine: Mutex::new(engine),
         start: Instant::now(),
