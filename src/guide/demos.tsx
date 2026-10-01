@@ -95,6 +95,20 @@ function IncidentRow() {
   );
 }
 
+function PickerDemo() {
+  const { t } = useI18n();
+  return (
+    <DemoFrame label={t("guide.news.picker.title")}>
+      <input type="text" readOnly disabled placeholder={t("guide.demo.search")} aria-label={t("guide.demo.search")} />
+      <ul className="plain demo-states">
+        {["Example Editor · example-editor.exe", "Synthetic Viewer · synthetic-viewer.exe"].map((n) => (
+          <li key={n}>{n}</li>
+        ))}
+      </ul>
+    </DemoFrame>
+  );
+}
+
 function RuleRow() {
   const { t } = useI18n();
   return (
@@ -147,6 +161,7 @@ function Done() {
 /** Um exemplo para cada passo (o compilador exige todos). */
 export const DEMOS: Record<DemoId, () => ReactNode> = {
   welcome: Welcome,
+  picker: PickerDemo,
   light: LightStates,
   paused: PausedBar,
   privacy: PrivacyList,

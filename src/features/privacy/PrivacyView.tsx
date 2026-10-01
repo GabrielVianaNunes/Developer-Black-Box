@@ -8,9 +8,10 @@ import { AppPicker, useAppCandidates } from "./AppPicker";
 import { AuthorizationsCard } from "./AuthorizationsCard";
 import { ExclusionRulesCard } from "./ExclusionRulesCard";
 import { StartupCard } from "./StartupCard";
+import { NewsCard } from "./NewsCard";
 import { UpdatesCard } from "./UpdatesCard";
 
-export function PrivacyView({ status }: { status: Status }) {
+export function PrivacyView({ status, onShowNews }: { status: Status; onShowNews: () => void }) {
   const { t, f, errorText, label } = useI18n();
   const [saved, setSaved] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
@@ -91,6 +92,7 @@ export function PrivacyView({ status }: { status: Status }) {
 
       <StartupCard />
       <UpdatesCard />
+      <NewsCard onShow={onShowNews} />
 
       <AuthorizationsCard protectedApps={saved.protectedApps} />
 

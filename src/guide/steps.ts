@@ -1,7 +1,7 @@
 import type { Key } from "../i18n";
 
 /** Qual ilustração (inerte, com dados inventados) acompanha cada passo. */
-export type DemoId = "welcome" | "light" | "paused" | "privacy" | "incidents" | "rules" | "extras" | "done";
+export type DemoId = "welcome" | "light" | "paused" | "privacy" | "incidents" | "rules" | "extras" | "done" | "picker";
 
 export interface Step {
   id: DemoId;

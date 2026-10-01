@@ -5,6 +5,8 @@
 //! * `guide_seen_version`: a versão do app em que o usuário viu um guia pela última vez (usada pelas novidades
 //!   de atualização, na fase seguinte).
 //!
+//! * `guide_news_off`: a pessoa pediu para não ver o resumo de novidades depois de atualizar.
+//!
 //! Ficam no mesmo banco cifrado das demais configurações. O conteúdo do guia está DENTRO do app: nada é buscado
 //! na rede e este módulo não executa nenhuma ação do usuário (não grava, não muda regra, não liga nada).
 
@@ -18,6 +20,8 @@ use crate::Runtime;
 
 const TOUR_SEEN: &str = "guide_tour_seen";
 const SEEN_VERSION: &str = "guide_seen_version";
+/// Só existe (com "true") quando a pessoa desligou as novidades pós-atualização: por padrão elas aparecem.
+const NEWS_OFF: &str = "guide_news_off";
 
 #[derive(Serialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +30,8 @@ pub struct GuideState {
     pub tour_seen: bool,
     /// Versão do app em que um guia foi visto pela última vez, se houver.
     pub seen_version: Option<String>,
+    /// O resumo de novidades depois de uma atualização está ligado (padrão) ou a pessoa o desligou.
+    pub news_enabled: bool,
 }
 
 /// O tour é mostrado sozinho só a quem NÃO viu e é um usuário novo. Quem já usava o app antes do guia existir
@@ -53,7 +59,27 @@ pub fn state_of(store: &Store) -> Result<GuideState, String> {
         store.set_setting(TOUR_SEEN, "true").map_err(|_| "store.error".to_string())?;
         tour_seen = true;
     }
-    Ok(GuideState { tour_seen, seen_version })
+    Ok(GuideState { tour_seen, seen_version, news_enabled: news_enabled(store) })
+}
+
+fn news_enabled(store: &Store) -> bool {
+    // Falha de leitura não desliga nada por engano nem liga o que a pessoa desligou: sem valor legível, vale o padrão.
+    !store.get_setting(NEWS_OFF).ok().flatten().is_some_and(|v| v == "true")
+}
+
+/// Liga ou desliga o resumo de novidades. O histórico guarda só "guide_news: changed", nunca o conteúdo.
+pub fn set_news(store: &Store, enabled: bool, now_utc_ms: i64) -> Result<(), String> {
+    let was = news_enabled(store);
+    store.set_setting(NEWS_OFF, if enabled { "false" } else { "true" }).map_err(|_| "store.error".to_string())?;
+    if was != enabled {
+        let _ = store.log_config_change(now_utc_ms, "guide_news", "changed");
+    }
+    Ok(())
+}
+
+/// O resumo de novidades foi visto ou pulado: guarda a versão atual (não mexe no tour da primeira abertura).
+pub fn record_news_seen(store: &Store, version: &str) -> Result<(), String> {
+    store.set_setting(SEEN_VERSION, version).map_err(|_| "store.error".to_string())
 }
 
 /// O usuário terminou ou pulou o tour: não mostrar sozinho de novo. Guarda também a versão atual.
@@ -79,6 +105,19 @@ pub fn mark_tour_seen(app: AppHandle) -> Result<(), String> {
     with_store(&app, |s| mark_seen(s, env!("CARGO_PKG_VERSION")))
 }
 
+#[tauri::command]
+pub fn mark_news_seen(app: AppHandle) -> Result<(), String> {
+    with_store(&app, |s| record_news_seen(s, env!("CARGO_PKG_VERSION")))
+}
+
+#[tauri::command]
+pub fn set_news_enabled(app: AppHandle, enabled: bool) -> Result<GuideState, String> {
+    with_store(&app, |s| {
+        set_news(s, enabled, crate::utc_ms())?;
+        state_of(s)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,10 +138,10 @@ mod tests {
     #[test]
     fn a_fresh_database_is_a_new_user_and_stays_pending_until_marked() {
         let (s, _d) = store();
-        assert_eq!(state_of(&s).unwrap(), GuideState { tour_seen: false, seen_version: None });
+        assert_eq!(state_of(&s).unwrap(), GuideState { tour_seen: false, seen_version: None, news_enabled: true });
         assert_eq!(state_of(&s).unwrap().tour_seen, false, "asking does not mark a new user");
         mark_seen(&s, "9.9.9").unwrap();
-        assert_eq!(state_of(&s).unwrap(), GuideState { tour_seen: true, seen_version: Some("9.9.9".into()) });
+        assert_eq!(state_of(&s).unwrap(), GuideState { tour_seen: true, seen_version: Some("9.9.9".into()), news_enabled: true });
     }
 
     #[test]
@@ -131,5 +170,28 @@ mod tests {
             }
         }
         assert_eq!(s.get_setting(SEEN_VERSION).unwrap().as_deref(), Some("0.3.0"));
+    }
+
+    #[test]
+    fn news_are_on_by_default_and_the_choice_to_turn_them_off_is_remembered_and_logged() {
+        let (s, _d) = store();
+        assert!(state_of(&s).unwrap().news_enabled, "on by default");
+        set_news(&s, false, 5).unwrap();
+        assert!(!state_of(&s).unwrap().news_enabled);
+        set_news(&s, false, 6).unwrap();
+        set_news(&s, true, 7).unwrap();
+        assert!(state_of(&s).unwrap().news_enabled);
+        let log = s.config_history(10).unwrap();
+        assert_eq!(log.len(), 2, "only real changes are logged (off, then on)");
+        assert!(log.iter().all(|c| c.key == "guide_news" && c.change == "changed"), "key and kind only");
+    }
+
+    #[test]
+    fn seeing_the_news_records_the_version_without_touching_the_first_run_tour() {
+        let (s, _d) = store();
+        record_news_seen(&s, "9.9.9").unwrap();
+        let st = state_of(&s).unwrap();
+        assert_eq!(st.seen_version.as_deref(), Some("9.9.9"));
+        assert!(!st.tour_seen, "a new user still gets the tour");
     }
 }

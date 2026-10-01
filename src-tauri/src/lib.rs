@@ -372,6 +372,8 @@ pub fn run() {
             commands::export_incident,
             commands::get_app_version,
             guide::get_guide_state,
+            guide::mark_news_seen,
+            guide::set_news_enabled,
             guide::mark_tour_seen,
             apps::list_app_candidates,
             apps::pick_executable,

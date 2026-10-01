@@ -163,3 +163,5 @@ tr.before td { color: var(--muted); }
 .light { display: inline-block; width: 14px; height: 14px; border-radius: 50%; }
 .light-green { background: #2fb344; }
 .light-red { background: #d63939; }
+
+.guide-heading { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, #6b7280); }
