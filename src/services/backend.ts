@@ -83,3 +83,11 @@ export const installUpdate = () => invoke<void>("install_update");
 export const listAppCandidates = () => invoke<AppCandidate[]>("list_app_candidates");
 export const pickExecutable = (title: string, filterLabel: string) =>
   invoke<string | null>("pick_executable", { title, filterLabel });
+
+// Guia de boas-vindas: só duas informações (tour visto, versão em que um guia foi visto); o conteúdo vive no app
+export interface GuideState {
+  tourSeen: boolean;
+  seenVersion: string | null;
+}
+export const getGuideState = () => invoke<GuideState>("get_guide_state");
+export const markTourSeen = () => invoke<void>("mark_tour_seen");
