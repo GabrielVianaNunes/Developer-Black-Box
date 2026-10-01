@@ -217,48 +217,6 @@ pub fn render(light: Light, size: u32) -> Vec<u8> {
     out
 }
 
-/// Selo de sobreposição do botão da barra de tarefas: só a luz (um disco com borda escura fina), em um quadro
-/// `size` x `size` quase todo ocupado por ela. O Windows o desenha sobre o canto do botão do programa e o respeita
-/// mesmo quando o botão usa o ícone do atalho (que é fixo), por isso é o que mostra a cor de verdade ali.
-pub fn render_badge(light: Light, size: u32) -> Vec<u8> {
-    let s = size as f32;
-    let c = s / 2.0;
-    let r = c - (s / 16.0).max(0.5); // folga mínima para a borda não encostar no limite do quadro
-    let ring = (r * 0.22).max(0.5);
-    let lc = light.rgb();
-    let mut out = Vec::with_capacity((size * size * 4) as usize);
-    const N: u32 = 4;
-    for py in 0..size {
-        for px in 0..size {
-            let (mut rr, mut gg, mut bb, mut n) = (0u32, 0u32, 0u32, 0u32);
-            for sy in 0..N {
-                for sx in 0..N {
-                    let x = px as f32 + (sx as f32 + 0.5) / N as f32;
-                    let y = py as f32 + (sy as f32 + 0.5) / N as f32;
-                    let d = ((x - c).powi(2) + (y - c).powi(2)).sqrt();
-                    let col = if d <= r - ring {
-                        lc
-                    } else if d <= r {
-                        DOT_RING
-                    } else {
-                        continue;
-                    };
-                    rr += u32::from(col[0]);
-                    gg += u32::from(col[1]);
-                    bb += u32::from(col[2]);
-                    n += 1;
-                }
-            }
-            if n == 0 {
-                out.extend_from_slice(&[0, 0, 0, 0]);
-            } else {
-                out.extend_from_slice(&[(rr / n) as u8, (gg / n) as u8, (bb / n) as u8, (n * 255 / (N * N)) as u8]);
-            }
-        }
-    }
-    out
-}
-
 /// Monta um `.ico` com imagens BMP de 32 bits (uma por tamanho).
 pub fn encode_ico(sizes: &[u32], light: Light) -> Vec<u8> {
     let images: Vec<(u32, Vec<u8>)> = sizes
@@ -501,49 +459,5 @@ mod tests {
         let total = ico.len();
         let size1 = u32::from_le_bytes(ico[30..34].try_into().unwrap()) as usize;
         assert_eq!(total, off1 + size1);
-    }
-
-    #[test]
-    fn the_taskbar_badge_is_the_light_color_in_the_middle_and_transparent_outside_the_disc() {
-        for size in [16u32, 20, 24, 32] {
-            for (light, rgb) in [(Light::Green, Light::Green.rgb()), (Light::Red, Light::Red.rgb()), (Light::Gray, Light::Gray.rgb())] {
-                let img = render_badge(light, size);
-                assert_eq!(img.len(), (size * size * 4) as usize);
-                let mid = px(&img, size, size / 2, size / 2);
-                assert_eq!([mid[0], mid[1], mid[2]], rgb, "size {size}: the center is the light color");
-                assert_eq!(mid[3], 255);
-                assert_eq!(px(&img, size, 0, 0)[3], 0, "size {size}: the corner is transparent");
-                assert_eq!(px(&img, size, size - 1, size - 1)[3], 0);
-            }
-        }
-    }
-
-    #[test]
-    fn the_taskbar_badge_green_red_and_gray_are_clearly_different_and_the_disc_is_big_enough_to_read() {
-        let (g, r, y) = (render_badge(Light::Green, 16), render_badge(Light::Red, 16), render_badge(Light::Gray, 16));
-        assert_ne!(g, r);
-        assert_ne!(g, y);
-        assert_ne!(r, y);
-        // O disco ocupa a maior parte do quadro: um selo minúsculo não se lê numa barra de tarefas.
-        let visible = g.chunks(4).filter(|p| p[3] > 0).count();
-        assert!(visible >= 16 * 16 * 55 / 100, "only {visible} visible pixels");
-        // E nada encosta na borda do quadro.
-        for i in 0..16u32 {
-            for (x, y) in [(i, 0), (i, 15), (0, i), (15, i)] {
-                assert_eq!(px(&g, 16, x, y)[3], 0, "edge pixel ({x},{y}) must be empty");
-            }
-        }
-    }
-
-    #[test]
-    fn the_taskbar_badge_follows_the_state_like_the_tray_icon_does() {
-        let rec = render_badge(light_for(RecorderState::Recording), 16);
-        let paused = render_badge(light_for(RecorderState::ManualPause), 16);
-        let blocked = render_badge(light_for(RecorderState::PrivacyBlocked), 16);
-        let starting = render_badge(light_for(RecorderState::Starting), 16);
-        assert_eq!(paused, blocked, "both are red");
-        assert_ne!(rec, paused);
-        assert_ne!(starting, paused);
-        assert_eq!(&rec[(8 * 16 + 8) * 4..(8 * 16 + 8) * 4 + 3], &Light::Green.rgb());
     }
 }

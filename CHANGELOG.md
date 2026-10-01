@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- Removed the large colored badge that 0.3.1 drew on the app's taskbar button. It was not what was wanted: the light is the
+  small dot beside the cube, which already changes color with the state in the tray icon and in the window icon. When the
+  program is opened from a shortcut, Windows still shows the shortcut's own icon (gray light) on the taskbar button; that
+  case is not fixed yet.
+
 ## [0.3.1] - 2026-10-01
 
 ### Fixed
