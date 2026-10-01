@@ -59,6 +59,14 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
 (Get-FileHash ".\Developer-Black-Box_<version>_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
 ```
 
+**Old icon after updating?** Windows keeps program icons in a cache. If, after updating from an older version, the taskbar button or the shortcuts still show the old icon (the cube with a gray dot beside it), restart Windows first. If it persists, rebuild the icon cache (nothing is lost; Windows recreates it; the taskbar flashes for a few seconds). In PowerShell:
+
+```powershell
+taskkill /f /im explorer.exe
+Remove-Item "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*" -Force
+Start-Process explorer.exe
+```
+
 On first run the app **starts paused**: nothing is recorded until you click "Resume recording" (or turn
 on "Start recording when the app opens" under Privacy). To uninstall, use Windows "Installed apps".
 Your recorded data is **not** deleted: use "Delete everything" in the Storage tab before uninstalling,
@@ -228,6 +236,14 @@ de comando.
 
 ```powershell
 (Get-FileHash ".\Developer-Black-Box_<versão>_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+```
+
+**Ícone antigo depois de atualizar?** O Windows guarda os ícones dos programas em cache. Se, ao atualizar de uma versão mais antiga, o botão da barra de tarefas ou os atalhos continuarem com o ícone velho (o cubo com uma bolinha cinza ao lado), reinicie o Windows primeiro. Se persistir, refaça o cache de ícones (nada é perdido; o Windows o recria; a barra de tarefas pisca por alguns segundos). No PowerShell:
+
+```powershell
+taskkill /f /im explorer.exe
+Remove-Item "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*" -Force
+Start-Process explorer.exe
 ```
 
 Na primeira execução o app **começa pausado**: nada é gravado até você clicar em "Retomar gravação"
