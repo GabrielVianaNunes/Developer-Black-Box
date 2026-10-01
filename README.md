@@ -7,6 +7,12 @@ memory, crashes and hangs), preserves incident evidence and helps you investigat
 **Privacy first:** everything stays on your computer, encrypted, with no cloud, and the app never
 captures passwords, typed text, page content, window titles, URLs, file paths or command lines.
 
+**[Download the latest installer](https://github.com/GabrielVianaNunes/Developer-Black-Box/releases/latest)** · Windows 11 · free for noncommercial use
+
+![Developer Black Box overview](assets/readme-images/overview.png)
+
+*Screenshots in this README show a fresh install with made-up data (example program names only). Nothing in them was recorded from a real computer.*
+
 ## What it does
 
 - **Tray icon** (a black cube with a light beside it): green only when recording is actually active;
@@ -19,6 +25,12 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
   with evidence from the window before and after.
 - **Dashboard:** overview, activity with filters, processes, incidents (timeline, notes, export),
   privacy, storage and integrity verification.
+- **Exclusion rules by event type:** leave a program out entirely, or choose what is still recorded for it
+  (start and end, CPU and memory, crashes and hangs). By default nothing is. Programs are picked from a
+  search of the programs on your PC (including Start Menu shortcuts) or a file picker, so there is nothing
+  to mistype.
+- **Guide and what's new:** a short tour on first launch and a summary after updates, built into the app,
+  skippable at any time and reopenable with the **?** button. The examples are inert and use made-up data.
 - **Test mode:** a temporary, revocable authorization to collect technical data from a browser, so you
   can test a web application of your own. Page content, forms and requests are never recorded.
 - **Open with Windows** (optional): starts hidden in the tray and stays paused.
@@ -28,16 +40,23 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
 
 ## Installation (use it on your PC)
 
-1. Download the installer `Developer-Black-Box_<version>_x64-setup.exe` from the **Releases** tab of
-   this repository (and `SHA256SUMS.txt` if you want to verify the file).
+![The first-run guide](assets/readme-images/guide-light.png)
+
+1. Download the installer `Developer-Black-Box_<version>_x64-setup.exe` from the
+   [latest Release](https://github.com/GabrielVianaNunes/Developer-Black-Box/releases/latest) (and `SHA256SUMS.txt` if you want to verify the file).
 2. Run the installer. It installs **for your user only** (no administrator rights needed).
-3. The installer is **not digitally signed**, so Windows SmartScreen may warn "Windows protected your
-   PC". That is expected for a personal project without a code-signing certificate: choose "More info"
+3. **Keep the suggested folder** (`%LOCALAPPDATA%\Programs\Developer Black Box`). It is the default and it is
+   the one known to work well, including the program icon. You may pick another folder of your own (for example
+   `C:\Users\<you>\Apps\Developer Black Box`), but the installer refuses folders that are known not to work:
+   Program Files (it needs administrator rights) and folders directly inside `AppData\Local` or `AppData\Roaming`
+   (Windows showed a generic icon there on a test PC). Updates keep using the folder you installed into.
+4. The installer is **not digitally signed with a Windows code-signing certificate**, so Windows SmartScreen
+   may warn "Windows protected your PC". That is expected for a personal project: choose "More info"
    > "Run anyway" if you trust the file. To check that it is the same file as the Release, compare
-   the hash:
+   the hash (replace the file name with the one you downloaded):
 
 ```powershell
-(Get-FileHash ".\Developer-Black-Box_0.1.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash ".\Developer-Black-Box_<version>_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
 ```
 
 On first run the app **starts paused**: nothing is recorded until you click "Resume recording" (or turn
@@ -79,14 +98,7 @@ re-filtering, crash recovery and the absence of network libraries in the core.
 
 ### Publishing a Release (maintainer)
 
-The workflow `.github/workflows/release.yml` runs the tests, builds the installer and attaches it to
-the Release when you create a tag (it has not been run on GitHub yet; try it with "Run workflow" first):
-
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-Before publishing, run `npm run check:repo` and `npm run check:history` (they look for sensitive files
+Releases follow Git Flow and a documented procedure: see [RELEASING.md](RELEASING.md). Before publishing, run `npm run check:repo` and `npm run check:history` (they look for sensitive files
 and secrets in the repository and in its whole history) and, preferably, a dedicated scanner such as
 `gitleaks`.
 
@@ -96,6 +108,8 @@ and secrets in the repository and in its whole history) and, preferably, a dedic
 segments) and `exports\`. None of it lives in the repository and all of it is in `.gitignore`.
 
 ## How privacy is guaranteed
+
+![Privacy tab with example exclusion rules](assets/readme-images/privacy-rules.png)
 
 - **Closed schema:** events only have numeric fields, the PID and the **executable name**. There is no
   free-text field, so there is nowhere for a secret to go.
@@ -162,6 +176,12 @@ software. **Privacidade em primeiro lugar:** tudo fica no seu computador, cifrad
 nunca captura senhas, texto digitado, conteúdo de páginas, títulos de janela, URLs, caminhos ou linhas
 de comando.
 
+**[Baixar o instalador mais recente](https://github.com/GabrielVianaNunes/Developer-Black-Box/releases/latest)** · Windows 11 · gratuito para uso não comercial
+
+![Visão geral do Developer Black Box](assets/readme-images/overview.png)
+
+*As imagens deste README mostram uma instalação nova com dados inventados (só nomes de programas de exemplo). Nada nelas foi gravado de um computador real.*
+
 ## O que ele faz
 
 - **Ícone na bandeja** (um cubo preto com uma luz ao lado): verde só quando a gravação está de fato
@@ -174,6 +194,13 @@ de comando.
   Windows), com evidências da janela anterior e posterior.
 - **Painel:** visão geral, atividade com filtros, processos, incidentes (linha do tempo, anotações,
   exportação), privacidade, armazenamento e verificação de integridade.
+- **Regras de exclusão por tipo de evento:** deixe um programa totalmente de fora ou escolha o que ainda é
+  gravado dele (início e fim, CPU e memória, falhas e travamentos). Por padrão, nada. Os programas são
+  escolhidos numa busca entre os programas do seu PC (inclusive atalhos do Menu Iniciar) ou num seletor de
+  arquivo, então não há o que digitar errado.
+- **Guia e novidades:** um tour curto na primeira abertura e um resumo depois das atualizações, dentro do
+  app, que pode ser pulado a qualquer momento e reaberto pelo botão **?**. Os exemplos são inertes e usam
+  dados inventados.
 - **Modo de teste:** autorização temporária e revogável da coleta técnica de um navegador, para testar
   uma aplicação web sua. Nunca há conteúdo de páginas, formulários ou requisições.
 - **Abrir com o Windows** (opcional): abre escondido na bandeja e continua pausado.
@@ -183,16 +210,24 @@ de comando.
 
 ## Instalação (usar no seu PC)
 
-1. Baixe o instalador `Developer-Black-Box_<versão>_x64-setup.exe` na aba **Releases** deste
-   repositório (e o `SHA256SUMS.txt`, se quiser conferir o arquivo).
+![O guia da primeira abertura](assets/readme-images/guide-light.png)
+
+1. Baixe o instalador `Developer-Black-Box_<versão>_x64-setup.exe` na
+   [Release mais recente](https://github.com/GabrielVianaNunes/Developer-Black-Box/releases/latest) (e o `SHA256SUMS.txt`, se quiser conferir o arquivo).
 2. Rode o instalador. Ele instala **só para o seu usuário** (não pede administrador).
-3. O instalador **não é assinado digitalmente**, então o Windows SmartScreen pode avisar "O Windows
-   protegeu o computador". Isso é esperado num projeto pessoal sem certificado de assinatura: escolha
+3. **Mantenha a pasta sugerida** (`%LOCALAPPDATA%\Programs\Developer Black Box`). Ela é o padrão e é a que
+   sabemos que funciona bem, inclusive com o ícone do programa. Você pode escolher outra pasta sua (por exemplo
+   `C:\Users\<você>\Apps\Developer Black Box`), mas o instalador recusa pastas que sabemos que não funcionam:
+   Arquivos de Programas (exige administrador) e pastas direto dentro de `AppData\Local` ou `AppData\Roaming`
+   (o Windows mostrou um ícone genérico ali num PC de teste). As atualizações continuam usando a pasta em que
+   você instalou.
+4. O instalador **não é assinado com um certificado de assinatura de código do Windows**, então o SmartScreen
+   pode avisar "O Windows protegeu o computador". Isso é esperado num projeto pessoal: escolha
    "Mais informações" > "Executar assim mesmo" se você confia no arquivo. Para conferir que ele é o mesmo
-   da Release, compare o hash:
+   da Release, compare o hash (troque o nome pelo do arquivo que você baixou):
 
 ```powershell
-(Get-FileHash ".\Developer-Black-Box_0.1.0_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash ".\Developer-Black-Box_<versão>_x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
 ```
 
 Na primeira execução o app **começa pausado**: nada é gravado até você clicar em "Retomar gravação"
@@ -234,14 +269,7 @@ filtragem, recuperação após queda e ausência de bibliotecas de rede no núcl
 
 ### Publicar uma Release (mantenedor)
 
-O workflow `.github/workflows/release.yml` roda os testes, gera o instalador e o anexa à Release quando
-você cria uma tag (ele ainda não foi executado no GitHub; teste-o com "Run workflow" antes):
-
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-Antes de publicar, rode `npm run check:repo` e `npm run check:history` (procuram arquivos sensíveis e
+As releases seguem o Git Flow e um procedimento documentado: veja [RELEASING.md](RELEASING.md). Antes de publicar, rode `npm run check:repo` e `npm run check:history` (procuram arquivos sensíveis e
 segredos no repositório e em todo o histórico) e, de preferência, também um scanner dedicado como o
 `gitleaks`.
 
@@ -251,6 +279,8 @@ segredos no repositório e em todo o histórico) e, de preferência, também um 
 (segmentos cifrados) e `exports\`. Nada disso vive no repositório e tudo está no `.gitignore`.
 
 ## Como a privacidade é garantida
+
+![Aba Privacidade com regras de exclusão de exemplo](assets/readme-images/privacy-rules.png)
 
 - **Esquema fechado:** os eventos só têm campos numéricos, PID e o **nome do executável**. Não existe
   campo de texto livre, então não há onde um segredo entrar.
