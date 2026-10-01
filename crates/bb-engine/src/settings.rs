@@ -5,13 +5,23 @@
 
 use std::collections::BTreeSet;
 
-use bb_core::{ExeName, GuardConfig};
+use bb_core::{ExclusionSet, ExeName, GuardConfig};
 use bb_store::Store;
+
+/// Exclusão parcial: deste programa, só os tipos de evento em `excluded` deixam de ser gravados.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PartialExclusion {
+    pub exe: String,
+    pub excluded: ExclusionSet,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
     pub protected_apps: Vec<String>,
     pub excluded_apps: Vec<String>,
+    /// Programas excluídos só em alguns tipos de evento (os outros continuam gravados). Uma regra que exclui
+    /// todos os tipos é guardada como exclusão total em `excluded_apps`.
+    pub partial_exclusions: Vec<PartialExclusion>,
     pub stability_window_ms: u64,
     /// Começa a gravar ao abrir o app. Padrão `false`: só grava depois de você autorizar.
     pub auto_start: bool,
@@ -27,6 +37,7 @@ impl Default for Settings {
         Settings {
             protected_apps: protected,
             excluded_apps: Vec::new(),
+            partial_exclusions: Vec::new(),
             stability_window_ms: g.stability_window_ms,
             auto_start: false,
             retention_max_mb: 256,
@@ -51,6 +62,12 @@ impl Settings {
                 ExeName::new(n).map_err(|_| bad_name.to_string())?;
             }
         }
+        if self.partial_exclusions.len() > MAX_APPS {
+            return Err("settings.too_many_excluded".into());
+        }
+        for rule in &self.partial_exclusions {
+            ExeName::new(&rule.exe).map_err(|_| "settings.bad_excluded_name".to_string())?;
+        }
         if !(1_000..=60_000).contains(&self.stability_window_ms) {
             return Err("settings.stability_range".into());
         }
@@ -69,6 +86,11 @@ impl Settings {
         GuardConfig {
             protected_apps: names(&self.protected_apps),
             excluded_apps: names(&self.excluded_apps),
+            partial_exclusions: self
+                .partial_exclusions
+                .iter()
+                .filter_map(|r| ExeName::new(&r.exe).ok().map(|n| (n, r.excluded)))
+                .collect(),
             stability_window_ms: self.stability_window_ms,
             max_staleness_ms: GuardConfig::default().max_staleness_ms,
         }
@@ -81,6 +103,31 @@ impl Settings {
         };
         self.protected_apps = norm(self.protected_apps);
         self.excluded_apps = norm(self.excluded_apps);
+
+        // Exclusões parciais: nomes em minúsculas, uma regra por programa (duas viram a UNIÃO: o lado mais
+        // privado), regras vazias somem, regra que exclui tudo vira exclusão total, e quem já está excluído
+        // por inteiro não precisa de regra parcial.
+        let mut merged: std::collections::BTreeMap<String, ExclusionSet> = std::collections::BTreeMap::new();
+        for r in std::mem::take(&mut self.partial_exclusions) {
+            let exe = r.exe.trim().to_lowercase();
+            if exe.is_empty() {
+                continue;
+            }
+            let e = merged.entry(exe).or_insert(ExclusionSet::NONE);
+            *e = e.union(r.excluded);
+        }
+        let mut full: BTreeSet<String> = self.excluded_apps.iter().cloned().collect();
+        for (exe, set) in merged {
+            if set.is_empty() || full.contains(&exe) {
+                continue;
+            }
+            if set.is_all() {
+                full.insert(exe);
+            } else {
+                self.partial_exclusions.push(PartialExclusion { exe, excluded: set });
+            }
+        }
+        self.excluded_apps = full.into_iter().collect();
         self
     }
 
@@ -94,18 +141,21 @@ impl Settings {
         let s = Settings {
             protected_apps: list("protected_apps", &d.protected_apps),
             excluded_apps: list("excluded_apps", &d.excluded_apps),
+            partial_exclusions: load_partial(store),
             stability_window_ms: num("stability_window_ms", d.stability_window_ms),
             auto_start: store.get_setting("auto_start").ok().flatten().map_or(d.auto_start, |v| v == "true"),
             retention_max_mb: num("retention_max_mb", d.retention_max_mb),
             retention_max_hours: num("retention_max_hours", d.retention_max_hours),
         };
         // Valores fora do intervalo (banco editado à mão) voltam ao padrão: fail-closed para o Guard.
+        let s = s.normalized();
         if s.validate().is_ok() { s } else { d }
     }
 
     pub fn save(&self, store: &Store) -> Result<(), bb_store::StoreError> {
         store.set_setting("protected_apps", &self.protected_apps.join("\n"))?;
         store.set_setting("excluded_apps", &self.excluded_apps.join("\n"))?;
+        store.set_setting("partial_exclusions", &encode_partial(&self.partial_exclusions))?;
         store.set_setting("stability_window_ms", &self.stability_window_ms.to_string())?;
         store.set_setting("auto_start", if self.auto_start { "true" } else { "false" })?;
         store.set_setting("retention_max_mb", &self.retention_max_mb.to_string())?;
@@ -128,6 +178,20 @@ impl Settings {
         };
         list_change("protected_apps", &self.protected_apps, &new.protected_apps, &mut out);
         list_change("excluded_apps", &self.excluded_apps, &new.excluded_apps, &mut out);
+        // Exclusões parciais: só a CHAVE e o tipo da mudança vão para o histórico, nunca os nomes nem os tipos.
+        let (old_map, new_map): (std::collections::BTreeMap<_, _>, std::collections::BTreeMap<_, _>) = (
+            self.partial_exclusions.iter().map(|r| (&r.exe, r.excluded)).collect(),
+            new.partial_exclusions.iter().map(|r| (&r.exe, r.excluded)).collect(),
+        );
+        let added = new_map.keys().any(|k| !old_map.contains_key(k));
+        let removed = old_map.keys().any(|k| !new_map.contains_key(k));
+        let altered = new_map.iter().any(|(k, v)| old_map.get(k).is_some_and(|o| o != v));
+        match (added, removed, altered) {
+            (false, false, false) => {}
+            (true, false, false) => out.push(("partial_exclusions", "added")),
+            (false, true, false) => out.push(("partial_exclusions", "removed")),
+            _ => out.push(("partial_exclusions", "changed")),
+        }
         if self.stability_window_ms != new.stability_window_ms {
             out.push(("stability_window_ms", "changed"));
         }
@@ -142,6 +206,22 @@ impl Settings {
         }
         out
     }
+}
+
+/// `exe|codigo,codigo` por linha. Linha ilegível: o programa vira exclusão TOTAL (falha fechada), nunca é ignorado.
+fn encode_partial(rules: &[PartialExclusion]) -> String {
+    rules.iter().map(|r| format!("{}|{}", r.exe, r.excluded.to_codes())).collect::<Vec<_>>().join("\n")
+}
+
+fn load_partial(store: &Store) -> Vec<PartialExclusion> {
+    let Ok(Some(text)) = store.get_setting("partial_exclusions") else { return Vec::new() };
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let (exe, codes) = l.split_once('|').unwrap_or((l, ""));
+            PartialExclusion { exe: exe.to_owned(), excluded: ExclusionSet::from_codes(codes) }
+        })
+        .collect()
 }
 
 #[cfg(test)]

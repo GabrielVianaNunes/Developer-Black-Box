@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- Exclusion rules by event type (engine; the screen to edit them comes next): besides excluding a program entirely, a rule can
+  exclude only its start/end, its CPU/memory or its crashes and hangs, and the rest keeps being recorded. Excluding the
+  start/end also excludes CPU/memory (they would have no program name). Existing exclusions keep meaning "everything",
+  exports re-apply the rules per event type, and unreadable rule data is treated as a full exclusion.
+
 ## [0.2.0] - 2026-09-30
 
 ### Changed

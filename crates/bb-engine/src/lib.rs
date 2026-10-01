@@ -20,7 +20,7 @@ use bb_recorder::{Recorder, RecorderError};
 use bb_store::{CaptureState, IncidentKind, NewIncident, Severity, Store, StoreError};
 
 pub use incidents::{Detector, Finding, IncidentConfig};
-pub use settings::Settings;
+pub use settings::{PartialExclusion, Settings};
 
 #[derive(Debug)]
 pub enum EngineError {
@@ -291,6 +291,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             excluded: cfg.excluded_apps.iter().map(|n| n.as_str().to_owned()).collect(),
             protected: cfg.protected_apps.iter().map(|n| n.as_str().to_owned()).collect(),
             authorized_now: self.guard.authorizations(mono_ms).into_iter().map(|a| a.exe.as_str().to_owned()).collect(),
+            partial: cfg.partial_exclusions.iter().map(|(n, set)| (n.as_str().to_owned(), *set)).collect(),
         };
         let doc = bb_query::export_incident(&self.recorder, &inc.store, id, &rules, utc_ms)
             .ok_or_else(|| EngineError::Invalid("export.not_found".into()))?;

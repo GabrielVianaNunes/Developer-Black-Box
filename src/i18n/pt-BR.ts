@@ -286,6 +286,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   // ---- histórico de configuração ----
   "configKey.protected_apps": "Aplicativos protegidos",
   "configKey.excluded_apps": "Aplicativos excluídos",
+  "configKey.partial_exclusions": "Aplicativos com exclusão parcial",
   "configKey.stability_window_ms": "Janela de estabilidade",
   "configKey.auto_start": "Início automático da gravação",
   "configKey.retention_max_mb": "Limite de armazenamento",

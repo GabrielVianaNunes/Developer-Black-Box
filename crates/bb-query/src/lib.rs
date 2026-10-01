@@ -333,11 +333,35 @@ pub struct ExportRules {
     pub protected: std::collections::HashSet<String>,
     /// Apps protegidos com autorização de teste ativa agora; só estes saem mesmo sendo protegidos.
     pub authorized_now: std::collections::HashSet<String>,
+    /// Exclusões parciais vigentes: deste programa, só estes tipos de evento saem da exportação.
+    pub partial: std::collections::HashMap<String, bb_core::ExclusionSet>,
 }
 
 impl ExportRules {
-    fn allows(&self, exe: &str) -> bool {
-        !self.excluded.contains(exe) && (!self.protected.contains(exe) || self.authorized_now.contains(exe))
+    /// Eventos deste programa e deste tipo podem sair agora?
+    fn allows(&self, exe: &str, kind: bb_core::ExclusionKind) -> bool {
+        !self.excluded.contains(exe)
+            && !self.partial.get(exe).is_some_and(|s| s.contains(kind))
+            && (!self.protected.contains(exe) || self.authorized_now.contains(exe))
+    }
+
+    /// O NOME do programa pode aparecer (por exemplo no resumo do incidente)? Se o programa tem qualquer
+    /// exclusão, total ou parcial, o nome some: é o lado mais privado.
+    fn allows_name(&self, exe: &str) -> bool {
+        !self.excluded.contains(exe)
+            && !self.partial.contains_key(exe)
+            && (!self.protected.contains(exe) || self.authorized_now.contains(exe))
+    }
+}
+
+/// Tipo de exclusão a que um tipo de evento gravado pertence (`None`: não é evento de um programa).
+fn exclusion_kind_of(event: &str) -> Option<bb_core::ExclusionKind> {
+    use bb_core::ExclusionKind::*;
+    match event {
+        "ProcessStarted" | "ProcessExited" => Some(Lifecycle),
+        "ProcessMetrics" => Some(Metrics),
+        "AppCrash" | "AppHang" => Some(Crashes),
+        _ => None,
     }
 }
 
@@ -373,9 +397,10 @@ pub fn export_incident(rec: &Recorder, store: &Store, id: i64, rules: &ExportRul
         let row = row_of(e, &exes);
         let keep = match e.kind.as_str() {
             // Eventos de um app: precisam de um nome conhecido e permitido agora.
-            "ProcessStarted" | "ProcessMetrics" | "ProcessExited" | "AppCrash" | "AppHang" => {
-                row.exe_name.as_deref().is_some_and(|n| rules.allows(n))
-            }
+            "ProcessStarted" | "ProcessMetrics" | "ProcessExited" | "AppCrash" | "AppHang" => match exclusion_kind_of(e.kind.as_str()) {
+                Some(kind) => row.exe_name.as_deref().is_some_and(|n| rules.allows(n, kind)),
+                None => false,
+            },
             "SystemMetrics" | "UserMarker" => true,
             _ => false,
         };
@@ -385,7 +410,7 @@ pub fn export_incident(rec: &Recorder, store: &Store, id: i64, rules: &ExportRul
     }
 
     let mut dto = IncidentDto::from(&inc);
-    if dto.exe_name.as_deref().is_some_and(|n| !rules.allows(n)) {
+    if dto.exe_name.as_deref().is_some_and(|n| !rules.allows_name(n)) {
         dto.exe_name = None;
     }
     Some(ExportDoc {

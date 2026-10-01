@@ -743,3 +743,210 @@ fn shutdown_finalizes_pending_captures() {
     r.engine.shutdown().unwrap();
     assert_eq!(r.store().get_incident(id).unwrap().unwrap().capture, CaptureState::Preserved);
 }
+
+// ---- exclusão por tipo de evento (regras parciais) ----
+
+use bb_core::ExclusionSet as X;
+use bb_engine::PartialExclusion;
+
+fn rule(exe: &str, set: X) -> PartialExclusion {
+    PartialExclusion { exe: exe.into(), excluded: set }
+}
+
+fn export_json(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).unwrap()
+}
+
+/// Tipos de evento exportados de um programa (pelo nome que a exportação mostra).
+fn exported_kinds(v: &serde_json::Value, exe: &str) -> std::collections::BTreeSet<String> {
+    v["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["exeName"] == exe)
+        .map(|e| e["kind"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+fn count_lines_with_both(r: &mut Rig, a: &str, b: &str) -> usize {
+    r.engine.recorder_mut().seal().unwrap();
+    let rec = r.engine.recorder();
+    rec.list_segments()
+        .unwrap()
+        .iter()
+        .flat_map(|s| rec.read_segment(s.index).unwrap())
+        .filter(|l| l.contains(a) && l.contains(b))
+        .count()
+}
+
+#[test]
+fn an_export_reapplies_exclusions_per_event_kind() {
+    let mut r = rig_with_two_apps();
+    let ts = r.utc() + 100;
+    r.crashes.0.lock().unwrap().push(crash(ts, "synth-second.exe", CrashKind::Crash));
+    for _ in 0..3 {
+        r.tick();
+    }
+    let id = r.engine.capture_manual(r.utc()).unwrap();
+    let second = "synth-second.exe";
+    let editor = "synth-editor.exe";
+
+    let (_, text) = export(&mut r, id);
+    let base_second = exported_kinds(&export_json(&text), second);
+    let base_editor = exported_kinds(&export_json(&text), editor);
+    for k in ["ProcessStarted", "ProcessMetrics", "AppCrash"] {
+        assert!(base_second.contains(k), "control: {k} was recorded and is exported at first");
+    }
+
+    let cases: [(X, &[&str]); 3] = [
+        (X::new(false, true, false), &["ProcessMetrics"]),
+        (X::new(true, false, false), &["ProcessStarted", "ProcessExited", "ProcessMetrics"]),
+        (X::new(false, false, true), &["AppCrash", "AppHang"]),
+    ];
+    for (set, gone) in cases {
+        let mut s = quick_settings();
+        s.partial_exclusions = vec![rule(second, set)];
+        let utc = r.utc();
+        r.engine.apply_settings(s, utc).unwrap();
+        let (res, text) = export(&mut r, id);
+        let v = export_json(&text);
+        let got = exported_kinds(&v, second);
+        let want: std::collections::BTreeSet<String> = base_second.iter().filter(|k| !gone.contains(&k.as_str())).cloned().collect();
+        assert_eq!(got, want, "kinds exported for {set:?}");
+        assert_eq!(exported_kinds(&v, editor), base_editor, "other programs are untouched by {set:?}");
+        assert!(res.dropped > 0 || got == base_second);
+    }
+}
+
+#[test]
+fn the_incident_process_name_is_hidden_when_its_app_has_any_partial_exclusion() {
+    let mut r = rig();
+    r.until_recording();
+    for _ in 0..8 {
+        r.burn(100);
+        r.tick();
+    }
+    let id = r.store().list_incidents().unwrap().remove(0).id;
+    let (_, before) = export(&mut r, id);
+    assert_eq!(export_json(&before)["incident"]["exeName"], "synth-editor.exe", "control");
+
+    let mut s = quick_settings();
+    s.partial_exclusions = vec![rule("synth-editor.exe", X::new(false, false, true))]; // só falhas
+    let utc = r.utc();
+    r.engine.apply_settings(s, utc).unwrap();
+    let (_, after) = export(&mut r, id);
+    let incident = &export_json(&after)["incident"];
+    assert!(incident.get("exeName").is_none_or(|n| n.is_null()), "name hidden: {incident}");
+}
+
+#[test]
+fn a_partial_exclusion_stops_only_that_kind_of_events_in_a_running_engine() {
+    let mut r = rig();
+    r.until_recording();
+    for _ in 0..3 {
+        r.tick();
+    }
+    let metrics_before = count_lines_with_both(&mut r, "ProcessMetrics", "\"pid\":100");
+    assert!(metrics_before > 0);
+
+    // Exclui só CPU e memória do app.
+    let mut s = quick_settings();
+    s.partial_exclusions = vec![rule("synth-editor.exe", X::new(false, true, false))];
+    let utc = r.utc();
+    r.engine.apply_settings(s, utc).unwrap();
+    for _ in 0..6 {
+        r.tick();
+    }
+    assert_eq!(count_lines_with_both(&mut r, "ProcessMetrics", "\"pid\":100"), metrics_before, "no new metrics");
+    // O fim do processo continua sendo gravado.
+    let exits_before = count_lines_with_both(&mut r, "ProcessExited", "\"pid\":100");
+    r.world.borrow_mut().procs.retain(|p| p.key.pid != 100);
+    for _ in 0..3 {
+        r.tick();
+    }
+    assert_eq!(count_lines_with_both(&mut r, "ProcessExited", "\"pid\":100"), exits_before + 1, "the end is recorded");
+}
+
+#[test]
+fn partial_rules_are_normalized_validated_and_saved_encrypted() {
+    let mut r = rig();
+    let mut s = quick_settings();
+    s.excluded_apps = vec!["already-full.exe".into()];
+    s.partial_exclusions = vec![
+        rule(" Partial-Secret-App.EXE ", X::new(false, true, false)),
+        rule("partial-secret-app.exe", X::new(false, false, true)), // duplicado: união
+        rule("promoted.exe", X::ALL),                              // tudo -> exclusão total
+        rule("already-full.exe", X::new(false, true, false)),      // já excluído por inteiro: some
+        rule("empty.exe", X::NONE),                                // sem tipos: some
+    ];
+    r.engine.apply_settings(s, 1).unwrap();
+    let saved = r.engine.settings().clone();
+    assert_eq!(saved.excluded_apps, vec!["already-full.exe", "promoted.exe"]);
+    assert_eq!(saved.partial_exclusions, vec![rule("partial-secret-app.exe", X::new(false, true, true))]);
+    assert_eq!(bb_engine::Settings::load(r.store()), saved, "round trip through the store");
+
+    let bytes = std::fs::read(r._dir.path().join("meta.db")).unwrap();
+    for secret in ["partial-secret-app", "promoted.exe", "already-full.exe"] {
+        assert!(!bytes.windows(secret.len()).any(|w| w == secret.as_bytes()), "found in clear on disk: {secret}");
+    }
+}
+
+#[test]
+fn invalid_partial_rules_are_rejected_and_change_nothing() {
+    let mut r = rig();
+    let before = r.engine.settings().clone();
+    let mut bad = quick_settings();
+    bad.partial_exclusions = vec![rule("C:\\Windows\\evil.exe", X::new(false, true, false))];
+    assert_eq!(r.engine.apply_settings(bad, 1).unwrap_err().code(), "settings.bad_excluded_name");
+    let mut many = quick_settings();
+    many.partial_exclusions = (0..201).map(|i| rule(&format!("a{i}.exe"), X::new(false, true, false))).collect();
+    assert_eq!(r.engine.apply_settings(many, 1).unwrap_err().code(), "settings.too_many_excluded");
+    assert_eq!(r.engine.settings(), &before);
+    assert!(r.store().config_history(10).unwrap().is_empty());
+}
+
+#[test]
+fn databases_from_before_partial_rules_load_exactly_as_they_were() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open_encrypted(dir.path().join("meta.db"), &[9u8; 32]).unwrap();
+    store.set_setting("excluded_apps", "old-app.exe\nother-old.exe").unwrap();
+    store.set_setting("auto_start", "true").unwrap();
+    let s = bb_engine::Settings::load(&store);
+    assert_eq!(s.excluded_apps, vec!["old-app.exe", "other-old.exe"], "existing exclusions keep meaning 'everything'");
+    assert!(s.partial_exclusions.is_empty());
+    assert!(s.auto_start);
+}
+
+#[test]
+fn an_unreadable_partial_rule_in_the_database_fails_closed_to_full_exclusion() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open_encrypted(dir.path().join("meta.db"), &[9u8; 32]).unwrap();
+    store
+        .set_setting("partial_exclusions", "good.exe|metrics\nbogus-kind.exe|nonsense\nno-kinds.exe|\nno-separator.exe\nmixed.exe|crashes,nonsense")
+        .unwrap();
+    let s = bb_engine::Settings::load(&store);
+    assert_eq!(s.partial_exclusions, vec![rule("good.exe", X::new(false, true, false))]);
+    for exe in ["bogus-kind.exe", "no-kinds.exe", "no-separator.exe", "mixed.exe"] {
+        assert!(s.excluded_apps.iter().any(|a| a == exe), "{exe} must become a FULL exclusion, never be ignored");
+    }
+}
+
+#[test]
+fn settings_history_for_partial_rules_records_only_the_key_and_the_kind_of_change() {
+    let mut r = rig();
+    let mut s = quick_settings();
+    s.partial_exclusions = vec![rule("partial-secret-app.exe", X::new(false, true, false))];
+    r.engine.apply_settings(s.clone(), 10).unwrap();
+    s.partial_exclusions = vec![rule("partial-secret-app.exe", X::new(false, true, true))];
+    r.engine.apply_settings(s.clone(), 11).unwrap();
+    s.partial_exclusions = vec![];
+    r.engine.apply_settings(s, 12).unwrap();
+
+    let hist = r.store().config_history(10).unwrap();
+    let changes: Vec<(i64, &str)> = hist.iter().filter(|h| h.key == "partial_exclusions").map(|h| (h.at_utc_ms, h.change.as_str())).collect();
+    assert!(changes.contains(&(10, "added")) && changes.contains(&(11, "changed")) && changes.contains(&(12, "removed")), "{changes:?}");
+    let dump = format!("{hist:?}");
+    for leak in ["partial-secret-app", "lifecycle", "metrics", "crashes"] {
+        assert!(!dump.contains(leak), "config history must not contain values: {leak}");
+    }
+}
