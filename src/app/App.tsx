@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { LanguageSwitch } from "../components/LanguageSwitch";
 import { StatusLight } from "../components/StatusLight";
+import { GuideModal } from "../guide/GuideModal";
+import { TOUR } from "../guide/steps";
 import { UpdateBanner } from "../components/UpdateBanner";
 import { useUpdate } from "./useUpdate";
 import { ActivityView } from "../features/activity/ActivityView";
@@ -10,7 +12,7 @@ import { PrivacyView } from "../features/privacy/PrivacyView";
 import { ProcessesView } from "../features/processes/ProcessesView";
 import { StorageView } from "../features/storage/StorageView";
 import { useI18n, type Key } from "../i18n";
-import { getAppVersion, getStatus, onNavigate, onStatus, pauseRecording, resumeRecording } from "../services/backend";
+import { getAppVersion, getGuideState, getStatus, markTourSeen, onNavigate, onStatus, pauseRecording, resumeRecording } from "../services/backend";
 import type { Status } from "../types/status";
 
 const VIEWS = [
@@ -32,10 +34,13 @@ export function App() {
   const [view, setView] = useState<ViewId>("overview");
   const [version, setVersion] = useState<string | null>(null);
   const updates = useUpdate();
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [tourSeen, setTourSeen] = useState(true); // só abre sozinho depois de o backend dizer que é um usuário novo
 
   useEffect(() => {
     let alive = true;
     const unlisten: Array<() => void> = [];
+    getGuideState().then((g) => alive && (setTourSeen(g.tourSeen), setGuideOpen(!g.tourSeen))).catch(() => {});
     getAppVersion().then((v) => alive && setVersion(v)).catch(() => {});
     getStatus()
       .then((s) => alive && setStatus(s))
@@ -66,13 +71,26 @@ export function App() {
     }
   }
 
+  // Fechar ou pular o tour da primeira abertura o marca como visto; reabrir pelo botão "?" não muda nada.
+  function closeGuide() {
+    setGuideOpen(false);
+    if (!tourSeen) {
+      setTourSeen(true);
+      void markTourSeen().catch(() => {});
+    }
+  }
+
   const toprow = (
     <div className="toprow">
       <div className="brandrow">
         <h1 className="brand">{t("app.title")}</h1>
         {version && <span className="version muted small">{t("app.version", { version })}</span>}
       </div>
-      <LanguageSwitch />
+      <div className="toprow-right">
+        <button className="guide-button" aria-label={t("guide.open")} title={t("guide.open")} onClick={() => setGuideOpen(true)}>?</button>
+        <LanguageSwitch />
+      </div>
+      {guideOpen && <GuideModal steps={TOUR} onClose={closeGuide} />}
     </div>
   );
 

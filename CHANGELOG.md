@@ -7,6 +7,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- Welcome guide: new users get a short step-by-step tour on first launch (what the app is, the green/red light, why it starts
+  paused, what it never records, incidents, exclusion rules, updates and language). Every step shows an example with made-up
+  data that cannot be clicked, and nothing is recorded or changed. It can always be skipped (button or Esc) and reopened with
+  the ? button at the top. People who already used the app are not forced through it. The guide text lives inside the app,
+  in English and Portuguese, and nothing is fetched from the internet.
 - Exclusion rules by event type: for each excluded program you now choose what is still recorded (start and end,
   CPU and memory, crashes and hangs). By default nothing is, so adding a program still leaves it out entirely; ticking a
   box is a deliberate choice to record more. CPU and memory need the start and end (the start carries the program name).
