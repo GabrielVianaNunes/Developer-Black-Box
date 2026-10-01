@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-01
+
 ### Fixed
 - The light (green when recording, red when not) now also shows on the app's button in the taskbar. When the program was opened
   from a shortcut, Windows kept the shortcut's fixed icon on that button (with a gray light) and ignored the icon the app
