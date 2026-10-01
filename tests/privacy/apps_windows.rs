@@ -48,3 +48,25 @@ fn a_second_listing_is_just_as_fast_and_has_the_same_installed_apps() {
     let installed = |l: &[bb_collector::apps::AppCandidate]| l.iter().filter(|c| c.installed).map(|c| c.exe.clone()).collect::<HashSet<_>>();
     assert_eq!(installed(&a), installed(&b), "the installed set is stable between calls");
 }
+
+#[test]
+fn the_start_menu_adds_real_programs_with_friendly_names_quickly() {
+    let started = Instant::now();
+    let found = bb_collector::apps::start_menu_programs();
+    let took = started.elapsed();
+    println!("{} start menu programs in {took:?}", found.len());
+
+    assert!(took.as_secs_f64() < 2.0, "reading the shortcuts must feel instant, took {took:?}");
+    assert!(!found.is_empty(), "a Windows user always has some Start Menu shortcuts");
+    for (exe, name) in &found {
+        assert!(exe.ends_with(".exe") && exe == &exe.to_lowercase() && ExeName::new(exe).is_ok(), "{exe}");
+        assert!(!name.trim().is_empty());
+        assert!(!exe.contains("uninst"), "uninstallers must be filtered: {exe}");
+    }
+
+    // O seletor mostra esses nomes (quando um mesmo .exe tem vários atalhos, vale o primeiro).
+    let list = list_candidates();
+    let with_shortcut_name = found.iter().filter(|(e, n)| list.iter().any(|c| &c.exe == e && &c.name == n)).count();
+    assert!(with_shortcut_name * 2 >= found.len(), "{with_shortcut_name} of {}", found.len());
+    assert!(list.iter().all(|c| c.installed || c.running));
+}

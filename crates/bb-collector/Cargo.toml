@@ -34,3 +34,6 @@ features = [
 [[test]]
 name = "privacy_apps_windows"
 path = "../../tests/privacy/apps_windows.rs"
+
+[dev-dependencies]
+tempfile = "3"
