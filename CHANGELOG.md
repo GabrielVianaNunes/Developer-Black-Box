@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-01
+
 ### Fixed
 - The small light on the app's taskbar button now follows the state (green recording, red not) when the program is opened
   from a shortcut. Windows ties a shortcut-started program to the shortcut and shows the shortcut's fixed icon (gray light)
