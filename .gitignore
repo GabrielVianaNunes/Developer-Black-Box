@@ -107,3 +107,8 @@ Thumbs.db
 
 # Caminho local da chave de assinatura das Releases (nunca versionar)
 signing.local.json
+
+# Memória local do projeto e grafo de conhecimento (graphify): só no computador do dono
+PROJECT_STATUS.md
+graphify-out/
+.graphify*
