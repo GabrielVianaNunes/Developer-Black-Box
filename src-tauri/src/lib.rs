@@ -346,7 +346,31 @@ fn build_tray(app: &tauri::App, lang: Lang) -> tauri::Result<Ui> {
     })
 }
 
+/// STARTF_TITLEISLINKNAME nas flags de inicialização: o "título" do processo é o caminho do atalho que o iniciou.
+fn started_from_shortcut(startup_flags: u32) -> bool {
+    startup_flags & 0x0000_0800 != 0
+}
+
+/// Abrir o programa por um atalho faz o Windows ligar o botão da barra de tarefas ao atalho e mostrar nele o ícone fixo
+/// do atalho (luz cinza), ignorando o ícone da janela que muda de cor. Quando o Windows avisa que fomos iniciados por
+/// um atalho, o programa se reabre uma vez, direto, e este processo termina: o novo processo não vem de atalho e o
+/// botão passa a seguir o ícone da janela. Se reabrir falhar, segue normalmente neste mesmo processo.
+fn relaunch_if_started_from_shortcut() -> bool {
+    use windows::Win32::System::Threading::{GetStartupInfoW, STARTUPINFOW};
+    let mut info = STARTUPINFOW { cb: std::mem::size_of::<STARTUPINFOW>() as u32, ..Default::default() };
+    // SAFETY: `info` é uma estrutura válida e com `cb` preenchido.
+    unsafe { GetStartupInfoW(&mut info) };
+    if !started_from_shortcut(info.dwFlags.0) {
+        return false;
+    }
+    let Ok(exe) = std::env::current_exe() else { return false };
+    std::process::Command::new(exe).args(std::env::args_os().skip(1)).spawn().is_ok()
+}
+
 pub fn run() {
+    if relaunch_if_started_from_shortcut() {
+        return;
+    }
     let (engine, lang) = match build_engine() {
         Ok(e) => e,
         Err(msg) => {
@@ -444,4 +468,17 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running Developer Black Box");
+}
+
+#[cfg(test)]
+mod shortcut_tests {
+    use super::started_from_shortcut;
+
+    #[test]
+    fn only_the_title_is_link_name_flag_means_started_from_a_shortcut() {
+        assert!(started_from_shortcut(0x0000_0800));
+        assert!(started_from_shortcut(0x0000_0800 | 0x0000_0001 | 0x0000_0100), "other flags may come along");
+        assert!(!started_from_shortcut(0), "a direct start, the auto-start entry and the updater");
+        assert!(!started_from_shortcut(0x0000_0001 | 0x0000_0100 | 0x0000_0400), "similar flags are not it");
+    }
 }
