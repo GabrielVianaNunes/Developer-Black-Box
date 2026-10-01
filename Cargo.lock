@@ -286,7 +286,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bb-app"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "bb-collector",
  "bb-core",
@@ -306,7 +306,7 @@ dependencies = [
 
 [[package]]
 name = "bb-collector"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "bb-core",
  "tempfile",
@@ -315,14 +315,14 @@ dependencies = [
 
 [[package]]
 name = "bb-core"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "bb-engine"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "bb-collector",
  "bb-core",
@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "bb-query"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "bb-core",
  "bb-recorder",
@@ -347,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "bb-recorder"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "aes-gcm",
  "bb-core",
@@ -360,7 +360,7 @@ dependencies = [
 
 [[package]]
 name = "bb-store"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "aes-gcm",
  "rusqlite",
@@ -370,14 +370,14 @@ dependencies = [
 
 [[package]]
 name = "bb-tray"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "bb-core",
 ]
 
 [[package]]
 name = "bb-update"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "ed25519-dalek",
  "serde",
