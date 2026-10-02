@@ -1,0 +1,46 @@
+name: Deadline reminders
+
+# Avisa o responsável de cada issue quando o prazo de entrega se aproxima (5 dias, 1 dia, no dia, e a cada 3 dias de atraso).
+# O GitHub não manda e-mail por data; este workflow comenta na issue mencionando o responsável e o GitHub envia o e-mail
+# de menção. A data vem da linha "Prazo de entrega: AAAA-MM-DD" no corpo da issue. Não usa segredos: só o token padrão do
+# workflow, com permissão de escrever em issues. Agendamentos só rodam a partir da branch padrão (main).
+
+on:
+  schedule:
+    - cron: "0 11 * * *" # 11:00 UTC = 08:00 em São Paulo
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Só mostra o que seria enviado (não comenta)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: deadline-reminders
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    name: Remind
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Send reminders
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            node scripts/deadline-reminders.mjs --dry-run
+          else
+            node scripts/deadline-reminders.mjs
+          fi
