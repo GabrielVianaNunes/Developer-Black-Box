@@ -14,6 +14,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   window classes and process ids are read, never window titles.
 
 ### Added
+- The program picker now lists the Microsoft Store (MSIX/AppX) apps installed for you, even when they are not running, with their friendly
+  name (for example WhatsApp for whatsapp.root.exe). The list is read locally and in memory only: the per-user package list in the registry
+  and each package's manifest file (a small read-only file, size-limited, from a WindowsApps folder), with no network and no extra
+  permission. Only executable names are kept, validated like every other name, never a folder path or account data (#64).
 - Exclusion rules can now also leave out the programs an excluded program starts: a new checkbox, "Also leave out the programs it starts", on
   each rule that excludes the whole program. Helper processes of apps built on WebView2 or Electron (such as the msedgewebview2.exe processes
   of the WhatsApp desktop app) are then never recorded (start, CPU and memory, end), nor are their own children, while a program with the same

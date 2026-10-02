@@ -91,6 +91,56 @@ pub fn merge(running: &[String], installed: &[(String, String)]) -> Vec<AppCandi
     out
 }
 
+/// Maior manifesto de pacote lido (um `AppxManifest.xml` real tem poucos KB).
+pub const MAX_MANIFEST_BYTES: usize = 1024 * 1024;
+
+/// Executáveis declarados no manifesto de um app da Loja (`<Application Executable="app\Foo.exe" ...>`). Só o NOME do
+/// arquivo é devolvido, em minúsculas e validado como o Guard faria; sem caminho, sem repetição. Não é um leitor de XML:
+/// só procura o atributo `Executable` nas marcas `<Application ...>` (o manifesto não é confiável e nada dele é executado).
+pub fn manifest_executables(xml: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut rest = xml;
+    while let Some(i) = rest.find("<Application") {
+        rest = &rest[i + "<Application".len()..];
+        // `<Applications>`, `<ApplicationContentUriRules>` etc. não são a marca procurada: exige espaço depois do nome.
+        if !rest.starts_with(|c: char| c.is_ascii_whitespace()) {
+            continue;
+        }
+        let Some(end) = rest.find('>') else { break };
+        let tag = &rest[..end];
+        let lower = tag.to_ascii_lowercase();
+        let Some(at) = lower.find("executable=") else { continue };
+        let value = tag[at + "executable=".len()..].trim_start();
+        let Some(quote) = value.chars().next().filter(|q| *q == '"' || *q == '\'') else { continue };
+        let Some(close) = value[1..].find(quote) else { continue };
+        let name = value[1..1 + close].rsplit(['\\', '/']).next().unwrap_or("").trim().to_lowercase();
+        if name.ends_with(".exe") && ExeName::new(&name).is_ok() && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// Nome para mostrar de um app da Loja: o `DisplayName` do pacote quando é um texto de verdade (nem vazio, nem uma
+/// referência de recurso como `@{...}` ou `ms-resource:...`, que não dá para ler sem a API de recursos).
+pub fn store_display_name(raw: &str) -> Option<String> {
+    let n = raw.trim();
+    let bad = n.is_empty() || n.starts_with('@') || n.to_ascii_lowercase().starts_with("ms-resource:") || n.len() > 120;
+    (!bad).then(|| n.to_owned())
+}
+
+/// Os apps de um pacote da Loja: (exe, nome amigável) para cada executável do manifesto.
+pub fn store_apps(display_name: &str, manifest: &str) -> Vec<(String, String)> {
+    let friendly = store_display_name(display_name);
+    manifest_executables(manifest)
+        .into_iter()
+        .map(|exe| {
+            let name = friendly.clone().unwrap_or_else(|| stem(&exe));
+            (exe, name)
+        })
+        .collect()
+}
+
 /// Quantos níveis de pastas do Menu Iniciar são percorridos e quantos atalhos são lidos no máximo.
 const MAX_SHORTCUT_DEPTH: usize = 6;
 const MAX_SHORTCUT_FILES: usize = 5000;
@@ -160,7 +210,7 @@ fn is_lnk(path: &Path) -> bool {
 }
 
 #[cfg(windows)]
-pub use win::{list_candidates, start_menu_programs};
+pub use win::{list_candidates, start_menu_programs, store_packages};
 
 #[cfg(windows)]
 mod win {
@@ -298,6 +348,36 @@ mod win {
         out
     }
 
+    const PACKAGES: &str =
+        "Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository\\Packages";
+
+    /// Apps da Loja (MSIX/AppX) instalados para este usuário, mesmo fora de execução: (exe, nome amigável). Lê a lista de
+    /// pacotes do registro do usuário e o manifesto de cada um (arquivo pequeno, só leitura, sem rede e sem COM). Só pastas
+    /// de `WindowsApps` são lidas e só o arquivo `AppxManifest.xml`; nenhum caminho sai daqui.
+    pub fn store_packages() -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        let Some(parent) = open(HKEY_CURRENT_USER, PACKAGES) else { return out };
+        for sub in subkeys(&parent) {
+            // Pacotes de recursos (idioma, escala) não têm aplicativo: pular poupa abrir centenas de arquivos.
+            if sub.contains("_split.") || sub.contains("_~_") {
+                continue;
+            }
+            let Some(entry) = open(HKEY_CURRENT_USER, &format!("{PACKAGES}\\{sub}")) else { continue };
+            let Some(root) = read_string(&entry, "PackageRootFolder") else { continue };
+            if !root.to_ascii_lowercase().contains("\\windowsapps\\") {
+                continue;
+            }
+            let manifest = PathBuf::from(root).join("AppxManifest.xml");
+            let Ok(meta) = std::fs::metadata(&manifest) else { continue };
+            if meta.len() as usize > super::MAX_MANIFEST_BYTES {
+                continue;
+            }
+            let Ok(xml) = std::fs::read_to_string(&manifest) else { continue };
+            out.extend(super::store_apps(&read_string(&entry, "DisplayName").unwrap_or_default(), &xml));
+        }
+        out
+    }
+
     /// Candidatos para as listas de privacidade. Rápido (milissegundos) e sem efeitos colaterais.
     /// Pastas de atalhos do Menu Iniciar (do usuário e de todos os usuários).
     fn start_menu_roots() -> Vec<PathBuf> {
@@ -316,6 +396,7 @@ mod win {
         // Os nomes dos atalhos do Menu Iniciar vêm primeiro: são os que o usuário conhece ("Google Chrome").
         let mut installed = start_menu_programs();
         installed.extend(self::installed());
+        installed.extend(store_packages());
         merge(&running_exes(), &installed)
     }
 }
@@ -349,6 +430,60 @@ mod tests {
         for (raw, want) in cases {
             assert_eq!(exe_from_icon_path(raw).as_deref(), want, "{raw:?}");
         }
+    }
+
+    const MANIFEST: &str = r#"<?xml version="1.0"?><Package><Applications>
+        <Application Id="App" Executable="WhatsApp.Root.exe" EntryPoint="Windows.FullTrustApplication">
+        <uap:VisualElements/></Application>
+        <Application Id="Helper" executable='bin\Synth Helper.EXE'/>
+        <Application Id="NoExe" EntryPoint="x"/></Applications></Package>"#;
+
+    #[test]
+    fn the_manifest_gives_the_executables_of_a_store_app_without_paths() {
+        assert_eq!(manifest_executables(MANIFEST), vec!["whatsapp.root.exe", "synth helper.exe"]);
+    }
+
+    #[test]
+    fn the_manifest_reader_ignores_look_alikes_and_hostile_values() {
+        for xml in [
+            "",
+            "<Applications Executable=\"a.exe\">",
+            "<ApplicationContentUriRules Executable=\"a.exe\"/>",
+            "<Application Executable=\"..\\..\\x\\readme.txt\"/>",
+            "<Application Executable=\"con:*?.exe\"/>",
+            "<Application Executable=a.exe/>",
+            "<Application Executable=\"unterminated.exe",
+            "<Application Executable=\"\"/>",
+        ] {
+            assert!(manifest_executables(xml).is_empty(), "{xml:?}");
+        }
+        assert_eq!(manifest_executables("<Application Executable=\"..\\..\\x\\evil.exe\"/>"), vec!["evil.exe"], "only the file name survives");
+        let twice = "<Application Executable=\"a.exe\"/><Application Executable=\"A.exe\"/>";
+        assert_eq!(manifest_executables(twice), vec!["a.exe"], "no repeats");
+    }
+
+    #[test]
+    fn the_store_name_is_used_unless_it_is_an_unreadable_resource_reference() {
+        assert_eq!(store_display_name("WhatsApp").as_deref(), Some("WhatsApp"));
+        for bad in ["", "  ", "@{Synth?ms-resource://x/name}", "ms-resource:AppName", "MS-RESOURCE:x"] {
+            assert_eq!(store_display_name(bad), None, "{bad:?}");
+        }
+        let apps = store_apps("@{x}", MANIFEST);
+        assert_eq!(apps[0], ("whatsapp.root.exe".to_owned(), "whatsapp.root".to_owned()), "falls back to the file name");
+        assert_eq!(store_apps("Synth Chat", MANIFEST)[0].1, "Synth Chat");
+    }
+
+    #[test]
+    fn an_installed_store_app_that_is_not_running_is_listed_with_its_name() {
+        let installed = store_apps("Synth Chat", MANIFEST);
+        let list = merge(&[], &installed);
+        let chat = list.iter().find(|c| c.exe == "whatsapp.root.exe").unwrap();
+        assert!(chat.installed && !chat.running);
+        assert_eq!(chat.name, "Synth Chat");
+        // Em execução também: um só item, com o nome amigável.
+        let both = merge(&["whatsapp.root.exe".to_owned()], &installed);
+        assert_eq!(both.iter().filter(|c| c.exe == "whatsapp.root.exe").count(), 1);
+        assert!(both.iter().find(|c| c.exe == "whatsapp.root.exe").unwrap().running);
     }
 
     #[test]
