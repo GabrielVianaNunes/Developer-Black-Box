@@ -77,7 +77,8 @@ test("today is computed in Sao Paulo, not UTC", () => {
 });
 
 test("the workflow is minimal: scheduled, only reads the repository and writes issues, no secrets, no code from pull requests", () => {
-  const wf = readFileSync(root + ".github/workflows/deadline-reminders.yml", "utf8");
+  // No servidor (Windows) o checkout vem com fim de linha CRLF: normaliza antes de comparar.
+  const wf = readFileSync(root + ".github/workflows/deadline-reminders.yml", "utf8").replace(/\r\n/g, "\n");
   assert.ok(/schedule:\s*\n\s*- cron: "0 11 \* \* \*"/.test(wf), "daily schedule");
   assert.ok(/workflow_dispatch:/.test(wf), "can be run by hand");
   const perms = /^permissions:\n((?: {2}\S.*\n)+)/m.exec(wf)?.[1].trim().split("\n").map((l) => l.trim());
