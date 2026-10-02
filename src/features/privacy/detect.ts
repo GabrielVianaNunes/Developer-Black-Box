@@ -18,7 +18,7 @@ export function isSharedHost(exe: string): boolean {
   return SHARED_HOSTS.includes(exe.toLowerCase());
 }
 
-type Lists = Pick<Settings, "protectedApps" | "excludedApps" | "partialExclusions">;
+type Lists = Pick<Settings, "protectedApps" | "excludedApps" | "partialExclusions" | "excludedTrees">;
 
 export function isProtected(s: Pick<Settings, "protectedApps">, exe: string): boolean {
   return s.protectedApps.includes(exe);
@@ -35,7 +35,7 @@ export function addProtected(s: Pick<Settings, "protectedApps">, exe: string): P
 }
 
 /** Uma exclusão por INTEIRO (o padrão seguro) para o programa; qualquer regra parcial dele é substituída. */
-export function addExclusion(s: Lists, exe: string): Pick<Settings, "excludedApps" | "partialExclusions"> {
+export function addExclusion(s: Lists, exe: string): Pick<Settings, "excludedApps" | "partialExclusions" | "excludedTrees"> {
   return toSettings([...rulesFrom(s).filter((r) => r.exe !== exe), newRule(exe)]);
 }
 

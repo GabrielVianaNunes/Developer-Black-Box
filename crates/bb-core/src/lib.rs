@@ -8,7 +8,8 @@ pub mod state;
 pub use event::{EventKind, ExeName, ExeNameError, ProcessKey, ValidatedEvent};
 pub use exclusion::{ExclusionKind, ExclusionSet};
 pub use guard::{
-    AuthError, Authorization, GuardConfig, Observation, PrivacyGuard, MAX_AUTHORIZATION_MS, MIN_AUTHORIZATION_MS,
+    AuthError, Authorization, GuardConfig, Observation, PrivacyGuard, ProcessRef, MAX_AUTHORIZATION_MS,
+    MIN_AUTHORIZATION_MS,
 };
 pub use state::{
     derive, PrivacyContext, ReasonCode, RecorderInputs, RecorderState, SensitiveReason,

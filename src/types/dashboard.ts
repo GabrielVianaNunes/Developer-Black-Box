@@ -106,6 +106,8 @@ export interface Settings {
   excludedApps: string[];
   /** Exclusões por tipo de evento. Precisa voltar intacto ao salvar: o backend recusa um cliente que o omita. */
   partialExclusions: PartialExclusion[];
+  /** Programas excluídos por inteiro cuja exclusão vale também para os processos que eles iniciam. Volta intacto ao salvar. */
+  excludedTrees: string[];
   stabilityWindowMs: number;
   autoStart: boolean;
   retentionMaxMb: number;

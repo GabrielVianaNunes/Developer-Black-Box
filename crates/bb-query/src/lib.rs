@@ -335,6 +335,8 @@ pub struct ExportRules {
     pub authorized_now: std::collections::HashSet<String>,
     /// Exclusões parciais vigentes: deste programa, só estes tipos de evento saem da exportação.
     pub partial: std::collections::HashMap<String, bb_core::ExclusionSet>,
+    /// Programas excluídos por inteiro cuja exclusão vale também para o que eles iniciaram (filhos, netos...).
+    pub trees: std::collections::HashSet<String>,
 }
 
 impl ExportRules {
@@ -352,6 +354,40 @@ impl ExportRules {
             && !self.partial.contains_key(exe)
             && (!self.protected.contains(exe) || self.authorized_now.contains(exe))
     }
+}
+
+/// Instâncias (pid, início) que descendem de um programa excluído com a opção dos filhos, reconstruídas dos inícios
+/// gravados (nome, pid do pai e horário). Um filho só descende de quem começou ANTES dele (PID reaproveitado). Eventos
+/// de falha e travamento só trazem o nome do programa, então não podem ser ligados à árvore.
+fn tree_members(events: &[Ev], roots: &std::collections::HashSet<String>) -> std::collections::HashSet<(u64, i64)> {
+    let mut members = std::collections::HashSet::new();
+    if roots.is_empty() {
+        return members;
+    }
+    let starts: Vec<((u64, i64), String, u64)> = events
+        .iter()
+        .filter(|e| e.kind == "ProcessStarted")
+        .filter_map(|e| {
+            let exe = e.body.get("exe_name")?.as_str()?.to_owned();
+            Some((key_of(&e.body)?, exe, e.body.get("parent_pid").and_then(Value::as_u64).unwrap_or(0)))
+        })
+        .collect();
+    loop {
+        let before = members.len();
+        for (key, exe, parent) in &starts {
+            if members.contains(key) {
+                continue;
+            }
+            let descends = *parent != 0 && members.iter().any(|(pid, start): &(u64, i64)| pid == parent && *start <= key.1);
+            if roots.contains(exe) || descends {
+                members.insert(*key);
+            }
+        }
+        if members.len() == before {
+            break;
+        }
+    }
+    members
 }
 
 /// Tipo de exclusão a que um tipo de evento gravado pertence (`None`: não é evento de um programa).
@@ -390,10 +426,15 @@ pub fn export_incident(rec: &Recorder, store: &Store, id: i64, rules: &ExportRul
     }
     events.sort_by_key(|e| (e.ts, e.seq));
     let exes = exe_map(&events);
+    let tree = tree_members(&events, &rules.trees);
 
     let total = events.len();
     let mut kept = Vec::new();
     for e in &events {
+        // Início, CPU/memória e fim de quem está na árvore de um programa excluído nunca saem.
+        if matches!(e.kind.as_str(), "ProcessStarted" | "ProcessMetrics" | "ProcessExited") && key_of(&e.body).is_some_and(|k| tree.contains(&k)) {
+            continue;
+        }
         let row = row_of(e, &exes);
         let keep = match e.kind.as_str() {
             // Eventos de um app: precisam de um nome conhecido e permitido agora.

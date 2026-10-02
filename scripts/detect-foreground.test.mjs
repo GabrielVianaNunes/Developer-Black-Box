@@ -9,7 +9,7 @@ import { ptBR } from "../src/i18n/pt-BR.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (p) => readFileSync(root + p, "utf8");
-const settings = (extra = {}) => ({ protectedApps: ["chrome.exe"], excludedApps: [], partialExclusions: [], ...extra });
+const settings = (extra = {}) => ({ protectedApps: ["chrome.exe"], excludedApps: [], partialExclusions: [], excludedTrees: [], ...extra });
 
 test("the result shows the name, flags the own app and never offers the own app as a name", () => {
   assert.deepEqual(outcome({ exe: "whatsapp.root.exe", isSelf: false }), { kind: "found", exe: "whatsapp.root.exe" });
