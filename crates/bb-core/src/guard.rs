@@ -130,6 +130,9 @@ pub struct PrivacyGuard {
     /// Processos hoje na árvore de um programa excluído com a opção de filhos (por PID). Recalculada a cada ciclo por
     /// `observe_processes`; só existe em memória.
     tree: HashMap<u32, TreeEntry>,
+    /// Quantas vezes uma regra de exclusão deixou algo de fora (início de instância, falha/travamento ou filho de árvore),
+    /// por programa da regra. Só um número por regra, só em memória: nunca nomes de arquivos, títulos ou conteúdo.
+    omitted: HashMap<ExeName, u64>,
     authorizations: Vec<Authorization>,
     next_seq: u64,
 }
@@ -145,6 +148,7 @@ impl PrivacyGuard {
             safe_class: None,
             allowed: HashMap::new(),
             tree: HashMap::new(),
+            omitted: HashMap::new(),
             authorizations: Vec::new(),
             next_seq: 0,
         }
@@ -162,6 +166,9 @@ impl PrivacyGuard {
         // Uma raiz que deixou de ter a opção (ou deixou de ser excluída por inteiro) não mantém mais a árvore dela.
         let roots: HashSet<ExeName> = self.tree_roots().cloned().collect();
         self.tree.retain(|_, e| roots.contains(&e.root));
+        // O contador pertence à regra: regra removida, contador some.
+        let cfg = &self.config;
+        self.omitted.retain(|exe, _| cfg.excluded_apps.contains(exe) || cfg.partial_exclusions.contains_key(exe));
         // Uma janela mais longa não pode ser satisfeita retroativamente.
         self.safe_since = None;
         self.safe_class = None;
@@ -221,6 +228,18 @@ impl PrivacyGuard {
             }
         }
         self.tree = next;
+    }
+
+    /// Quantas vezes cada regra de exclusão ativa deixou algo de fora desde que o app abriu (ordenado por nome).
+    pub fn omitted_counts(&self) -> Vec<(ExeName, u64)> {
+        let mut v: Vec<(ExeName, u64)> = self.omitted.iter().map(|(e, n)| (e.clone(), *n)).collect();
+        v.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
+        v
+    }
+
+    fn note_omitted(&mut self, rule_exe: &ExeName) {
+        let n = self.omitted.entry(rule_exe.clone()).or_insert(0);
+        *n = n.saturating_add(1);
     }
 
     /// Esta instância está na árvore de um programa excluído?
@@ -405,10 +424,14 @@ impl PrivacyGuard {
 
         match &kind {
             EventKind::ProcessStarted { key, exe_name, .. } => {
-                if self.in_excluded_tree(key) {
+                if let Some(root) = self.tree.get(&key.pid).filter(|e| e.start_time_ms == key.start_time_ms).map(|e| e.root.clone()) {
+                    self.note_omitted(&root);
                     return None;
                 }
                 if !self.permitted(exe_name, ExclusionKind::Lifecycle, now_ms) || !in_scope(exe_name) {
+                    if self.excludes(exe_name, ExclusionKind::Lifecycle) {
+                        self.note_omitted(exe_name);
+                    }
                     return None;
                 }
                 self.allowed.insert(*key, exe_name.clone());
@@ -446,6 +469,9 @@ impl PrivacyGuard {
             // Falhas e travamentos são sobre um aplicativo: mesma regra, fonte própria.
             EventKind::AppCrash { exe_name, .. } | EventKind::AppHang { exe_name } => {
                 if !self.permitted(exe_name, ExclusionKind::Crashes, now_ms) || !in_scope(exe_name) {
+                    if self.excludes(exe_name, ExclusionKind::Crashes) {
+                        self.note_omitted(exe_name);
+                    }
                     return None;
                 }
             }

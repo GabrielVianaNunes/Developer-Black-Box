@@ -412,6 +412,11 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         (state, reason)
     }
 
+    /// Quantas vezes cada regra de exclusão ativa deixou algo de fora desde que o app abriu: só o nome da regra e um número.
+    pub fn omitted_counts(&self) -> Vec<(String, u64)> {
+        self.guard.omitted_counts().into_iter().map(|(e, n)| (e.as_str().to_owned(), n)).collect()
+    }
+
     pub fn is_manually_paused(&self) -> bool {
         self.guard.is_manually_paused()
     }

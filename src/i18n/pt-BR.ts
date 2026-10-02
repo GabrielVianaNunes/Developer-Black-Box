@@ -46,6 +46,15 @@ export const ptBR: Record<keyof typeof en, string> = {
   "overview.exited": "Processos encerrados: {n}",
   "overview.system": "Sistema: CPU {cpu} · memória {used} de {total} (às {time})",
   "overview.noSystem": "Sistema: sem métricas gravadas ainda",
+  "overview.rulesTitle": "Regras de privacidade em vigor",
+  "overview.rulesProtected": "Aplicativos protegidos (pausam tudo enquanto estão em primeiro plano): {n}",
+  "overview.rulesExcluded": "Regras de exclusão (deixam só aquele programa de fora): {n}",
+  "overview.ruleWhole": "totalmente de fora",
+  "overview.rulePartial": "parcialmente de fora",
+  "overview.ruleChildren": "inclui o que ele inicia",
+  "overview.ruleOmitted": "deixou {n} vezes de fora desde que o app abriu",
+  "overview.rulesFootnote":
+    "Cada contagem é só um número: conta inícios, falhas, travamentos e programas iniciados que uma regra deixou de fora, e zera quando o app fecha. Nada sobre o que ficou de fora é guardado.",
   "overview.footnote":
     "Só aparece o que foi gravado com o Privacy Guard ativo. Nada é reconstruído para os períodos de pausa ou bloqueio.",
 
@@ -122,9 +131,11 @@ export const ptBR: Record<keyof typeof en, string> = {
     "O Guard avalia o contexto o tempo todo, inclusive durante a pausa manual, e suspende a gravação quando não há certeza de que é seguro gravar. Ausência de sinal nunca é tratada como seguro.",
   "privacy.protectedTitle": "Aplicativos protegidos",
   "privacy.protectedHelp":
-    "Se um destes estiver em primeiro plano, a gravação é suspensa e nada dele é gravado. Remover um item reduz a proteção.",
+    "Pausa TUDO enquanto um destes estiver em primeiro plano: nada é gravado, nem de outros programas. Use para o que você nunca quer perto da gravação, como um gerenciador de senhas ou um banco. Para deixar só um programa de fora e continuar gravando o resto, use as regras de exclusão abaixo. Remover um item reduz a proteção.",
+  "privacy.hostWarning":
+    "{names} hospeda muitas outras coisas (por exemplo, conteúdo da web dentro de vários apps). Protegê-lo pausa a gravação sempre que qualquer um deles estiver em primeiro plano, o que pode ser bem mais do que você espera. Para deixar um único programa de fora, use as regras de exclusão.",
   "privacy.excludedTitle": "Regras de exclusão",
-  "privacy.excludedHelp": "Escolha o que ainda é gravado de cada programa. Por padrão nada: o programa inteiro fica de fora. Marcar uma caixa é uma escolha consciente de gravar mais. O app só enxerga dados técnicos por programa, nunca o que acontece dentro dele.",
+  "privacy.excludedHelp": "Deixa de fora da gravação só os programas que você listar, e todo o resto continua sendo gravado. Escolha o que ainda é gravado de cada programa. Por padrão nada: o programa inteiro fica de fora. Marcar uma caixa é uma escolha consciente de gravar mais. O app só enxerga dados técnicos por programa, nunca o que acontece dentro dele.",
   "privacy.rule.records": "Continua sendo gravado:",
   "privacy.rule.lifecycle": "Início e fim",
   "privacy.rule.metrics": "CPU e memória",
@@ -370,6 +381,9 @@ export const ptBR: Record<keyof typeof en, string> = {
   "guide.news.heading": "Novidades da versão {version}",
   "guide.news.skip": "Pular",
   "guide.news.done": "Entendi",
+  "guide.news.clarity.title": "Protegido ou excluído?",
+  "guide.news.clarity.b1": "Aplicativos protegidos pausam tudo enquanto estão em primeiro plano. As regras de exclusão deixam de fora só aquele programa, e o resto continua sendo gravado.",
+  "guide.news.clarity.b2": "A Visão Geral agora mostra as regras em vigor e quantas vezes cada exclusão deixou algo de fora. É só uma contagem, guardada na memória.",
   "guide.news.picker.title": "Escolha programas em vez de digitar",
   "guide.news.picker.b1": "Ao excluir um programa, procure pelo nome, escolha na lista ou procure o arquivo dele. A lista também lê os atalhos do Menu Iniciar, então aparecem muito mais programas, com os nomes que você conhece.",
   "guide.news.picker.b2": "A lista é montada no seu PC quando você a abre. Nada dela é guardado nem enviado a lugar nenhum.",

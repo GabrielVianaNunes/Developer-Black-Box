@@ -14,6 +14,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   window classes and process ids are read, never window titles.
 
 ### Added
+- Clearer privacy rules (#67). The Privacy tab now says plainly that **protected applications pause everything** while they are in front,
+  while **exclusion rules leave out only that program**, in both languages and in a short "what is new" step. Adding a broad host such as
+  msedgewebview2.exe to the protected list shows a notice explaining that it pauses recording whenever any app built on it is in front. The
+  Overview has a new "Privacy rules in effect" card with the number of protected applications, each exclusion rule, and how many times each
+  rule left something out since the app opened (starts, crashes, hangs and started programs). The counter is one number per rule, kept only in
+  memory, reset when the app closes and dropped when the rule is removed; it never stores names, titles or content.
 - The program picker now lists the Microsoft Store (MSIX/AppX) apps installed for you, even when they are not running, with their friendly
   name (for example WhatsApp for whatsapp.root.exe). The list is read locally and in memory only: the per-user package list in the registry
   and each package's manifest file (a small read-only file, size-limited, from a WindowsApps folder), with no network and no extra

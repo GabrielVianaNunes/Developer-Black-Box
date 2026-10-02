@@ -12,6 +12,7 @@ import type {
   ExportResult,
   Incident,
   IncidentDetail,
+  OmittedCount,
   Overview,
   ProcessRow,
   Settings,
@@ -40,6 +41,7 @@ export const onNavigate = (cb: (view: string) => void): Promise<UnlistenFn> =>
 
 // Dashboard
 export const getOverview = () => invoke<Overview>("get_overview");
+export const getOmittedCounts = () => invoke<OmittedCount[]>("get_omitted_counts");
 export const getActivity = (filter: ActivityFilter) => invoke<ActivityRow[]>("get_activity", { filter });
 export const getProcesses = () => invoke<ProcessRow[]>("get_processes");
 

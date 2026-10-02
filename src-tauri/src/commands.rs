@@ -182,6 +182,19 @@ pub struct PartialExclusionDto {
     kinds: Vec<String>,
 }
 
+/// Quantas vezes uma regra de exclusão deixou algo de fora desde que o app abriu. Só o programa da regra e um número.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmittedDto {
+    exe: String,
+    count: u64,
+}
+
+#[tauri::command]
+pub fn get_omitted_counts(app: AppHandle) -> Result<Vec<OmittedDto>, String> {
+    with_engine(&app, |e| Ok(e.omitted_counts().into_iter().map(|(exe, count)| OmittedDto { exe, count }).collect()))
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsDto {

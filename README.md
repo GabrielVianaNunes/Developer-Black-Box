@@ -25,6 +25,8 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
   with evidence from the window before and after.
 - **Dashboard:** overview, activity with filters, processes, incidents (timeline, notes, export),
   privacy, storage and integrity verification.
+- **Rules in effect at a glance:** the Overview lists the protected applications and each exclusion rule, with how many times
+  each rule left something out (only a number, kept in memory). Protected pauses everything; an exclusion leaves out just that program.
 - **Exclusion rules by event type:** leave a program out entirely, or choose what is still recorded for it
   (start and end, CPU and memory, crashes and hangs). By default nothing is. Programs are picked from a
   search of the programs on your PC (including Start Menu shortcuts) or a file picker, so there is nothing
@@ -202,6 +204,8 @@ de comando.
   Windows), com evidências da janela anterior e posterior.
 - **Painel:** visão geral, atividade com filtros, processos, incidentes (linha do tempo, anotações,
   exportação), privacidade, armazenamento e verificação de integridade.
+- **Regras em vigor num relance:** a Visão Geral lista os aplicativos protegidos e cada regra de exclusão, com quantas vezes
+  cada uma deixou algo de fora (só um número, guardado na memória). Protegido pausa tudo; exclusão deixa de fora só aquele programa.
 - **Regras de exclusão por tipo de evento:** deixe um programa totalmente de fora ou escolha o que ainda é
   gravado dele (início e fim, CPU e memória, falhas e travamentos). Por padrão, nada. Os programas são
   escolhidos numa busca entre os programas do seu PC (inclusive atalhos do Menu Iniciar) ou num seletor de
