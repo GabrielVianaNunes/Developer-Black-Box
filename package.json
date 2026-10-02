@@ -1,14 +1,14 @@
 {
   "name": "developer-blackbox",
   "private": true,
-  "version": "0.3.6",
+  "version": "0.3.7",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
-    "test": "node --experimental-strip-types --no-warnings --test scripts/repo-safety.test.mjs scripts/i18n.test.mjs scripts/version.test.mjs scripts/changelog.test.mjs scripts/exclusion-rules.test.mjs scripts/guide.test.mjs scripts/news.test.mjs scripts/installer-folder.test.mjs scripts/readme.test.mjs scripts/deadline-reminders.test.mjs scripts/sign-release.test.mjs scripts/sign-release-flow.test.mjs scripts/sign-release-config.test.mjs scripts/app-picker.test.mjs",
+    "test": "node --experimental-strip-types --no-warnings --test scripts/repo-safety.test.mjs scripts/i18n.test.mjs scripts/version.test.mjs scripts/changelog.test.mjs scripts/exclusion-rules.test.mjs scripts/guide.test.mjs scripts/news.test.mjs scripts/installer-folder.test.mjs scripts/readme.test.mjs scripts/deadline-reminders.test.mjs scripts/unsaved-changes.test.mjs scripts/sign-release.test.mjs scripts/sign-release-flow.test.mjs scripts/sign-release-config.test.mjs scripts/app-picker.test.mjs",
     "version": "node scripts/version.mjs",
     "check:version": "node scripts/version.mjs check",
     "check:repo": "node scripts/check-tracked.mjs && node scripts/scan-secrets.mjs",

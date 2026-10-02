@@ -165,3 +165,6 @@ tr.before td { color: var(--muted); }
 .light-red { background: #d63939; }
 
 .guide-heading { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, #6b7280); }
+
+.unsaved-bar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; padding: 10px 14px; border: 1px solid #6b82ff; border-radius: 10px; background: var(--card); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
+.unsaved-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; }

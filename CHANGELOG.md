@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-10-02
+
+### Fixed
+- Privacy changes could be lost without any warning: the lists of protected programs and exclusion rules are only a draft until you click
+  Apply, the Apply button sits at the bottom of the Privacy tab, and switching tabs silently discarded the draft, so a program could look
+  protected or excluded without being so. The draft now survives tab changes, and a bar at the top, visible on every tab, says there are
+  unsaved privacy changes and lets you Apply or Discard them right there.
+
 ## [0.3.6] - 2026-10-02
 
 ### Fixed

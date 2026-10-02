@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
 import { usePolling } from "../../app/hooks";
 import { useI18n } from "../../i18n";
-import { getConfigHistory, getSettings, setSettings } from "../../services/backend";
-import type { Settings } from "../../types/dashboard";
+import type { PrivacyDraft } from "../../app/usePrivacyDraft";
+import { getConfigHistory } from "../../services/backend";
 import type { Status } from "../../types/status";
 import { AppPicker, useAppCandidates } from "./AppPicker";
 import { AuthorizationsCard } from "./AuthorizationsCard";
@@ -11,39 +10,12 @@ import { StartupCard } from "./StartupCard";
 import { NewsCard } from "./NewsCard";
 import { UpdatesCard } from "./UpdatesCard";
 
-export function PrivacyView({ status, onShowNews }: { status: Status; onShowNews: () => void }) {
-  const { t, f, errorText, label } = useI18n();
-  const [saved, setSaved] = useState<Settings | null>(null);
-  const [draft, setDraft] = useState<Settings | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+export function PrivacyView({ status, onShowNews, privacy }: { status: Status; onShowNews: () => void; privacy: PrivacyDraft }) {
+  const { t, f, label } = useI18n();
+  const { saved, draft, setDraft, msg, dirty, apply, discard } = privacy;
   const history = usePolling(getConfigHistory, 5000);
 
-  useEffect(() => {
-    getSettings()
-      .then((s) => {
-        setSaved(s);
-        setDraft(s);
-      })
-      .catch((e) => setMsg(errorText(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   if (!draft || !saved) return <p className="muted">{msg ?? t("app.loading")}</p>;
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-
-  async function save() {
-    if (!draft) return;
-    setMsg(null);
-    try {
-      const s = await setSettings(draft);
-      setSaved(s);
-      setDraft(s);
-      setMsg(t("privacy.applied"));
-      void history.reload();
-    } catch (e) {
-      setMsg(errorText(e));
-    }
-  }
 
   return (
     <section aria-label={t("nav.privacy")}>
@@ -84,8 +56,8 @@ export function PrivacyView({ status, onShowNews }: { status: Status; onShowNews
         </label>
         <p className="muted small">{t("privacy.autoStartHelp")}</p>
         <div className="row">
-          <button className="primary" disabled={!dirty} onClick={save}>{t("privacy.apply")}</button>
-          <button disabled={!dirty} onClick={() => setDraft(saved)}>{t("privacy.discard")}</button>
+          <button className="primary" disabled={!dirty} onClick={() => void apply()}>{t("privacy.apply")}</button>
+          <button disabled={!dirty} onClick={discard}>{t("privacy.discard")}</button>
         </div>
         {msg && <p className="notice" role="status">{msg}</p>}
       </div>
