@@ -14,6 +14,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   window classes and process ids are read, never window titles.
 
 ### Added
+- Clearer privacy rules (#67). The Privacy tab now says plainly that **protected applications pause everything** while they are in front,
+  while **exclusion rules leave out only that program**, in both languages and in a short "what is new" step. Adding a broad host such as
+  msedgewebview2.exe to the protected list shows a notice explaining that it pauses recording whenever any app built on it is in front. The
+  Overview has a new "Privacy rules in effect" card with the number of protected applications, each exclusion rule, and how many times each
+  rule left something out since the app opened (starts, crashes, hangs and started programs). The counter is one number per rule, kept only in
+  memory, reset when the app closes and dropped when the rule is removed; it never stores names, titles or content.
 - Exclusion rules can now also leave out the programs an excluded program starts: a new checkbox, "Also leave out the programs it starts", on
   each rule that excludes the whole program. Helper processes of apps built on WebView2 or Electron (such as the msedgewebview2.exe processes
   of the WhatsApp desktop app) are then never recorded (start, CPU and memory, end), nor are their own children, while a program with the same

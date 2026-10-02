@@ -276,3 +276,57 @@ fn removing_the_rule_frees_the_tree_even_before_the_next_snapshot() {
     // Sem nenhum instantâneo novo: a árvore antiga já não vale.
     assert!(admitted(&mut g, now, started(C)), "the stale tree must not outlive the rule");
 }
+
+// ---- contador de omitidos: só um número por regra ----
+
+fn count_of(g: &PrivacyGuard, name: &str) -> u64 {
+    g.omitted_counts().into_iter().find(|(e, _)| e.as_str() == name).map(|(_, n)| n).unwrap_or(0)
+}
+
+#[test]
+fn the_counter_counts_what_an_exclusion_rule_left_out_per_rule() {
+    let (mut g, t) = recording(cfg(true, true));
+    snapshot(&mut g, &[R, C, G]);
+    assert!(!admitted(&mut g, t, started(R)));
+    assert!(!admitted(&mut g, t, started(C)), "child of the tree");
+    assert!(!admitted(&mut g, t, started(G)), "grandchild of the tree");
+    assert_eq!(count_of(&g, ROOT), 3, "the children count for the rule of the program they descend from");
+    assert_eq!(count_of(&g, HELPER), 0, "the helper has no rule of its own");
+    assert_eq!(g.omitted_counts().len(), 1);
+}
+
+#[test]
+fn recorded_things_and_protected_apps_are_never_counted() {
+    let mut c = cfg(true, false);
+    c.protected_apps.insert(exe("synth-bank.exe"));
+    let (mut g, t) = recording(c);
+    snapshot(&mut g, &[R, C]);
+    assert!(admitted(&mut g, t, started(C)), "no tree option: the child is recorded");
+    assert!(!admitted(&mut g, t, started((400, 4_000, "synth-bank.exe", 1))));
+    assert_eq!(count_of(&g, HELPER), 0);
+    assert_eq!(count_of(&g, "synth-bank.exe"), 0, "protected is not an exclusion rule");
+    assert_eq!(g.omitted_counts().len(), 0);
+}
+
+#[test]
+fn a_partial_rule_counts_only_the_omitted_kind() {
+    let mut c = GuardConfig::default();
+    c.stability_window_ms = WINDOW;
+    c.max_staleness_ms = 10_000;
+    c.partial_exclusions.insert(exe(OTHER), ExclusionSet::new(false, false, true));
+    let (mut g, t) = recording(c);
+    assert!(admitted(&mut g, t, started((500, 5_000, OTHER, 1))), "lifecycle is still recorded");
+    assert_eq!(count_of(&g, OTHER), 0);
+    let crash = EventKind::AppCrash { exe_name: exe(OTHER), exception_code: 1 };
+    assert!(!admitted(&mut g, t, crash));
+    assert_eq!(count_of(&g, OTHER), 1);
+}
+
+#[test]
+fn removing_a_rule_drops_its_counter() {
+    let (mut g, t) = recording(cfg(true, false));
+    assert!(!admitted(&mut g, t, started(R)));
+    assert_eq!(count_of(&g, ROOT), 1);
+    g.update_config(cfg(false, false));
+    assert_eq!(g.omitted_counts().len(), 0, "the counter belongs to the rule");
+}

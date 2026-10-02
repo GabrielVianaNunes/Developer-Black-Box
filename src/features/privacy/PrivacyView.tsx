@@ -9,6 +9,7 @@ import { DetectForegroundCard } from "./DetectForegroundCard";
 import { ExclusionRulesCard } from "./ExclusionRulesCard";
 import { StartupCard } from "./StartupCard";
 import { NewsCard } from "./NewsCard";
+import { isKnownHost } from "./rulesSummary.ts";
 import { UpdatesCard } from "./UpdatesCard";
 
 export function PrivacyView({ status, onShowNews, privacy }: { status: Status; onShowNews: () => void; privacy: PrivacyDraft }) {
@@ -32,6 +33,7 @@ export function PrivacyView({ status, onShowNews, privacy }: { status: Status; o
         title={t("privacy.protectedTitle")}
         help={t("privacy.protectedHelp")}
         items={draft.protectedApps}
+        warnHosts
         onChange={(v) => setDraft({ ...draft, protectedApps: v })}
       />
       <ExclusionRulesCard settings={draft} onChange={(next) => setDraft({ ...draft, ...next })} />
@@ -96,10 +98,12 @@ function AppList({
   help,
   items,
   onChange,
+  warnHosts,
 }: {
   title: string;
   help: string;
   items: string[];
+  warnHosts?: boolean;
   onChange: (v: string[]) => void;
 }) {
   const { t } = useI18n();
@@ -124,6 +128,11 @@ function AppList({
         })}
         {items.length === 0 && <span className="muted small">{t("privacy.none")}</span>}
       </div>
+      {warnHosts && items.some(isKnownHost) && (
+        <p className="notice" role="status">
+          {t("privacy.hostWarning", { names: items.filter(isKnownHost).join(", ") })}
+        </p>
+      )}
       <AppPicker taken={items} onAdd={(exe) => onChange([...items, exe].sort())} />
     </div>
   );

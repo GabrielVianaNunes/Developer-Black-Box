@@ -19,6 +19,10 @@ export const RELEASES: Release[] = [
       { id: "done", title: "guide.news.guide.title", body: ["guide.news.guide.b1"] },
     ],
   },
+  {
+    version: "0.4.0",
+    steps: [{ id: "rules", title: "guide.news.clarity.title", body: ["guide.news.clarity.b1", "guide.news.clarity.b2"] }],
+  },
 ];
 
 /** Só a parte numérica: "0.3.0-rc.1" conta como 0.3.0. Texto que não é versão vira null. */

@@ -43,6 +43,15 @@ export const en = {
   "overview.exited": "Processes exited: {n}",
   "overview.system": "System: CPU {cpu} · memory {used} of {total} (at {time})",
   "overview.noSystem": "System: no metrics recorded yet",
+  "overview.rulesTitle": "Privacy rules in effect",
+  "overview.rulesProtected": "Protected applications (pause everything while in front): {n}",
+  "overview.rulesExcluded": "Exclusion rules (leave only that program out): {n}",
+  "overview.ruleWhole": "left out entirely",
+  "overview.rulePartial": "partly left out",
+  "overview.ruleChildren": "includes what it starts",
+  "overview.ruleOmitted": "left out {n} times since the app opened",
+  "overview.rulesFootnote":
+    "Each count is only a number: it counts starts, crashes, hangs and started programs that a rule left out, and is reset when the app closes. Nothing about what was left out is kept.",
   "overview.footnote":
     "Only what was recorded with the Privacy Guard active appears here. Nothing is reconstructed for pause or block periods.",
 
@@ -119,9 +128,11 @@ export const en = {
     "The Guard evaluates the context all the time, including during a manual pause, and suspends recording when it cannot be sure it is safe to record. The absence of a signal is never treated as safe.",
   "privacy.protectedTitle": "Protected applications",
   "privacy.protectedHelp":
-    "If one of these is in the foreground, recording is suspended and nothing about it is recorded. Removing an item reduces protection.",
+    "Pauses EVERYTHING while one of these is in front: nothing is recorded, not even about other programs. Use it for what you never want near the recording, such as a password manager or a bank. To leave only one program out while the rest keeps being recorded, use the exclusion rules below. Removing an item reduces protection.",
+  "privacy.hostWarning":
+    "{names} is a host for many other things (for example, web content inside several apps). Protecting it pauses recording whenever any of them is in front, which may be much more than you expect. To leave a single program out, use the exclusion rules instead.",
   "privacy.excludedTitle": "Exclusion rules",
-  "privacy.excludedHelp": "Choose what is still recorded for each program. By default nothing is: the whole program is left out. Ticking a box is a deliberate choice to record more. The app only sees technical data per program, never what happens inside it.",
+  "privacy.excludedHelp": "Leaves only the programs you list out of the recording, while everything else keeps being recorded. Choose what is still recorded for each program. By default nothing is: the whole program is left out. Ticking a box is a deliberate choice to record more. The app only sees technical data per program, never what happens inside it.",
   "privacy.rule.records": "Still recorded:",
   "privacy.rule.lifecycle": "Start and end",
   "privacy.rule.metrics": "CPU and memory",
@@ -366,6 +377,9 @@ export const en = {
   "guide.news.heading": "What's new in version {version}",
   "guide.news.skip": "Skip",
   "guide.news.done": "Got it",
+  "guide.news.clarity.title": "Protected or excluded?",
+  "guide.news.clarity.b1": "Protected applications pause everything while they are in front. Exclusion rules leave out only that program, and the rest keeps being recorded.",
+  "guide.news.clarity.b2": "The Overview now shows the rules in effect and how many times each exclusion left something out. It is only a count, kept in memory.",
   "guide.news.picker.title": "Pick programs instead of typing",
   "guide.news.picker.b1": "When you exclude a program, search for it by name, choose it from the list, or browse for its file. The list also reads your Start Menu shortcuts, so many more programs show up, with the names you know.",
   "guide.news.picker.b2": "The list is built on your PC when you open it. Nothing from it is stored or sent anywhere.",

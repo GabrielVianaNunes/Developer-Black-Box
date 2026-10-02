@@ -58,6 +58,12 @@ export interface Overview {
   exitsLastHour: number;
 }
 
+/** Quantas vezes uma regra de exclusão deixou algo de fora desde que o app abriu: só o programa e um número. */
+export interface OmittedCount {
+  exe: string;
+  count: number;
+}
+
 export interface Incident {
   id: number;
   kind: string;

@@ -404,6 +404,7 @@ pub fn run() {
             pause_recording,
             resume_recording,
             commands::get_overview,
+            commands::get_omitted_counts,
             commands::get_activity,
             commands::get_processes,
             commands::list_incidents,
