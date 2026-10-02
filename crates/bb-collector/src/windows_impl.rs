@@ -185,6 +185,12 @@ fn input_desktop_unavailable() -> bool {
     }
 }
 
+/// Nome do executável da janela em primeiro plano AGORA, pela mesma função que o Guard usa. Serve ao botão "Detectar o
+/// app em primeiro plano": o que ela devolve é exatamente o que as regras de privacidade comparam.
+pub fn current_foreground_exe() -> Option<ExeName> {
+    foreground_exe()
+}
+
 /// Nome do executável da janela em primeiro plano. Nunca lê o título da janela e
 /// descarta o caminho. `None` se não puder ser identificado (o Guard trata como
 /// desconhecido e bloqueia).

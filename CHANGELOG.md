@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- "Detect the app in front" in the Privacy tab: click, bring the program you want to the front during a 5-second countdown, and the app shows
+  the program name it sees (the same name the privacy rules compare), with buttons to add it to the protected applications or to the
+  exclusion rules. It only reads the executable name, never the window title, and saves and sends nothing; the buttons only change the
+  draft, which still needs Apply. It warns about shared system programs (such as msedgewebview2.exe) and never offers Developer Black Box itself.
+
 ## [0.3.7] - 2026-10-02
 
 ### Fixed

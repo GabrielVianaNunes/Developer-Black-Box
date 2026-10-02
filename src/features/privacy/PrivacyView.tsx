@@ -5,6 +5,7 @@ import { getConfigHistory } from "../../services/backend";
 import type { Status } from "../../types/status";
 import { AppPicker, useAppCandidates } from "./AppPicker";
 import { AuthorizationsCard } from "./AuthorizationsCard";
+import { DetectForegroundCard } from "./DetectForegroundCard";
 import { ExclusionRulesCard } from "./ExclusionRulesCard";
 import { StartupCard } from "./StartupCard";
 import { NewsCard } from "./NewsCard";
@@ -24,6 +25,8 @@ export function PrivacyView({ status, onShowNews, privacy }: { status: Status; o
         <p>{t("privacy.currentState", { text: status.text })}</p>
         <p className="muted">{t("privacy.guardText")}</p>
       </div>
+
+      <DetectForegroundCard settings={draft} onChange={(next) => setDraft({ ...draft, ...next })} />
 
       <AppList
         title={t("privacy.protectedTitle")}
