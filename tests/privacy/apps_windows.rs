@@ -70,3 +70,33 @@ fn the_start_menu_adds_real_programs_with_friendly_names_quickly() {
     assert!(with_shortcut_name * 2 >= found.len(), "{with_shortcut_name} of {}", found.len());
     assert!(list.iter().all(|c| c.installed || c.running));
 }
+
+#[test]
+fn store_apps_are_listed_as_installed_with_valid_names_and_fast() {
+    use bb_collector::apps::store_packages;
+    let started = Instant::now();
+    let store = store_packages();
+    let elapsed = started.elapsed();
+    println!("{} store entries in {elapsed:?}", store.len());
+    assert!(elapsed.as_secs_f64() < 2.0, "store listing must stay fast, took {elapsed:?}");
+    for (exe, name) in &store {
+        assert!(exe.ends_with(".exe") && exe == &exe.to_lowercase() && ExeName::new(exe).is_ok(), "{exe}");
+        assert!(!name.trim().is_empty() && !name.starts_with('@') && !name.to_lowercase().starts_with("ms-resource:"), "{exe}: {name}");
+        assert!(!exe.contains(['\\', '/']), "{exe}");
+    }
+    // Todo app da Loja encontrado também aparece na lista final, como instalado.
+    let list = list_candidates();
+    for (exe, _) in store.iter().take(50) {
+        let c = list.iter().find(|c| &c.exe == exe).unwrap_or_else(|| panic!("{exe} missing from the list"));
+        assert!(c.installed, "{exe} must count as installed");
+    }
+}
+
+/// Sonda manual (ignorada na suíte): imprime os apps da Loja encontrados neste PC.
+#[test]
+#[ignore]
+fn probe_print_store_apps() {
+    for (exe, name) in bb_collector::apps::store_packages() {
+        println!("STORE {exe} | {name}");
+    }
+}
