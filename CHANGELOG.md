@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-10-02
+
 ### Fixed
 - Updating from 0.3.3 or earlier could keep showing the old app icon (the cube with a gray light beside it) on the taskbar button
   and on shortcuts: Windows keeps that icon in the memory of File Explorer, and no Windows notification renews it; only restarting
