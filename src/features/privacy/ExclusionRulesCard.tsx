@@ -1,11 +1,11 @@
 import { useI18n } from "../../i18n";
 import type { ExclusionKind, Settings } from "../../types/dashboard";
 import { AppPicker, useAppCandidates } from "./AppPicker";
-import { canToggle, KINDS, newRule, rulesFrom, toggle, toSettings, type Rule } from "./exclusionRules";
+import { canToggle, isExcludedWhole, KINDS, newRule, rulesFrom, setChildren, toggle, toSettings, type Rule } from "./exclusionRules";
 
 type Props = {
-  settings: Pick<Settings, "excludedApps" | "partialExclusions">;
-  onChange: (next: Pick<Settings, "excludedApps" | "partialExclusions">) => void;
+  settings: Pick<Settings, "excludedApps" | "partialExclusions" | "excludedTrees">;
+  onChange: (next: Pick<Settings, "excludedApps" | "partialExclusions" | "excludedTrees">) => void;
 };
 
 const KIND_LABEL: Record<ExclusionKind, "privacy.rule.lifecycle" | "privacy.rule.metrics" | "privacy.rule.crashes"> = {
@@ -65,6 +65,16 @@ export function ExclusionRulesCard({ settings, onChange }: Props) {
                 ))}
               </fieldset>
               <p className="muted small">{recordedAny ? t("privacy.rule.partial") : t("privacy.rule.nothing")}</p>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={rule.children}
+                  disabled={!isExcludedWhole(rule.recorded)}
+                  onChange={(e) => replace(rules.map((r) => (r.exe === rule.exe ? setChildren(r, e.target.checked) : r)))}
+                />
+                {t("privacy.rule.children")}
+              </label>
+              <p className="muted small">{isExcludedWhole(rule.recorded) ? t("privacy.rule.childrenHelp") : t("privacy.rule.childrenOff")}</p>
             </li>
           );
         })}

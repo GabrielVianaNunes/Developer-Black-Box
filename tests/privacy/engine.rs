@@ -401,3 +401,69 @@ fn collect_keys(j: &J, out: &mut BTreeSet<String>) {
         }
     }
 }
+
+fn tree_proc(pid: u32, start: i64, name: &str, parent: u32) -> ProcessSample {
+    ProcessSample { parent_pid: parent, ..proc(pid, start, name) }
+}
+
+/// Exclusão com processos filhos, na cadeia completa: o que chega ao DISCO (nunca só o que o Guard devolve).
+#[test]
+fn an_excluded_tree_never_reaches_the_disk_but_other_processes_with_the_same_names_do() {
+    let mut c = cfg();
+    c.excluded_apps.insert(ExeName::new("synth-root.exe").unwrap());
+    c.excluded_trees.insert(ExeName::new("synth-root.exe").unwrap());
+    let mut r = rig(c);
+    let mut clock = Clock(0);
+    clock.until_recording(&mut r);
+
+    r.world.borrow_mut().procs = vec![
+        proc(100, 1_000, "synth-editor.exe"),
+        // A raiz, o filho e o neto (o neto aparece ANTES dos pais no instantâneo: a ordem não importa).
+        tree_proc(300, 3_000, "synth-helper.exe", 200),
+        tree_proc(200, 2_000, "synth-helper.exe", 150),
+        tree_proc(150, 1_500, "synth-root.exe", 1),
+        // Outro processo com o mesmo nome do auxiliar, mas fora da árvore: continua gravado.
+        tree_proc(900, 2_500, "synth-helper.exe", 100),
+    ];
+    clock.tick(&mut r);
+    clock.tick(&mut r);
+    r.world.borrow_mut().procs.retain(|p| p.key.pid != 300); // o neto termina
+    clock.tick(&mut r);
+
+    let lines = persisted_lines(&mut r).join("\n");
+    assert!(!lines.contains("synth-root.exe"), "the root must never reach the disk");
+    // Só o auxiliar de FORA da árvore (pid 900) foi gravado, com início e métricas; os da árvore (pids 200 e 300) não.
+    assert!(lines.contains("\"pid\":900"), "the helper outside the tree is recorded: {lines}");
+    assert!(!lines.contains("\"pid\":200"), "the child must not be recorded");
+    assert!(!lines.contains("\"pid\":300"), "the grandchild must not be recorded (start, metrics or exit)");
+    assert!(!lines.contains("\"pid\":150"), "the root must not be recorded");
+}
+
+#[test]
+fn a_tree_rule_added_while_the_tree_is_running_stops_recording_it_on_the_next_cycle() {
+    let mut r = rig(cfg());
+    let mut clock = Clock(0);
+    clock.until_recording(&mut r);
+    r.world.borrow_mut().procs = vec![
+        proc(100, 1_000, "synth-editor.exe"),
+        tree_proc(150, 1_500, "synth-root.exe", 1),
+        tree_proc(200, 2_000, "synth-helper.exe", 150),
+    ];
+    clock.tick(&mut r);
+    let before = persisted_lines(&mut r).join("\n");
+    assert!(before.contains("\"pid\":200"), "recorded before the rule exists");
+
+    let mut rules = bb_engine::settings::Settings::default();
+    rules.stability_window_ms = 1_000;
+    rules.excluded_apps = vec!["synth-root.exe".into()];
+    rules.excluded_trees = vec!["synth-root.exe".into()];
+    r.engine.apply_settings(rules, clock.utc()).unwrap();
+    clock.until_recording(&mut r);
+    let marker = persisted_lines(&mut r).len();
+    clock.tick(&mut r);
+    clock.tick(&mut r);
+    let after = persisted_lines(&mut r);
+    let new_lines = after[marker..].join("\n");
+    assert!(!new_lines.contains("\"pid\":200") && !new_lines.contains("\"pid\":150"), "nothing of the tree after the rule: {new_lines}");
+    assert!(new_lines.contains("\"pid\":100"), "control: the editor is still recorded");
+}

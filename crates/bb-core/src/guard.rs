@@ -35,6 +35,9 @@ pub struct GuardConfig {
     /// Exclusões PARCIAIS: de cada programa listado, só os tipos de evento do conjunto são excluídos; o resto
     /// continua sendo gravado. Só estreita o que é gravado de um programa que o usuário escolheu excluir.
     pub partial_exclusions: HashMap<ExeName, ExclusionSet>,
+    /// Programas excluídos POR INTEIRO cuja exclusão vale também para os processos que eles iniciam (filhos, netos...).
+    /// Só tem efeito para quem também está em `excluded_apps`: uma exclusão parcial não se estende à árvore.
+    pub excluded_trees: HashSet<ExeName>,
     /// Tempo contínuo de contexto seguro exigido antes de gravar/retomar.
     pub stability_window_ms: u64,
     /// Observação mais velha que isto torna o Guard indisponível (fail-closed).
@@ -50,6 +53,7 @@ impl Default for GuardConfig {
                 .collect(),
             excluded_apps: HashSet::new(),
             partial_exclusions: HashMap::new(),
+            excluded_trees: HashSet::new(),
             stability_window_ms: 5_000,
             max_staleness_ms: 10_000,
         }
@@ -89,6 +93,22 @@ pub enum AuthError {
     NoSource,
 }
 
+/// Um processo em execução, como visto no instantâneo do ciclo (só para decidir a árvore; nada disto é gravado).
+#[derive(Clone, Copy, Debug)]
+pub struct ProcessRef<'a> {
+    pub key: ProcessKey,
+    pub exe: &'a ExeName,
+    pub parent_pid: u32,
+}
+
+/// Processo que está na árvore de um programa excluído: o horário de início identifica a instância (PID é reaproveitado)
+/// e `root` é o programa excluído de que ele descende.
+#[derive(Clone, Debug)]
+struct TreeEntry {
+    start_time_ms: i64,
+    root: ExeName,
+}
+
 #[derive(Clone, Copy)]
 enum Source {
     Metrics,
@@ -107,6 +127,9 @@ pub struct PrivacyGuard {
     /// instância são descartadas (fail-closed). O nome permite reavaliar a permissão a cada
     /// evento (exclusão nova, autorização expirada ou revogada).
     allowed: HashMap<ProcessKey, ExeName>,
+    /// Processos hoje na árvore de um programa excluído com a opção de filhos (por PID). Recalculada a cada ciclo por
+    /// `observe_processes`; só existe em memória.
+    tree: HashMap<u32, TreeEntry>,
     authorizations: Vec<Authorization>,
     next_seq: u64,
 }
@@ -121,6 +144,7 @@ impl PrivacyGuard {
             safe_since: None,
             safe_class: None,
             allowed: HashMap::new(),
+            tree: HashMap::new(),
             authorizations: Vec::new(),
             next_seq: 0,
         }
@@ -135,9 +159,73 @@ impl PrivacyGuard {
     /// A janela de estabilidade só vale a partir da próxima observação segura.
     pub fn update_config(&mut self, config: GuardConfig) {
         self.config = config;
+        // Uma raiz que deixou de ter a opção (ou deixou de ser excluída por inteiro) não mantém mais a árvore dela.
+        let roots: HashSet<ExeName> = self.tree_roots().cloned().collect();
+        self.tree.retain(|_, e| roots.contains(&e.root));
         // Uma janela mais longa não pode ser satisfeita retroativamente.
         self.safe_since = None;
         self.safe_class = None;
+    }
+
+    // ---- processos filhos de um programa excluído ----
+
+    /// Raízes de árvore: programas excluídos POR INTEIRO com a opção de excluir também o que eles iniciam.
+    fn tree_roots(&self) -> impl Iterator<Item = &ExeName> {
+        self.config.excluded_trees.iter().filter(|e| self.config.excluded_apps.contains(*e))
+    }
+
+    /// Atualiza, só em memória, quais processos em execução estão na árvore de um programa excluído. Deve ser chamado a
+    /// cada ciclo com o instantâneo COMPLETO de processos, ANTES de entregar os eventos do ciclo ao `admit`:
+    /// - a ordem do instantâneo não importa (a decisão é refeita até estabilizar);
+    /// - um filho só descende de quem começou ANTES dele (defesa contra PID reaproveitado);
+    /// - quem já estava na árvore continua nela enquanto o processo existir, mesmo que o pai tenha saído;
+    /// - processos que não aparecem mais saem da árvore.
+    pub fn observe_processes(&mut self, procs: &[ProcessRef<'_>]) {
+        let roots: HashSet<ExeName> = self.tree_roots().cloned().collect();
+        let mut next: HashMap<u32, TreeEntry> = HashMap::new();
+        if roots.is_empty() {
+            self.tree = next;
+            return;
+        }
+        // Quem já estava na árvore (mesmo PID e mesmo horário de início, raiz ainda válida) continua nela.
+        for p in procs {
+            if let Some(old) = self.tree.get(&p.key.pid) {
+                if old.start_time_ms == p.key.start_time_ms && roots.contains(&old.root) {
+                    next.insert(p.key.pid, old.clone());
+                }
+            }
+        }
+        // Novos membros: a própria raiz, ou quem descende de um membro que começou antes. Repete até estabilizar, porque
+        // o instantâneo pode listar o filho antes do pai (ou os dois com o mesmo horário de início).
+        loop {
+            let before = next.len();
+            for p in procs {
+                if next.contains_key(&p.key.pid) {
+                    continue;
+                }
+                let root = if roots.contains(p.exe) {
+                    Some(p.exe.clone())
+                } else if p.parent_pid != 0 {
+                    next.get(&p.parent_pid)
+                        .filter(|parent| parent.start_time_ms <= p.key.start_time_ms)
+                        .map(|parent| parent.root.clone())
+                } else {
+                    None
+                };
+                if let Some(root) = root {
+                    next.insert(p.key.pid, TreeEntry { start_time_ms: p.key.start_time_ms, root });
+                }
+            }
+            if next.len() == before {
+                break;
+            }
+        }
+        self.tree = next;
+    }
+
+    /// Esta instância está na árvore de um programa excluído?
+    fn in_excluded_tree(&self, key: &ProcessKey) -> bool {
+        self.tree.get(&key.pid).is_some_and(|e| e.start_time_ms == key.start_time_ms)
     }
 
     // ---- autorizações de teste ----
@@ -317,12 +405,19 @@ impl PrivacyGuard {
 
         match &kind {
             EventKind::ProcessStarted { key, exe_name, .. } => {
+                if self.in_excluded_tree(key) {
+                    return None;
+                }
                 if !self.permitted(exe_name, ExclusionKind::Lifecycle, now_ms) || !in_scope(exe_name) {
                     return None;
                 }
                 self.allowed.insert(*key, exe_name.clone());
             }
             EventKind::ProcessMetrics { key, .. } => {
+                if self.in_excluded_tree(key) {
+                    self.allowed.remove(key); // regra nova: a instância já acompanhada deixa de ser gravada
+                    return None;
+                }
                 let exe = self.allowed.get(key)?.clone();
                 if !self.permitted(&exe, ExclusionKind::Lifecycle, now_ms) {
                     self.allowed.remove(key); // regra nova ou autorização vencida/revogada
@@ -334,6 +429,10 @@ impl PrivacyGuard {
                 }
             }
             EventKind::ProcessExited { key, .. } => {
+                if self.in_excluded_tree(key) {
+                    self.allowed.remove(key);
+                    return None;
+                }
                 let exe = self.allowed.get(key)?.clone();
                 if !self.permitted(&exe, ExclusionKind::Lifecycle, now_ms) {
                     self.allowed.remove(key);

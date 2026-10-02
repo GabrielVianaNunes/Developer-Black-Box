@@ -22,6 +22,9 @@ pub struct Settings {
     /// Programas excluídos só em alguns tipos de evento (os outros continuam gravados). Uma regra que exclui
     /// todos os tipos é guardada como exclusão total em `excluded_apps`.
     pub partial_exclusions: Vec<PartialExclusion>,
+    /// Programas de `excluded_apps` cuja exclusão vale também para os processos que eles iniciam (filhos, netos...).
+    /// Só faz sentido para exclusão total: nomes que não estão em `excluded_apps` são descartados ao normalizar.
+    pub excluded_trees: Vec<String>,
     pub stability_window_ms: u64,
     /// Começa a gravar ao abrir o app. Padrão `false`: só grava depois de você autorizar.
     pub auto_start: bool,
@@ -38,6 +41,7 @@ impl Default for Settings {
             protected_apps: protected,
             excluded_apps: Vec::new(),
             partial_exclusions: Vec::new(),
+            excluded_trees: Vec::new(),
             stability_window_ms: g.stability_window_ms,
             auto_start: false,
             retention_max_mb: 256,
@@ -62,8 +66,11 @@ impl Settings {
                 ExeName::new(n).map_err(|_| bad_name.to_string())?;
             }
         }
-        if self.partial_exclusions.len() > MAX_APPS {
+        if self.partial_exclusions.len() > MAX_APPS || self.excluded_trees.len() > MAX_APPS {
             return Err("settings.too_many_excluded".into());
+        }
+        for n in &self.excluded_trees {
+            ExeName::new(n).map_err(|_| "settings.bad_excluded_name".to_string())?;
         }
         for rule in &self.partial_exclusions {
             ExeName::new(&rule.exe).map_err(|_| "settings.bad_excluded_name".to_string())?;
@@ -91,6 +98,7 @@ impl Settings {
                 .iter()
                 .filter_map(|r| ExeName::new(&r.exe).ok().map(|n| (n, r.excluded)))
                 .collect(),
+            excluded_trees: names(&self.excluded_trees),
             stability_window_ms: self.stability_window_ms,
             max_staleness_ms: GuardConfig::default().max_staleness_ms,
         }
@@ -128,6 +136,9 @@ impl Settings {
             }
         }
         self.excluded_apps = full.into_iter().collect();
+        // A opção dos filhos só vale para quem está excluído POR INTEIRO.
+        let all_out: BTreeSet<String> = self.excluded_apps.iter().cloned().collect();
+        self.excluded_trees = norm(std::mem::take(&mut self.excluded_trees)).into_iter().filter(|t| all_out.contains(t)).collect();
         self
     }
 
@@ -142,6 +153,7 @@ impl Settings {
             protected_apps: list("protected_apps", &d.protected_apps),
             excluded_apps: list("excluded_apps", &d.excluded_apps),
             partial_exclusions: load_partial(store),
+            excluded_trees: list("excluded_trees", &d.excluded_trees),
             stability_window_ms: num("stability_window_ms", d.stability_window_ms),
             auto_start: store.get_setting("auto_start").ok().flatten().map_or(d.auto_start, |v| v == "true"),
             retention_max_mb: num("retention_max_mb", d.retention_max_mb),
@@ -156,6 +168,7 @@ impl Settings {
         store.set_setting("protected_apps", &self.protected_apps.join("\n"))?;
         store.set_setting("excluded_apps", &self.excluded_apps.join("\n"))?;
         store.set_setting("partial_exclusions", &encode_partial(&self.partial_exclusions))?;
+        store.set_setting("excluded_trees", &self.excluded_trees.join("\n"))?;
         store.set_setting("stability_window_ms", &self.stability_window_ms.to_string())?;
         store.set_setting("auto_start", if self.auto_start { "true" } else { "false" })?;
         store.set_setting("retention_max_mb", &self.retention_max_mb.to_string())?;
@@ -178,6 +191,7 @@ impl Settings {
         };
         list_change("protected_apps", &self.protected_apps, &new.protected_apps, &mut out);
         list_change("excluded_apps", &self.excluded_apps, &new.excluded_apps, &mut out);
+        list_change("excluded_trees", &self.excluded_trees, &new.excluded_trees, &mut out);
         // Exclusões parciais: só a CHAVE e o tipo da mudança vão para o histórico, nunca os nomes nem os tipos.
         let (old_map, new_map): (std::collections::BTreeMap<_, _>, std::collections::BTreeMap<_, _>) = (
             self.partial_exclusions.iter().map(|r| (&r.exe, r.excluded)).collect(),
@@ -299,5 +313,43 @@ mod tests {
         assert_eq!(Settings::load(&store), s);
         store.set_setting("stability_window_ms", "1").unwrap();
         assert_eq!(Settings::load(&store), Settings::default());
+    }
+
+    #[test]
+    fn the_children_option_only_survives_for_a_full_exclusion_and_is_normalized() {
+        let mut s = Settings::default();
+        s.excluded_apps = vec!["Synth-Root.EXE".into()];
+        s.excluded_trees = vec!["synth-root.exe".into(), "SYNTH-ROOT.exe".into(), "never-excluded.exe".into(), " ".into()];
+        s.partial_exclusions = vec![PartialExclusion { exe: "synth-partial.exe".into(), excluded: ExclusionSet::new(false, true, false) }];
+        let n = s.normalized();
+        assert_eq!(n.excluded_trees, vec!["synth-root.exe".to_string()], "lowercase, no repeats, only fully excluded programs");
+        let mut p = Settings::default();
+        p.partial_exclusions = vec![PartialExclusion { exe: "synth-partial.exe".into(), excluded: ExclusionSet::new(false, true, false) }];
+        p.excluded_trees = vec!["synth-partial.exe".into()];
+        assert!(p.normalized().excluded_trees.is_empty(), "a partial rule is never extended to the tree");
+    }
+
+    #[test]
+    fn a_rule_that_stops_excluding_the_whole_program_loses_the_children_option() {
+        let mut s = Settings::default();
+        s.excluded_apps = vec![];
+        s.excluded_trees = vec!["synth-root.exe".into()];
+        assert!(s.normalized().excluded_trees.is_empty());
+    }
+
+    #[test]
+    fn the_children_option_reaches_the_guard_and_changes_are_logged_without_names() {
+        let mut s = Settings::default();
+        s.excluded_apps = vec!["synth-root.exe".into()];
+        s.excluded_trees = vec!["synth-root.exe".into()];
+        let g = s.normalized().guard_config();
+        assert!(g.excluded_trees.contains(&ExeName::new("synth-root.exe").unwrap()));
+        let before = Settings::default();
+        let mut after = before.clone();
+        after.excluded_apps = vec!["synth-root.exe".into()];
+        after.excluded_trees = vec!["synth-root.exe".into()];
+        let diff = before.diff(&after);
+        assert!(diff.contains(&("excluded_trees", "added")), "{diff:?}");
+        assert!(diff.iter().all(|(k, c)| !k.contains("synth") && !c.contains("synth")), "never values");
     }
 }

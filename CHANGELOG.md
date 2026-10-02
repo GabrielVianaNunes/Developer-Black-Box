@@ -7,6 +7,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- Exclusion rules can now also leave out the programs an excluded program starts: a new checkbox, "Also leave out the programs it starts", on
+  each rule that excludes the whole program. Helper processes of apps built on WebView2 or Electron (such as the msedgewebview2.exe processes
+  of the WhatsApp desktop app) are then never recorded (start, CPU and memory, end), nor are their own children, while a program with the same
+  name that something else started is still recorded. The tree is recomputed every cycle from the full process list, a child only counts if it
+  started after its parent (so a reused process id never inherits the exclusion), and a child stays excluded even if its parent exits. A new
+  or removed rule takes effect on the next cycle with the programs already running, and exports apply the rule again to older data. It only
+  applies to a full exclusion, never to one that still records something. Crash and hang records only carry the program name, so they cannot be
+  tied to a tree.
+
+### Added
 - "Detect the app in front" in the Privacy tab: click, bring the program you want to the front during a 5-second countdown, and the app shows
   the program name it sees (the same name the privacy rules compare), with buttons to add it to the protected applications or to the
   exclusion rules. It only reads the executable name, never the window title, and saves and sends nothing; the buttons only change the
