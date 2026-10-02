@@ -31,6 +31,16 @@ test("after installing or updating, the installer asks Windows to refresh icons 
   assert.ok(/set_overlay_icon\(Some\(Image::new_owned\(icon::render_dot\(light, size\)/.test(lib), "the state color goes in the taskbar badge");
 });
 
+test("restarting File Explorer is only offered, never forced: Yes/No question, default No when silent, and only after an old-icon version", () => {
+  assert.ok(/MessageBox MB_YESNO\|MB_ICONQUESTION "\$R9" \/SD IDNO IDNO bb_skip_explorer_restart/.test(hooks), "a question, silent default No");
+  const kill = hooks.indexOf("taskkill /f /im explorer.exe");
+  const ask = hooks.indexOf("MessageBox MB_YESNO|MB_ICONQUESTION");
+  const guard = hooks.indexOf("${If} $BBIconRefresh = 1");
+  assert.ok(guard > 0 && ask > guard && kill > ask, "the kill comes after the guard and after the question");
+  assert.equal(hooks.split("taskkill").length - 1, 1, "Explorer is stopped in exactly one place");
+  assert.ok(/ReadRegStr \$R0 SHCTX "\$\{UNINSTKEY\}" "DisplayVersion"/.test(hooks), "the previous version is read before installing");
+});
+
 const nsis = [process.env.BB_MAKENSIS, join(process.env.LOCALAPPDATA ?? "", "tauri", "NSIS", "makensis.exe")].find((p) => p && existsSync(p));
 
 test("new installs into Program Files or straight into AppData are refused; the suggested folder and others are accepted; updates always pass", { skip: !nsis && "makensis not available" }, () => {
@@ -75,6 +85,44 @@ test("new installs into Program Files or straight into AppData are refused; the 
     for (const f of ["C:\\Program Files\\Black", join(local, "Developer Black Box")]) {
       assert.equal(exit(f, true), 0, `an update is never refused: ${f}`);
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the previous version decides whether to offer the Explorer restart: 0.1.x, 0.2.x and 0.3.0 to 0.3.3 yes; 0.3.4 and later no", { skip: !nsis && "makensis not available" }, () => {
+  const dir = mkdtempSync(join(tmpdir(), "bb-nsis-icon-"));
+  try {
+    const src = [
+      "Unicode true",
+      "RequestExecutionLevel user",
+      "SilentInstall silent",
+      'OutFile "harness.exe"',
+      "Var UpdateMode",
+      "!include LogicLib.nsh",
+      `!include "${hooksPath}"`,
+      "Section",
+      "  ReadEnvStr $R0 BB_PREV",
+      "  !insertmacro BB_CLASSIFY_PREVIOUS_ICON",
+      "  ${If} $BBIconRefresh = 1",
+      "    SetErrorLevel 7",
+      "  ${Else}",
+      "    SetErrorLevel 0",
+      "  ${EndIf}",
+      "SectionEnd",
+      "",
+    ].join("\r\n");
+    writeFileSync(join(dir, "harness.nsi"), src);
+    const built = spawnSync(nsis, ["harness.nsi"], { cwd: dir, encoding: "utf8" });
+    assert.equal(built.status, 0, built.stdout + built.stderr);
+    const exit = (prev) => {
+      const env = { ...process.env };
+      delete env.BB_PREV;
+      if (prev) env.BB_PREV = prev;
+      return spawnSync(`"${join(dir, "harness.exe")}" /S`, { env, shell: true, windowsVerbatimArguments: true }).status;
+    };
+    for (const v of ["0.1.0", "0.1.1", "0.1.1-rc.1", "0.1.2", "0.2.0", "0.3.0", "0.3.1", "0.3.2", "0.3.3"]) assert.equal(exit(v), 7, `offer for ${v}`);
+    for (const v of ["0.3.4", "0.3.5", "0.3.10", "0.30.0", "0.4.0", "1.0.0", ""]) assert.equal(exit(v), 0, `no offer for ${v || "(none)"}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

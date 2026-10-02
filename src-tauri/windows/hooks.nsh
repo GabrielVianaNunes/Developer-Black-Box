@@ -78,15 +78,56 @@
   ${EndIf}
 !macroend
 
-!macro NSIS_HOOK_PREINSTALL
-  !insertmacro BB_CHECK_INSTDIR
+; Ícone antigo em cache. Até a 0.3.3 o ícone do executável trazia uma luz cinza ao lado do cubo; desde a 0.3.4 é só o cubo.
+; O Windows guarda o ícone antigo na MEMÓRIA do Explorer e nenhum aviso (SHChangeNotify, ie4uinit, atalho regravado) o
+; invalida; medido em laboratório: só reiniciar o Explorer renova. Reiniciar o Explorer fecha por alguns segundos a barra
+; de tarefas e as janelas do Explorador de Arquivos, por isso só acontece SE a pessoa aceitar e SÓ ao atualizar de uma
+; versão com o ícone antigo. Em instalação silenciosa a resposta padrão é "Não".
+Var BBIconRefresh
+
+; Entrada: $R0 = versão anterior ("" se não havia). Saída: $BBIconRefresh = 1 se ela tinha o ícone antigo (0.1.x, 0.2.x,
+; 0.3.0 a 0.3.3), senão 0. Usa $R1.
+!macro BB_CLASSIFY_PREVIOUS_ICON
+  StrCpy $BBIconRefresh 0
+  StrCpy $R1 $R0 4
+  ${If} $R1 == "0.1."
+  ${OrIf} $R1 == "0.2."
+    StrCpy $BBIconRefresh 1
+  ${EndIf}
+  StrLen $R1 $R0
+  ${If} $R1 = 5
+    ${If} $R0 == "0.3.0"
+    ${OrIf} $R0 == "0.3.1"
+    ${OrIf} $R0 == "0.3.2"
+    ${OrIf} $R0 == "0.3.3"
+      StrCpy $BBIconRefresh 1
+    ${EndIf}
+  ${EndIf}
 !macroend
 
-; Depois de instalar ou atualizar, pede ao Windows que renove os ícones (SHChangeNotify com SHCNE_ASSOCCHANGED, a
-; notificação oficial de "os ícones mudaram"). Sem isso o Windows continua mostrando no botão da barra de tarefas o
-; ícone do executável que ele guardou em cache de uma versão anterior. Não altera nenhum arquivo nem configuração.
+!macro NSIS_HOOK_PREINSTALL
+  !insertmacro BB_CHECK_INSTDIR
+  ; versão instalada ANTES desta (lida antes de o instalador gravar a nova)
+  ReadRegStr $R0 SHCTX "${UNINSTKEY}" "DisplayVersion"
+  !insertmacro BB_CLASSIFY_PREVIOUS_ICON
+!macroend
+
+; Depois de instalar ou atualizar: pede ao Windows que renove os ícones (SHChangeNotify com SHCNE_ASSOCCHANGED; não altera
+; nenhum arquivo) e, se a versão anterior tinha o ícone antigo, oferece reiniciar o Explorer para renová-lo de verdade.
 !macro NSIS_HOOK_POSTINSTALL
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, p 0, p 0)'
+  ${If} $BBIconRefresh = 1
+    ${If} $LANGUAGE = 1046
+      StrCpy $R9 "Esta atualização troca o ícone do aplicativo, mas o Windows guarda o ícone antigo na memória do Explorador de Arquivos.$\r$\n$\r$\nReiniciar o Explorador de Arquivos agora? A barra de tarefas e as janelas do Explorador de Arquivos fecham por alguns segundos. Nada é perdido. Se você escolher Não, o ícone novo aparece depois de reiniciar o Windows."
+    ${Else}
+      StrCpy $R9 "This update changes the app icon, but Windows keeps the old icon in memory inside File Explorer.$\r$\n$\r$\nRestart File Explorer now? The taskbar and any open File Explorer windows close for a few seconds. Nothing is lost. If you choose No, the new icon appears after you restart Windows."
+    ${EndIf}
+    MessageBox MB_YESNO|MB_ICONQUESTION "$R9" /SD IDNO IDNO bb_skip_explorer_restart
+    nsExec::Exec 'taskkill /f /im explorer.exe'
+    Sleep 1500
+    Exec 'explorer.exe'
+    bb_skip_explorer_restart:
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

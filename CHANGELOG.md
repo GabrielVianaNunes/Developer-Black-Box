@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- Updating from 0.3.3 or earlier could keep showing the old app icon (the cube with a gray light beside it) on the taskbar button
+  and on shortcuts: Windows keeps that icon in the memory of File Explorer, and no Windows notification renews it; only restarting
+  File Explorer does. When the installer detects an update from one of those versions it now asks, once, whether to restart File
+  Explorer (the taskbar and open File Explorer windows close for a few seconds; nothing is lost). Answering No, or a silent
+  install, restarts nothing; the new icon then appears after restarting Windows.
+
 ## [0.3.5] - 2026-10-01
 
 ### Fixed
