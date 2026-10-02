@@ -152,3 +152,9 @@ export interface AppCandidate {
   running: boolean;
   installed: boolean;
 }
+
+/** Resultado de "Detectar o app em primeiro plano": só o nome do executável e se era o próprio app. */
+export interface Detection {
+  exe: string | null;
+  isSelf: boolean;
+}

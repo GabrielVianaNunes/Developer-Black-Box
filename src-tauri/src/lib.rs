@@ -420,6 +420,7 @@ pub fn run() {
             guide::mark_tour_seen,
             apps::list_app_candidates,
             apps::pick_executable,
+            apps::detect_foreground_app,
             updates::get_update_state,
             updates::set_update_check,
             updates::check_for_updates,

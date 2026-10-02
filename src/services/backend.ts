@@ -8,6 +8,7 @@ import type {
   AppCandidate,
   Authorization,
   ConfigChange,
+  Detection,
   ExportResult,
   Incident,
   IncidentDetail,
@@ -80,6 +81,8 @@ export const downloadUpdate = () => invoke<UpdateState>("download_update");
 export const installUpdate = () => invoke<void>("install_update");
 
 // Escolha de programas para as listas de privacidade (a lista é montada na hora e nunca é gravada)
+/** Espera `delayMs` (para a pessoa trazer outro app para a frente) e devolve o NOME do executável em primeiro plano. */
+export const detectForegroundApp = (delayMs: number) => invoke<Detection>("detect_foreground_app", { delayMs });
 export const listAppCandidates = () => invoke<AppCandidate[]>("list_app_candidates");
 export const pickExecutable = (title: string, filterLabel: string) =>
   invoke<string | null>("pick_executable", { title, filterLabel });

@@ -18,4 +18,4 @@ pub use sample::{CollectError, ContextSource, ProcessSample, ProcessSource, Syst
 #[cfg(windows)]
 pub use eventlog_win::WindowsCrashSource;
 #[cfg(windows)]
-pub use windows_impl::{WindowsContextSource, WindowsProcessSource};
+pub use windows_impl::{current_foreground_exe, WindowsContextSource, WindowsProcessSource};
