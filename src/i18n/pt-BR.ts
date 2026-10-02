@@ -149,6 +149,9 @@ export const ptBR: Record<keyof typeof en, string> = {
   "privacy.autoStartHelp":
     "Desligado por padrão: sem isso, o app abre pausado e só grava depois que você clicar em \"Retomar gravação\".",
   "privacy.apply": "Aplicar",
+  "privacy.unsaved.title": "Alterações de privacidade não salvas",
+  "privacy.unsaved.text": "As regras só valem depois de você aplicar.",
+  "privacy.unsaved.review": "Ir para Privacidade",
   "privacy.discard": "Descartar",
   "privacy.applied":
     "Configurações aplicadas. A regra nova já vale; a gravação só volta depois de uma nova janela de estabilidade.",

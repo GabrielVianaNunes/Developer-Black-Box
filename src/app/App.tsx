@@ -4,7 +4,9 @@ import { StatusLight } from "../components/StatusLight";
 import { GuideModal } from "../guide/GuideModal";
 import { newsFor } from "../guide/news";
 import { TOUR, type Step } from "../guide/steps";
+import { UnsavedBar } from "../components/UnsavedBar";
 import { UpdateBanner } from "../components/UpdateBanner";
+import { usePrivacyDraft } from "./usePrivacyDraft";
 import { useUpdate } from "./useUpdate";
 import { ActivityView } from "../features/activity/ActivityView";
 import { IncidentsView } from "../features/incidents/IncidentsView";
@@ -35,6 +37,7 @@ export function App() {
   const [view, setView] = useState<ViewId>("overview");
   const [version, setVersion] = useState<string | null>(null);
   const updates = useUpdate();
+  const privacy = usePrivacyDraft();
   const [guideOpen, setGuideOpen] = useState(false);
   const [news, setNews] = useState<Step[] | null>(null);
   const [tourSeen, setTourSeen] = useState(true); // só abre sozinho depois de o backend dizer que é um usuário novo
@@ -133,6 +136,7 @@ export function App() {
   return (
     <main className="page">
       {toprow}
+      <UnsavedBar draft={privacy} onPrivacyTab={view === "privacy"} goToPrivacy={() => setView("privacy")} />
       <UpdateBanner state={updates.state} download={updates.download} install={updates.install} installing={updates.installing} actionError={updates.actionError} />
       <header className="statusbar card" aria-live="polite">
         <div className="state-row">
@@ -171,7 +175,7 @@ export function App() {
       {view === "activity" && <ActivityView />}
       {view === "processes" && <ProcessesView />}
       {view === "incidents" && <IncidentsView />}
-      {view === "privacy" && <PrivacyView status={status} onShowNews={() => setNews(newsFor(null, version ?? ""))} />}
+      {view === "privacy" && <PrivacyView status={status} onShowNews={() => setNews(newsFor(null, version ?? ""))} privacy={privacy} />}
       {view === "storage" && <StorageView />}
     </main>
   );

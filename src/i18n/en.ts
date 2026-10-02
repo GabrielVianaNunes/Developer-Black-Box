@@ -146,6 +146,9 @@ export const en = {
   "privacy.autoStartHelp":
     "Off by default: without it the app opens paused and only records after you click \"Resume recording\".",
   "privacy.apply": "Apply",
+  "privacy.unsaved.title": "Unsaved privacy changes",
+  "privacy.unsaved.text": "Rules only take effect after you apply them.",
+  "privacy.unsaved.review": "Go to Privacy",
   "privacy.discard": "Discard",
   "privacy.applied":
     "Settings applied. The new rule is already in effect; recording only resumes after a new stability window.",
