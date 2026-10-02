@@ -3,6 +3,7 @@
 pub mod apps;
 pub mod differ;
 pub mod eventlog;
+pub mod hosted;
 pub mod lnk;
 pub mod sample;
 #[cfg(windows)]

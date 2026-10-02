@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- Protected applications that are Windows (UWP) apps, such as Calculator or Settings, never paused the recording: for them the window in front
+  belongs to the Windows window host (ApplicationFrameHost.exe), so the program name never matched the list. The app now finds the real app
+  behind the host (the child window of class Windows.UI.Core.CoreWindow, from another process) and uses its name. If the real app cannot be
+  identified, or two different apps are found, the program in front is treated as unknown and recording is suspended, never as the host. Only
+  window classes and process ids are read, never window titles.
+
 ### Added
 - Exclusion rules can now also leave out the programs an excluded program starts: a new checkbox, "Also leave out the programs it starts", on
   each rule that excludes the whole program. Helper processes of apps built on WebView2 or Electron (such as the msedgewebview2.exe processes
