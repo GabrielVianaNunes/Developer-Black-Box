@@ -23,3 +23,7 @@ path = "../../tests/privacy/engine.rs"
 [[test]]
 name = "privacy_incidents"
 path = "../../tests/privacy/incidents.rs"
+
+[[test]]
+name = "privacy_health"
+path = "../../tests/privacy/health.rs"

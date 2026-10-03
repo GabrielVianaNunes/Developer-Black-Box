@@ -48,6 +48,28 @@ pub struct ProcessKey {
     pub start_time_ms: i64,
 }
 
+/// Categoria de um evento de saúde da máquina. Enumeração FECHADA: o que o Windows escreveu na mensagem
+/// nunca chega aqui, só em qual destas famílias o evento se encaixa.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+pub enum HealthCategory {
+    /// Desligamento inesperado (Kernel-Power 41, EventLog 6008).
+    UnexpectedShutdown,
+    /// Tela azul (código de verificação numérico).
+    BugCheck,
+    /// Erro de hardware reportado pelo WHEA.
+    HardwareError,
+    /// Reinício do driver de vídeo (Display 4101).
+    DisplayDriverReset,
+    /// Erro do driver de disco.
+    DiskError,
+    /// Erro do sistema de arquivos NTFS.
+    FileSystemError,
+    /// Serviço do Windows que encerrou sem querer (só a contagem; nunca o nome do serviço).
+    ServiceCrash,
+    /// Falha na instalação de uma atualização do Windows (só o código de erro).
+    UpdateFailure,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum EventKind {
     ProcessStarted { key: ProcessKey, exe_name: ExeName, parent_pid: u32 },
@@ -62,6 +84,10 @@ pub enum EventKind {
     RecorderStateChanged { state: RecorderState, reason: ReasonCode },
     /// Marcador pré-definido pelo usuário; sem texto.
     UserMarker { code: u16 },
+    /// Evento de saúde da máquina vindo do Event Log `System`. Só a categoria, o ID do evento (de uma lista fixa) e
+    /// um número opcional (ex. o código da tela azul); nunca o texto da mensagem, nomes de serviço, caminhos ou usuários.
+    /// Só `PrivacyGuard::admit_health` cria este evento, porque ele não depende do app em primeiro plano.
+    HealthEvent { category: HealthCategory, event_id: u16, code: Option<u32> },
 }
 
 /// Só o Privacy Guard constrói este tipo (construtor `pub(crate)`), então o

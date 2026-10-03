@@ -3,6 +3,7 @@
 pub mod apps;
 pub mod differ;
 pub mod eventlog;
+pub mod healthlog;
 pub mod hosted;
 pub mod lnk;
 pub mod sample;
@@ -15,8 +16,9 @@ pub mod windows_impl;
 
 pub use differ::{Differ, MetricsConfig};
 pub use eventlog::{CrashKind, CrashRecord, CrashSource};
+pub use healthlog::{HealthRecord, HealthSource};
 pub use sample::{CollectError, ContextSource, ProcessSample, ProcessSource, SystemSample};
 #[cfg(windows)]
-pub use eventlog_win::WindowsCrashSource;
+pub use eventlog_win::{WindowsCrashSource, WindowsHealthSource};
 #[cfg(windows)]
 pub use windows_impl::{current_foreground_exe, WindowsContextSource, WindowsProcessSource};

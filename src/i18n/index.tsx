@@ -156,6 +156,18 @@ export function I18nProvider({ children }: { children: ReactNode }) {
           return t("detail.appCrash", { code: `0x${d.exceptionCode.toString(16).toUpperCase().padStart(8, "0")}` });
         case "appHang":
           return t("detail.appHang");
+        case "healthEvent": {
+          const category = lookup("health.category", d.category);
+          if (d.value == null) return t("detail.healthEvent", { category, id: d.eventId });
+          // Contagem de quedas do serviço em decimal; os demais números são códigos de erro, em hexadecimal.
+          return d.category === "ServiceCrash"
+            ? t("detail.healthEventCount", { category, id: d.eventId, n: d.value })
+            : t("detail.healthEventCode", {
+                category,
+                id: d.eventId,
+                code: `0x${d.value.toString(16).toUpperCase().padStart(8, "0")}`,
+              });
+        }
         case "userMarker":
           return t("detail.userMarker", { n: d.marker });
         case "recorderStateChanged":

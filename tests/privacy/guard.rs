@@ -295,3 +295,63 @@ fn admitted_events_get_increasing_sequence_numbers() {
     let b = g.admit(t, 2, started(51, "synth-editor.exe")).unwrap();
     assert!(b.seq() > a.seq());
 }
+
+// ---- eventos de saúde da máquina: porta própria, mesmas travas essenciais ----
+
+fn health_event() -> EventKind {
+    EventKind::HealthEvent { category: bb_core::HealthCategory::BugCheck, event_id: 1001, code: Some(0xd1) }
+}
+
+#[test]
+fn the_regular_door_never_admits_a_health_event() {
+    let (mut g, t) = recording_guard();
+    assert!(g.admit(t, 0, health_event()).is_none(), "health has its own door");
+    assert!(g.admit_health(t, 0, health_event()).is_some(), "positive control: the health door works while recording");
+}
+
+#[test]
+fn the_health_door_only_admits_health_events() {
+    let (mut g, t) = recording_guard();
+    assert!(g.admit_health(t, 0, started(1, "synth-editor.exe")).is_none());
+    assert!(g.admit_health(t, 0, EventKind::UserMarker { code: 1 }).is_none());
+    assert!(g.admit_health(t, 0, EventKind::SystemMetrics { cpu_permille: 1, mem_used_kb: 1, mem_total_kb: 2 }).is_none());
+}
+
+#[test]
+fn health_is_admitted_during_a_privacy_block() {
+    let (mut g, t) = recording_guard();
+    g.observe(t + 1, protected_obs());
+    assert_eq!(g.state(t + 1).0, RecorderState::PrivacyBlocked);
+    assert!(g.admit(t + 1, 0, started(1, "synth-editor.exe")).is_none(), "control: activity is blocked");
+    assert!(g.admit_health(t + 1, 0, health_event()).is_some(), "health does not depend on the foreground app");
+}
+
+#[test]
+fn manual_pause_always_beats_health() {
+    let (mut g, t) = recording_guard();
+    g.pause_manual();
+    assert!(!g.health_allowed(t));
+    assert!(g.admit_health(t, 0, health_event()).is_none());
+    g.resume_manual(t);
+    assert!(g.admit_health(t, 0, health_event()).is_some(), "control: back after the resume");
+}
+
+#[test]
+fn health_is_refused_before_the_first_observation_and_during_shutdown() {
+    let mut g = PrivacyGuard::new(cfg());
+    assert!(g.admit_health(0, 0, health_event()).is_none(), "fail closed before any observation");
+    g.observe(0, safe_obs());
+    assert!(g.admit_health(0, 0, health_event()).is_some());
+    g.begin_shutdown();
+    assert!(g.admit_health(0, 0, health_event()).is_none());
+}
+
+#[test]
+fn health_is_not_collected_in_restricted_test_mode() {
+    let mut g = PrivacyGuard::new(cfg());
+    g.observe(0, protected_obs());
+    assert!(g.admit_health(0, 0, health_event()).is_some(), "control: blocked but not restricted");
+    g.authorize(0, exe("chrome.exe"), 60_000, true, false).unwrap();
+    g.observe(1, protected_obs());
+    assert!(g.admit_health(1, 0, health_event()).is_none(), "only the authorized app may be collected in this mode");
+}

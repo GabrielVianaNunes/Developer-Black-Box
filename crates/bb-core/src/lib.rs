@@ -5,7 +5,7 @@ pub mod exclusion;
 pub mod guard;
 pub mod state;
 
-pub use event::{EventKind, ExeName, ExeNameError, ProcessKey, ValidatedEvent};
+pub use event::{EventKind, ExeName, ExeNameError, HealthCategory, ProcessKey, ValidatedEvent};
 pub use exclusion::{ExclusionKind, ExclusionSet};
 pub use guard::{
     AuthError, Authorization, GuardConfig, Observation, PrivacyGuard, ProcessRef, MAX_AUTHORIZATION_MS,

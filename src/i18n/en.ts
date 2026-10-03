@@ -283,6 +283,7 @@ export const en = {
   "kind.AppCrash": "Application crash",
   "kind.AppHang": "Application not responding",
   "kind.RecorderStateChanged": "Recorder state",
+  "kind.HealthEvent": "System health",
   "kind.UserMarker": "Marker",
 
   // ---- event details (formatted from code + numbers) ----
@@ -293,9 +294,22 @@ export const en = {
   "detail.systemMetrics": "CPU {cpu} · memory {used} of {total}",
   "detail.appCrash": "exception code {code}",
   "detail.appHang": "application stopped responding",
+  "detail.healthEvent": "{category} · event {id}",
+  "detail.healthEventCode": "{category} · event {id} · code {code}",
+  "detail.healthEventCount": "{category} · event {id} · count {n}",
   "detail.userMarker": "marker {n}",
   "detail.recorderStateChanged": "recorder state changed",
   "detail.unknown": "—",
+
+  // ---- system health events (Windows Event Log, fixed list; never the message text) ----
+  "health.category.UnexpectedShutdown": "Unexpected shutdown",
+  "health.category.BugCheck": "Blue screen (stop code)",
+  "health.category.HardwareError": "Hardware error (WHEA)",
+  "health.category.DisplayDriverReset": "Display driver reset",
+  "health.category.DiskError": "Disk error",
+  "health.category.FileSystemError": "File system (NTFS) error",
+  "health.category.ServiceCrash": "Windows service stopped unexpectedly",
+  "health.category.UpdateFailure": "Windows Update install failed",
 
   // ---- incidents: kinds, severity, states, summaries ----
   "incidentKind.manual": "Manual capture",
