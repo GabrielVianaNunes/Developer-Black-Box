@@ -486,7 +486,7 @@ impl PrivacyGuard {
             // Somente o recorder/Guard produz mudanças de estado.
             EventKind::RecorderStateChanged { .. } => return None,
             // Saúde da máquina tem porta própria (`admit_health`): aqui nunca entra, para que as duas regras não se misturem.
-            EventKind::HealthEvent { .. } | EventKind::InventoryChange { .. } => return None,
+            EventKind::HealthEvent { .. } | EventKind::InventoryChange { .. } | EventKind::PowerStatus { .. } => return None,
         }
         let seq = self.next_seq;
         self.next_seq += 1;
@@ -504,7 +504,7 @@ impl PrivacyGuard {
     /// Porta dos eventos de saúde da máquina (Event Log `System`, inventário, energia, contadores). Só aceita tipos de
     /// saúde; qualquer outro devolve `None`.
     pub fn admit_health(&mut self, now_ms: u64, ts_utc_ms: i64, kind: EventKind) -> Option<ValidatedEvent> {
-        if !matches!(kind, EventKind::HealthEvent { .. } | EventKind::InventoryChange { .. }) || !self.health_allowed(now_ms) {
+        if !matches!(kind, EventKind::HealthEvent { .. } | EventKind::InventoryChange { .. } | EventKind::PowerStatus { .. }) || !self.health_allowed(now_ms) {
             return None;
         }
         let seq = self.next_seq;

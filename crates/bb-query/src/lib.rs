@@ -71,6 +71,8 @@ pub enum Detail {
     HealthEvent { category: String, event_id: u64, value: Option<u64> },
     /// Mudança de inventário: item (enumeração fechada) e valores numéricos anterior e novo.
     InventoryChange { item: String, previous: Option<u64>, current: Option<u64> },
+    /// Energia: tomada ("offline" ou "online"; ausente = desconhecida) e carga em porcentagem.
+    PowerStatus { ac: Option<String>, charge_percent: Option<u64> },
     UserMarker { marker: u64 },
     RecorderStateChanged,
     Unknown,
@@ -127,6 +129,10 @@ fn row_of(e: &Ev, exes: &HashMap<(u64, i64), String>) -> ActivityRow {
             item: e.body.get("item").and_then(Value::as_str).unwrap_or("").to_owned(),
             previous: e.body.get("previous").and_then(Value::as_u64),
             current: e.body.get("current").and_then(Value::as_u64),
+        },
+        "PowerStatus" => Detail::PowerStatus {
+            ac: e.body.get("ac").and_then(Value::as_str).map(|s| s.to_lowercase()),
+            charge_percent: e.body.get("charge_percent").and_then(Value::as_u64),
         },
         "UserMarker" => Detail::UserMarker { marker: n("code") },
         "RecorderStateChanged" => Detail::RecorderStateChanged,

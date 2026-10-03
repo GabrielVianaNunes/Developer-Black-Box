@@ -68,6 +68,17 @@ pub enum HealthCategory {
     ServiceCrash,
     /// Falha na instalação de uma atualização do Windows (só o código de erro).
     UpdateFailure,
+    /// O computador entrou em suspensão ou hibernação (Kernel-Power 42; o número é o estado de destino).
+    SleepEntered,
+    /// O computador voltou da suspensão (Kernel-Power 107).
+    Resumed,
+}
+
+/// Tomada de energia. Enumeração fechada; "desconhecido" é `None` no evento.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+pub enum AcLine {
+    Offline,
+    Online,
 }
 
 /// O que o inventário acompanha. Enumeração fechada; cada item tem um valor NUMÉRICO (ver `bb-collector::inventory`).
@@ -110,6 +121,9 @@ pub enum EventKind {
     /// Mudança de inventário entre duas leituras: valor anterior e novo (números; `None` = não lido). Nunca número de
     /// série, UUID, nome do computador ou qualquer identificador. Mesma porta do evento de saúde (`admit_health`).
     InventoryChange { item: InventoryItem, previous: Option<u64>, current: Option<u64> },
+    /// Energia: tomada ligada ou não e carga da bateria em porcentagem (0 a 100). Só números e dois estados; nada de
+    /// localização, rede ou identificador. Mesma porta do evento de saúde (`admit_health`).
+    PowerStatus { ac: Option<AcLine>, charge_percent: Option<u8> },
 }
 
 /// Só o Privacy Guard constrói este tipo (construtor `pub(crate)`), então o

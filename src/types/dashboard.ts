@@ -10,6 +10,7 @@ export type Detail =
   | { code: "appHang" }
   | { code: "userMarker"; marker: number }
   | { code: "healthEvent"; category: string; eventId: number; value: number | null }
+  | { code: "powerStatus"; ac: string | null; chargePercent: number | null }
   | { code: "inventoryChange"; item: string; previous: number | null; current: number | null }
   | { code: "recorderStateChanged" }
   | { code: "unknown" };

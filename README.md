@@ -28,6 +28,9 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
   Event Log IDs**. Only the category, the event ID and one number (such as the stop code) are stored, never the message
   text. They keep being recorded while a privacy block is active (they do not depend on the app in front), but a manual
   pause always wins.
+- **Power and battery:** plugged in or on battery and the charge percentage (only meaningful changes), plus sleep and resume from the
+  Windows log. A computer without a battery shows this source as unavailable. No location and no network information. Battery wear is
+  **not** recorded: it was not shown to be readable without administrator rights.
 - **System inventory changes:** the BIOS version and date, UEFI or legacy firmware, Secure Boot, the Windows build and devices with a
   driver problem are read without administrator rights, and **only changes** are recorded (`previous -> new`, numbers only; never serial
   numbers, UUIDs, computer or device names, or the machine model).
@@ -217,6 +220,9 @@ de comando.
   Windows, de uma **lista fixa de IDs do Event Log**. Só a categoria, o ID do evento e um número (como o código de
   parada) são gravados, nunca o texto da mensagem. Continuam sendo gravados durante um bloqueio de privacidade (não
   dependem do app em primeiro plano), mas a pausa manual sempre vence.
+- **Energia e bateria:** na tomada ou na bateria e a porcentagem de carga (só variações relevantes), mais suspensão e retomada vindas do
+  log do Windows. Computador sem bateria mostra esta fonte como indisponível. Sem localização e sem informação de rede. O desgaste da
+  bateria **não** é gravado: não ficou provado que dê para ler sem administrador.
 - **Mudanças no inventário do sistema:** versão e data da BIOS, firmware UEFI ou legado, Secure Boot, build do Windows e dispositivos
   com problema de driver são lidos sem administrador, e **só as mudanças** são gravadas (`anterior -> novo`, só números; nunca número
   de série, UUID, nome do computador ou dos dispositivos, nem o modelo da máquina).
