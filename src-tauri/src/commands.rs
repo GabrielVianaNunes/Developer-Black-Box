@@ -182,6 +182,19 @@ pub struct PartialExclusionDto {
     kinds: Vec<String>,
 }
 
+/// Quantas vezes uma regra de exclusão deixou algo de fora desde que o app abriu. Só o programa da regra e um número.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmittedDto {
+    exe: String,
+    count: u64,
+}
+
+#[tauri::command]
+pub fn get_omitted_counts(app: AppHandle) -> Result<Vec<OmittedDto>, String> {
+    with_engine(&app, |e| Ok(e.omitted_counts().into_iter().map(|(exe, count)| OmittedDto { exe, count }).collect()))
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsDto {
@@ -190,6 +203,9 @@ pub struct SettingsDto {
     // Sem `#[serde(default)]` de propósito: um cliente que esqueça este campo é recusado em vez de apagar
     // em silêncio as exclusões parciais (o que deixaria programas menos excluídos do que o usuário quer).
     partial_exclusions: Vec<PartialExclusionDto>,
+    // Idem: sem `default`, para um cliente que esqueça este campo ser recusado em vez de desligar em silêncio a opção
+    // de excluir também os processos filhos.
+    excluded_trees: Vec<String>,
     stability_window_ms: u64,
     auto_start: bool,
     retention_max_mb: u64,
@@ -209,6 +225,7 @@ impl From<&Settings> for SettingsDto {
                     kinds: r.excluded.kinds().iter().map(|k| k.code().to_owned()).collect(),
                 })
                 .collect(),
+            excluded_trees: s.excluded_trees.clone(),
             stability_window_ms: s.stability_window_ms,
             auto_start: s.auto_start,
             retention_max_mb: s.retention_max_mb,
@@ -228,6 +245,7 @@ impl From<SettingsDto> for Settings {
                 .into_iter()
                 .map(|r| PartialExclusion { exe: r.exe, excluded: ExclusionSet::from_codes(&r.kinds.join(",")) })
                 .collect(),
+            excluded_trees: d.excluded_trees,
             stability_window_ms: d.stability_window_ms,
             auto_start: d.auto_start,
             retention_max_mb: d.retention_max_mb,

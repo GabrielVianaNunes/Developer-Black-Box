@@ -5,6 +5,7 @@
 
 use bb_collector::apps::{list_candidates, picked_exe};
 use serde::Serialize;
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Clone)]
@@ -27,6 +28,44 @@ pub async fn list_app_candidates() -> Result<Vec<CandidateDto>, String> {
     })
     .await
     .map_err(|_| "apps.list_failed".to_string())
+}
+
+/// Resultado de "Detectar o app em primeiro plano": só o NOME do executável (nunca título, caminho ou conteúdo).
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectionDto {
+    /// O programa em primeiro plano; `None` se não foi possível identificá-lo.
+    exe: Option<String>,
+    /// O programa em primeiro plano é o próprio Developer Black Box (a pessoa não trocou de app a tempo).
+    is_self: bool,
+}
+
+/// Decide o resultado a partir do nome lido e do nome do próprio executável. Sem nome, `exe` fica vazio; o próprio app
+/// é sinalizado e NÃO é devolvido como nome, para ninguém adicioná-lo às listas por engano.
+pub fn classify_detection(found: Option<&str>, own_exe: &str) -> DetectionDto {
+    match found {
+        None => DetectionDto { exe: None, is_self: false },
+        Some(name) if name.eq_ignore_ascii_case(own_exe) => DetectionDto { exe: None, is_self: true },
+        Some(name) => DetectionDto { exe: Some(name.to_ascii_lowercase()), is_self: false },
+    }
+}
+
+/// "Detectar o app em primeiro plano": espera `delay_ms` (de 1 a 15 s; a pessoa traz o outro app para a frente) e lê o
+/// nome do executável em primeiro plano pela mesma função do Guard. Nada é gravado nem enviado; o resultado só vai para a tela.
+#[tauri::command]
+pub async fn detect_foreground_app(delay_ms: u64) -> Result<DetectionDto, String> {
+    let delay = delay_ms.clamp(1_000, 15_000);
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::sleep(Duration::from_millis(delay));
+        let found = bb_collector::current_foreground_exe();
+        let own = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()))
+            .unwrap_or_default();
+        classify_detection(found.as_ref().map(|e| e.as_str()), &own)
+    })
+    .await
+    .map_err(|_| "apps.detect_failed".to_string())
 }
 
 /// Abre o seletor de arquivos do Windows (filtro `*.exe`). Devolve o nome do executável em minúsculas,
@@ -96,4 +135,32 @@ fn open_dialog(owner: Option<isize>, title: &str, filter_label: &str) -> Result<
     }
     let end = file.iter().position(|&u| u == 0).unwrap_or(file.len());
     Ok(Some(String::from_utf16_lossy(&file[..end])))
+}
+
+#[cfg(test)]
+mod detect_tests {
+    use super::*;
+
+    #[test]
+    fn the_name_read_is_returned_in_lowercase_and_nothing_else() {
+        let d = classify_detection(Some("WhatsApp.Root.exe"), "developer-blackbox.exe");
+        assert_eq!(d, DetectionDto { exe: Some("whatsapp.root.exe".into()), is_self: false });
+    }
+
+    #[test]
+    fn when_the_app_in_front_is_black_box_itself_it_is_flagged_and_never_offered_as_a_name() {
+        let d = classify_detection(Some("Developer-Blackbox.exe"), "developer-blackbox.exe");
+        assert_eq!(d, DetectionDto { exe: None, is_self: true });
+    }
+
+    #[test]
+    fn an_unidentified_app_gives_no_name() {
+        assert_eq!(classify_detection(None, "developer-blackbox.exe"), DetectionDto { exe: None, is_self: false });
+    }
+
+    #[test]
+    fn the_result_serializes_with_only_a_name_and_a_flag() {
+        let json = serde_json::to_string(&classify_detection(Some("a.exe"), "b.exe")).unwrap();
+        assert_eq!(json, r#"{"exe":"a.exe","isSelf":false}"#);
+    }
 }

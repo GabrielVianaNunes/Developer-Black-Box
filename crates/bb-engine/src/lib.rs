@@ -15,7 +15,7 @@ use std::time::Duration;
 use bb_collector::{
     CollectError, ContextSource, CrashKind, CrashSource, Differ, MetricsConfig, ProcessSource,
 };
-use bb_core::{AuthError, EventKind, ExeName, GuardConfig, PrivacyGuard, ReasonCode, RecorderState};
+use bb_core::{AuthError, EventKind, ExeName, GuardConfig, PrivacyGuard, ProcessRef, ReasonCode, RecorderState};
 use bb_recorder::{Recorder, RecorderError};
 use bb_store::{CaptureState, IncidentKind, NewIncident, Severity, Store, StoreError};
 
@@ -292,6 +292,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             protected: cfg.protected_apps.iter().map(|n| n.as_str().to_owned()).collect(),
             authorized_now: self.guard.authorizations(mono_ms).into_iter().map(|a| a.exe.as_str().to_owned()).collect(),
             partial: cfg.partial_exclusions.iter().map(|(n, set)| (n.as_str().to_owned(), *set)).collect(),
+            trees: cfg.excluded_trees.iter().filter(|n| cfg.excluded_apps.contains(*n)).map(|n| n.as_str().to_owned()).collect(),
         };
         let doc = bb_query::export_incident(&self.recorder, &inc.store, id, &rules, utc_ms)
             .ok_or_else(|| EngineError::Invalid("export.not_found".into()))?;
@@ -409,6 +410,11 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             return (RecorderState::SafetyFault, ReasonCode::RecorderFault);
         }
         (state, reason)
+    }
+
+    /// Quantas vezes cada regra de exclusão ativa deixou algo de fora desde que o app abriu: só o nome da regra e um número.
+    pub fn omitted_counts(&self) -> Vec<(String, u64)> {
+        self.guard.omitted_counts().into_iter().map(|(e, n)| (e.as_str().to_owned(), n)).collect()
     }
 
     pub fn is_manually_paused(&self) -> bool {
@@ -532,6 +538,13 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         self.last_recording_utc = Some(utc_ms);
 
         let samples = self.procs.processes()?;
+        // A árvore de processos dos programas excluídos (com a opção dos filhos) vem do instantâneo completo, antes dos
+        // eventos do ciclo: nada disto é gravado.
+        let refs: Vec<ProcessRef> = samples
+            .iter()
+            .map(|p| ProcessRef { key: p.key, exe: &p.exe_name, parent_pid: p.parent_pid })
+            .collect();
+        self.guard.observe_processes(&refs);
         let mut kinds = self.differ.tick(&samples, mono_ms, silent_from);
         let sys = self.procs.system()?;
         kinds.push(EventKind::SystemMetrics {

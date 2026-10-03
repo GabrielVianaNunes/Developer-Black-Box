@@ -16,6 +16,8 @@ export interface Recorded {
 export interface Rule {
   exe: string;
   recorded: Recorded;
+  /** A exclusão vale também para os processos que o programa inicia (só existe para exclusão por INTEIRO). */
+  children: boolean;
 }
 
 export const NOTHING: Recorded = { lifecycle: false, metrics: false, crashes: false };
@@ -38,7 +40,18 @@ export function toggle(rule: Rule, kind: ExclusionKind): Rule {
   if (kind === "metrics" && next.metrics && !rule.recorded.lifecycle) return rule; // precisa do início e fim
   const fixed = coherent(next);
   if (recordsEverything(fixed)) return rule; // seria remover a regra: não por aqui
-  return { exe: rule.exe, recorded: fixed };
+  // A opção dos filhos só existe para exclusão por inteiro: ao voltar a gravar algo do programa, ela some.
+  return { exe: rule.exe, recorded: fixed, children: isExcludedWhole(fixed) && rule.children };
+}
+
+/** O programa está excluído por INTEIRO (nada dele é gravado)? */
+export function isExcludedWhole(r: Recorded): boolean {
+  return !r.lifecycle && !r.metrics && !r.crashes;
+}
+
+/** Liga ou desliga "excluir também o que este programa inicia". Só vale para exclusão por inteiro. */
+export function setChildren(rule: Rule, children: boolean): Rule {
+  return isExcludedWhole(rule.recorded) ? { ...rule, children } : rule;
 }
 
 /** Pode alternar este tipo agora? (usado para desabilitar caixas na tela) */
@@ -47,7 +60,7 @@ export function canToggle(rule: Rule, kind: ExclusionKind): boolean {
 }
 
 /** Regras mostradas a partir das configurações salvas: exclusões totais e parciais juntas, por nome. */
-export function rulesFrom(s: Pick<Settings, "excludedApps" | "partialExclusions">): Rule[] {
+export function rulesFrom(s: Pick<Settings, "excludedApps" | "partialExclusions" | "excludedTrees">): Rule[] {
   const rules = new Map<string, Rule>();
   for (const p of s.partialExclusions) {
     const excluded = new Set(p.kinds);
@@ -55,31 +68,34 @@ export function rulesFrom(s: Pick<Settings, "excludedApps" | "partialExclusions"
     rules.set(p.exe, {
       exe: p.exe,
       recorded: coherent({ lifecycle: !lifecycleOut, metrics: !excluded.has("metrics") && !lifecycleOut, crashes: !excluded.has("crashes") }),
+      children: false,
     });
   }
   // Uma exclusão total vence qualquer regra parcial do mesmo programa (o backend faz o mesmo).
-  for (const exe of s.excludedApps) rules.set(exe, { exe, recorded: NOTHING });
+  for (const exe of s.excludedApps) rules.set(exe, { exe, recorded: NOTHING, children: s.excludedTrees.includes(exe) });
   return [...rules.values()].sort((a, b) => a.exe.localeCompare(b.exe));
 }
 
 /** Converte as regras da tela de volta para o que o backend guarda. */
-export function toSettings(rules: Rule[]): Pick<Settings, "excludedApps" | "partialExclusions"> {
+export function toSettings(rules: Rule[]): Pick<Settings, "excludedApps" | "partialExclusions" | "excludedTrees"> {
   const excludedApps: string[] = [];
+  const excludedTrees: string[] = [];
   const partialExclusions: PartialExclusion[] = [];
   for (const rule of [...rules].sort((a, b) => a.exe.localeCompare(b.exe))) {
     const r = coherent(rule.recorded);
     if (recordsEverything(r)) continue; // sem exclusão nenhuma: não há o que guardar
     if (!r.lifecycle && !r.metrics && !r.crashes) {
       excludedApps.push(rule.exe);
+      if (rule.children) excludedTrees.push(rule.exe);
       continue;
     }
     const kinds = KINDS.filter((k) => !r[k]);
     partialExclusions.push({ exe: rule.exe, kinds });
   }
-  return { excludedApps, partialExclusions };
+  return { excludedApps, partialExclusions, excludedTrees };
 }
 
 /** Nova regra para um programa: exclui TUDO (o padrão seguro). */
 export function newRule(exe: string): Rule {
-  return { exe, recorded: NOTHING };
+  return { exe, recorded: NOTHING, children: false };
 }

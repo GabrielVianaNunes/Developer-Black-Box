@@ -6,6 +6,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-02
+
+### Fixed
+- Protected applications that are Windows (UWP) apps, such as Calculator or Settings, never paused the recording: for them the window in front
+  belongs to the Windows window host (ApplicationFrameHost.exe), so the program name never matched the list. The app now finds the real app
+  behind the host (the child window of class Windows.UI.Core.CoreWindow, from another process) and uses its name. If the real app cannot be
+  identified, or two different apps are found, the program in front is treated as unknown and recording is suspended, never as the host. Only
+  window classes and process ids are read, never window titles.
+
+### Added
+- Clearer privacy rules (#67). The Privacy tab now says plainly that **protected applications pause everything** while they are in front,
+  while **exclusion rules leave out only that program**, in both languages and in a short "what is new" step. Adding a broad host such as
+  msedgewebview2.exe to the protected list shows a notice explaining that it pauses recording whenever any app built on it is in front. The
+  Overview has a new "Privacy rules in effect" card with the number of protected applications, each exclusion rule, and how many times each
+  rule left something out since the app opened (starts, crashes, hangs and started programs). The counter is one number per rule, kept only in
+  memory, reset when the app closes and dropped when the rule is removed; it never stores names, titles or content.
+- The program picker now lists the Microsoft Store (MSIX/AppX) apps installed for you, even when they are not running, with their friendly
+  name (for example WhatsApp for whatsapp.root.exe). The list is read locally and in memory only: the per-user package list in the registry
+  and each package's manifest file (a small read-only file, size-limited, from a WindowsApps folder), with no network and no extra
+  permission. Only executable names are kept, validated like every other name, never a folder path or account data (#64).
+- Exclusion rules can now also leave out the programs an excluded program starts: a new checkbox, "Also leave out the programs it starts", on
+  each rule that excludes the whole program. Helper processes of apps built on WebView2 or Electron (such as the msedgewebview2.exe processes
+  of the WhatsApp desktop app) are then never recorded (start, CPU and memory, end), nor are their own children, while a program with the same
+  name that something else started is still recorded. The tree is recomputed every cycle from the full process list, a child only counts if it
+  started after its parent (so a reused process id never inherits the exclusion), and a child stays excluded even if its parent exits. A new
+  or removed rule takes effect on the next cycle with the programs already running, and exports apply the rule again to older data. It only
+  applies to a full exclusion, never to one that still records something. Crash and hang records only carry the program name, so they cannot be
+  tied to a tree.
+- "Detect the app in front" in the Privacy tab: click, bring the program you want to the front during a 5-second countdown, and the app shows
+  the program name it sees (the same name the privacy rules compare), with buttons to add it to the protected applications or to the
+  exclusion rules. It only reads the executable name, never the window title, and saves and sends nothing; the buttons only change the
+  draft, which still needs Apply. It warns about shared system programs (such as msedgewebview2.exe) and never offers Developer Black Box itself.
+
 ## [0.3.7] - 2026-10-02
 
 ### Fixed

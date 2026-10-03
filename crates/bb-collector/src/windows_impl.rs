@@ -5,8 +5,8 @@
 
 use std::mem::size_of;
 
-use windows::core::PWSTR;
-use windows::Win32::Foundation::{CloseHandle, FILETIME, HANDLE};
+use windows::core::{BOOL, PWSTR};
+use windows::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, HWND, LPARAM};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
@@ -19,10 +19,11 @@ use windows::Win32::System::Threading::{
     GetProcessTimes, GetSystemTimes, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
-use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+use windows::Win32::UI::WindowsAndMessaging::{EnumChildWindows, GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId};
 
 use bb_core::{ExeName, Observation, ProcessKey};
 
+use crate::hosted::{resolve_hosted, HostedChild, CORE_WINDOW_CLASS, FRAME_HOST_EXE};
 use crate::sample::{CollectError, ContextSource, ProcessSample, ProcessSource, SystemSample};
 
 /// FILETIME (100 ns desde 1601) -> u64.
@@ -185,6 +186,12 @@ fn input_desktop_unavailable() -> bool {
     }
 }
 
+/// Nome do executável da janela em primeiro plano AGORA, pela mesma função que o Guard usa. Serve ao botão "Detectar o
+/// app em primeiro plano": o que ela devolve é exatamente o que as regras de privacidade comparam.
+pub fn current_foreground_exe() -> Option<ExeName> {
+    foreground_exe()
+}
+
 /// Nome do executável da janela em primeiro plano. Nunca lê o título da janela e
 /// descarta o caminho. `None` se não puder ser identificado (o Guard trata como
 /// desconhecido e bloqueia).
@@ -200,6 +207,21 @@ fn foreground_exe() -> Option<ExeName> {
         if pid == 0 {
             return None;
         }
+        let name = exe_name_of(pid)?;
+        if name.as_str() != FRAME_HOST_EXE {
+            return Some(name);
+        }
+        // App UWP: a janela em primeiro plano é do hospedeiro; o app é uma janela filha de OUTRO processo. Sem um app
+        // identificável, devolve None (desconhecido: o Guard bloqueia) em vez de tratar o hospedeiro como se fosse o app.
+        let app_pid = resolve_hosted(pid, &hosted_children(hwnd))?;
+        exe_name_of(app_pid)
+    }
+}
+
+/// Nome do executável (sem caminho) do processo `pid`.
+fn exe_name_of(pid: u32) -> Option<ExeName> {
+    // SAFETY: buffers locais; handle fechado por RAII.
+    unsafe {
         let h = open_limited(pid)?;
         let mut buf = [0u16; 1024];
         let mut len = buf.len() as u32;
@@ -207,4 +229,28 @@ fn foreground_exe() -> Option<ExeName> {
         let full = String::from_utf16_lossy(&buf[..len as usize]);
         ExeName::new(full.rsplit(['\\', '/']).next()?).ok()
     }
+}
+
+/// Janelas filhas da moldura: só o processo dono e se a classe é a do app UWP. Nunca o título.
+fn hosted_children(frame: HWND) -> Vec<HostedChild> {
+    unsafe extern "system" fn each(child: HWND, lparam: LPARAM) -> BOOL {
+        // SAFETY: `lparam` é o ponteiro para o Vec que `hosted_children` mantém vivo durante toda a enumeração.
+        let out = unsafe { &mut *(lparam.0 as *mut Vec<HostedChild>) };
+        let mut pid = 0u32;
+        // SAFETY: `child` é um handle válido durante o callback; buffers locais.
+        unsafe {
+            GetWindowThreadProcessId(child, Some(&mut pid));
+            let mut class = [0u16; 64];
+            let n = GetClassNameW(child, &mut class);
+            let is_core = n > 0 && String::from_utf16_lossy(&class[..n as usize]) == CORE_WINDOW_CLASS;
+            out.push(HostedChild { pid, is_core_window: is_core });
+        }
+        BOOL(1)
+    }
+    let mut out: Vec<HostedChild> = Vec::new();
+    // SAFETY: o ponteiro para `out` só é usado dentro desta chamada síncrona.
+    unsafe {
+        let _ = EnumChildWindows(Some(frame), Some(each), LPARAM(&mut out as *mut Vec<HostedChild> as isize));
+    }
+    out
 }

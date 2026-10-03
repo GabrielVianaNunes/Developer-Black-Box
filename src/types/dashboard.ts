@@ -58,6 +58,12 @@ export interface Overview {
   exitsLastHour: number;
 }
 
+/** Quantas vezes uma regra de exclusão deixou algo de fora desde que o app abriu: só o programa e um número. */
+export interface OmittedCount {
+  exe: string;
+  count: number;
+}
+
 export interface Incident {
   id: number;
   kind: string;
@@ -106,6 +112,8 @@ export interface Settings {
   excludedApps: string[];
   /** Exclusões por tipo de evento. Precisa voltar intacto ao salvar: o backend recusa um cliente que o omita. */
   partialExclusions: PartialExclusion[];
+  /** Programas excluídos por inteiro cuja exclusão vale também para os processos que eles iniciam. Volta intacto ao salvar. */
+  excludedTrees: string[];
   stabilityWindowMs: number;
   autoStart: boolean;
   retentionMaxMb: number;
@@ -151,4 +159,10 @@ export interface AppCandidate {
   name: string;
   running: boolean;
   installed: boolean;
+}
+
+/** Resultado de "Detectar o app em primeiro plano": só o nome do executável e se era o próprio app. */
+export interface Detection {
+  exe: string | null;
+  isSelf: boolean;
 }

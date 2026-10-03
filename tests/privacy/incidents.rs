@@ -950,3 +950,49 @@ fn settings_history_for_partial_rules_records_only_the_key_and_the_kind_of_chang
         assert!(!dump.contains(leak), "config history must not contain values: {leak}");
     }
 }
+
+fn tree_sample(pid: u32, start: i64, name: &str, parent: u32) -> ProcessSample {
+    ProcessSample { key: ProcessKey { pid, start_time_ms: start }, parent_pid: parent, ..sample(pid, name, 0) }
+}
+
+#[test]
+fn an_export_reapplies_the_exclusion_of_a_whole_process_tree() {
+    let mut r = rig();
+    r.until_recording();
+    // Gravado SEM nenhuma regra: a raiz, o filho, o neto e um processo de fora com o mesmo nome do auxiliar.
+    r.world.borrow_mut().procs = vec![
+        tree_sample(100, 1_000, "synth-editor.exe", 1),
+        tree_sample(150, 1_500, "synth-root.exe", 1),
+        tree_sample(200, 2_000, "synth-helper.exe", 150),
+        tree_sample(300, 3_000, "synth-helper.exe", 200),
+        tree_sample(900, 2_500, "synth-helper.exe", 100),
+    ];
+    for _ in 0..4 {
+        r.tick();
+    }
+    let id = r.engine.capture_manual(r.utc()).unwrap();
+    let (_, before) = export(&mut r, id);
+    let v = export_json(&before);
+    let pids = |v: &serde_json::Value| -> std::collections::BTreeSet<u64> {
+        v["events"].as_array().unwrap().iter().filter(|e| e["exeName"] == "synth-helper.exe").filter_map(|e| e["pid"].as_u64()).collect()
+    };
+    assert!(exported_kinds(&v, "synth-root.exe").contains("ProcessStarted"), "control: the root was recorded and exported");
+
+    // Hoje o dono exclui o programa e a árvore dele.
+    let mut s = quick_settings();
+    s.excluded_apps = vec!["synth-root.exe".into()];
+    s.excluded_trees = vec!["synth-root.exe".into()];
+    let utc = r.utc();
+    r.engine.apply_settings(s, utc).unwrap();
+    let (res, after) = export(&mut r, id);
+    let v = export_json(&after);
+    assert!(exported_kinds(&v, "synth-root.exe").is_empty(), "the root is gone");
+    let all_pids: std::collections::BTreeSet<u64> = v["events"].as_array().unwrap().iter().filter_map(|e| e["pid"].as_u64()).collect();
+    for gone in [150u64, 200, 300] {
+        assert!(!all_pids.contains(&gone), "pid {gone} (root, child or grandchild) must not be exported: {all_pids:?}");
+    }
+    assert!(all_pids.contains(&900), "the helper outside the tree is still exported: {all_pids:?}");
+    assert!(all_pids.contains(&100), "control: the editor is still exported");
+    assert!(res.dropped > 0);
+    assert_eq!(exported_kinds(&v, "synth-editor.exe"), exported_kinds(&export_json(&before), "synth-editor.exe"), "other programs untouched");
+}

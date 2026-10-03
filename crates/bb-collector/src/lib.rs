@@ -3,6 +3,7 @@
 pub mod apps;
 pub mod differ;
 pub mod eventlog;
+pub mod hosted;
 pub mod lnk;
 pub mod sample;
 #[cfg(windows)]
@@ -18,4 +19,4 @@ pub use sample::{CollectError, ContextSource, ProcessSample, ProcessSource, Syst
 #[cfg(windows)]
 pub use eventlog_win::WindowsCrashSource;
 #[cfg(windows)]
-pub use windows_impl::{WindowsContextSource, WindowsProcessSource};
+pub use windows_impl::{current_foreground_exe, WindowsContextSource, WindowsProcessSource};
