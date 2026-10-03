@@ -1,0 +1,23 @@
+# a healthy machine
+temperatures_k=318,305
+passive_limits_pct=100,100
+cpu_load_pct=23.4
+cpu_perf_pct=117
+cpu_freq_mhz=3901
+mem_commit_pct=61.2
+mem_available_mb=10240
+page_faults_per_sec=900
+disk_latency_sec=0.0004
+disk_busy_pct=3
+gpu=pid_1_luid_0x0_phys_0_eng_0_engtype_3D:8;pid_2_luid_0x0_phys_0_eng_3_engtype_VideoDecode:70
+expect.thermal_kelvin=318
+expect.passive_limit_pct=100
+expect.cpu_load_pct=23
+expect.cpu_perf_pct=117
+expect.cpu_freq_mhz=3901
+expect.mem_commit_pct=61
+expect.mem_available_mb=10240
+expect.page_faults_per_sec=900
+expect.disk_latency_us=400
+expect.disk_busy_pct=3
+expect.gpu_pct=8

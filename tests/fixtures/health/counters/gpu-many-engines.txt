@@ -1,0 +1,3 @@
+# the sum of the 3D engines is capped at 100
+gpu=a_engtype_3D:70;b_engtype_3D:70;c_engtype_Copy:5
+expect.gpu_pct=100

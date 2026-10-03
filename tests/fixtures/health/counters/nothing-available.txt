@@ -1,0 +1,2 @@
+# a machine that exposes no counter at all
+expect.empty=true

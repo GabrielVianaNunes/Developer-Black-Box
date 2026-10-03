@@ -1,0 +1,23 @@
+# file | category | event_id | code (- = none) | timestamp_ms
+Microsoft-Windows-Kernel-Power__41.xml | UnexpectedShutdown | 41 | 209 | 1790537444964
+EventLog__6008.xml | UnexpectedShutdown | 6008 | - | 1790537444964
+Microsoft-Windows-WER-SystemErrorReporting__1001.xml | BugCheck | 1001 | 209 | 1790537444964
+Microsoft-Windows-WHEA-Logger__1.xml | HardwareError | 1 | - | 1790537444964
+Microsoft-Windows-WHEA-Logger__17.xml | HardwareError | 17 | - | 1790537444964
+Microsoft-Windows-WHEA-Logger__18.xml | HardwareError | 18 | - | 1790537444964
+Microsoft-Windows-WHEA-Logger__19.xml | HardwareError | 19 | - | 1790537444964
+Microsoft-Windows-WHEA-Logger__20.xml | HardwareError | 20 | - | 1790537444964
+Microsoft-Windows-WHEA-Logger__47.xml | HardwareError | 47 | - | 1790537444964
+Display__4101.xml | DisplayDriverReset | 4101 | - | 1790537444964
+disk__7.xml | DiskError | 7 | - | 1790537444964
+disk__11.xml | DiskError | 11 | - | 1790537444964
+disk__51.xml | DiskError | 51 | - | 1790537444964
+disk__153.xml | DiskError | 153 | - | 1790537444964
+Ntfs__55.xml | FileSystemError | 55 | - | 1790537444964
+Ntfs__98.xml | FileSystemError | 98 | - | 1790537444964
+Ntfs__140.xml | FileSystemError | 140 | - | 1790537444964
+Service_Control_Manager__7031.xml | ServiceCrash | 7031 | 3 | 1790537444964
+Service_Control_Manager__7034.xml | ServiceCrash | 7034 | 3 | 1790537444964
+Microsoft-Windows-WindowsUpdateClient__20.xml | UpdateFailure | 20 | 2147942405 | 1790537444964
+Microsoft-Windows-Kernel-Power__42.xml | SleepEntered | 42 | 4 | 1790537444964
+Microsoft-Windows-Kernel-Power__107.xml | Resumed | 107 | - | 1790537444964

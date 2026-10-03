@@ -1,0 +1,3 @@
+# the version text is never kept: it becomes a flagged hash
+bios_version=F.12
+expect.BiosVersion=hashed
