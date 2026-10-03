@@ -23,28 +23,13 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
   session is locked or the detector is unavailable. The absence of a signal is never treated as "safe".
 - **Incidents:** manual capture, sustained CPU, high memory, crashes and hangs (Windows Event Log),
   with evidence from the window before and after.
-- **System health events:** unexpected shutdowns, blue screens (stop code), hardware errors (WHEA), display driver
-  resets, disk and NTFS errors, services that stopped unexpectedly and failed Windows Updates, from a **fixed list of
-  Event Log IDs**. Only the category, the event ID and one number (such as the stop code) are stored, never the message
-  text. They keep being recorded while a privacy block is active (they do not depend on the app in front), but a manual
-  pause always wins.
-- **System health tab:** the state of each source (OK, attention, unavailable, paused, off), the latest performance sample, a timeline of
-  health events, power changes and sleep, the inventory changes, and a plain list of what is **not** monitored and what is **never** recorded.
-  A blue screen, an unexpected shutdown, a hardware error or sustained thermal throttling opens an incident on its own, with the evidence from
-  before and after. A source that your machine does not offer is shown as unavailable, never as an alarm.
+- **System health:** a **System health** tab and automatic incidents (blue screen, unexpected shutdown, hardware error, sustained thermal
+  throttling), fed by Windows events from a fixed list, inventory changes, power and battery, and performance counters, all **without
+  administrator rights** and with numbers and codes only. See [System health](#system-health) for exactly what is read, what is never
+  recorded, how to turn it off and what it cannot see.
 
   ![System health tab with example data](assets/readme-images/health.png)
 
-- **System performance telemetry:** about one sample every 30 seconds of system-wide counters (temperature and thermal limit, CPU,
-  memory, disk, network errors as a single total, GPU use), read without administrator rights. Only numbers, nothing per program, per user
-  or per connection. **On by default**; turn it off in the Privacy tab ("Record system performance counters"). It costs about 0.1 MB per day
-  once sealed (about 1 MB per day before the open journal is sealed), measured with synthetic samples.
-- **Power and battery:** plugged in or on battery and the charge percentage (only meaningful changes), plus sleep and resume from the
-  Windows log. A computer without a battery shows this source as unavailable. No location and no network information. Battery wear is
-  **not** recorded: it was not shown to be readable without administrator rights.
-- **System inventory changes:** the BIOS version and date, UEFI or legacy firmware, Secure Boot, the Windows build and devices with a
-  driver problem are read without administrator rights, and **only changes** are recorded (`previous -> new`, numbers only; never serial
-  numbers, UUIDs, computer or device names, or the machine model).
 - **Dashboard:** overview, activity with filters, processes, incidents (timeline, notes, export),
   privacy, storage and integrity verification.
 - **Rules in effect at a glance:** the Overview lists the protected applications and each exclusion rule, with how many times
@@ -147,6 +132,88 @@ and secrets in the repository and in its whole history) and, preferably, a dedic
 `%LOCALAPPDATA%\DeveloperBlackBox\`: `key.bin` (DPAPI-protected key), `meta.db`, `recorder\` (encrypted
 segments) and `exports\`. None of it lives in the repository and all of it is in `.gitignore`.
 
+## System health
+
+Besides what programs do, the app can record signs about the machine itself, to help you investigate crashes, freezes and slowdowns.
+Everything below follows the same rules as the rest of the app: **closed schema** (only numbers, codes and fixed names; no free-text field),
+**everything goes through the Privacy Guard**, **no administrator rights**, **local and encrypted**, and **a manual pause always wins**.
+
+### What is read
+
+| Source | What | How it is read |
+|---|---|---|
+| Windows event log | A **fixed list** of events from the `System` log (table below) | The Windows event API, read-only; only the category, the event ID and one number are kept |
+| Inventory and changes | BIOS version and date, UEFI or legacy firmware, Secure Boot, Windows build, and how many devices have a driver problem code | Registry values readable by regular users, `GetFirmwareType` and the problem code of each present device. **Only changes** between two readings are recorded (`previous -> new`) |
+| Power and battery | Plugged in or on battery, charge percentage | `GetSystemPowerStatus`. A computer without a battery shows this source as *unavailable* |
+| Performance counters | About every 30 s: hottest thermal zone and thermal limit, CPU load, performance and frequency, memory commit and availability, page faults, disk latency and busy time, network errors (one total), 3D GPU use | Windows performance counters (PDH), with the English counter names so it behaves the same on a Portuguese Windows |
+
+The fixed list of event log IDs (these follow Microsoft's public documentation):
+
+| Category | Provider and ID | Number kept |
+|---|---|---|
+| Unexpected shutdown | Kernel-Power 41; EventLog 6008 | the bug check code (41 only) |
+| Blue screen | WER-SystemErrorReporting 1001 | the stop code |
+| Hardware error | WHEA-Logger 1, 17, 18, 19, 20, 47 | none |
+| Display driver reset | Display 4101 | none |
+| Disk error | disk 7, 11, 51, 153 | none |
+| File system error | Ntfs 55, 98, 140 | none |
+| Service stopped unexpectedly | Service Control Manager 7031, 7034 | the crash count (never the service name) |
+| Update install failed | WindowsUpdateClient 20 | the error code (never the update title) |
+| Sleep and resume | Kernel-Power 42 (target state), 107 | the power state / none |
+
+If a source cannot be read on your machine (no battery, no thermal zone, a counter that does not exist), it is shown as **unavailable** in the
+System health tab: that is never an alarm and never counted as "safe" or as a problem. Those values are simply left out.
+
+### What is never recorded
+
+- The **text of Windows event messages** (they can contain paths and user names): only the event ID, the category and a number.
+- **Serial numbers, UUIDs, MAC addresses, SSIDs and IP addresses**, and the machine model.
+- **User, computer, service, network adapter and device names**, and folder paths.
+- Anything **per program, per user or per connection**: the counters are system-wide totals, and for the GPU only the 3D total is kept (the
+  per-process instance text is discarded).
+- Location or network information.
+
+A test walks every kind of health record and checks that only numbers, nulls and fixed names are stored; the repository only uses invented
+test data.
+
+### When it records, and how to turn it off
+
+- **Privacy block:** health data is recorded **even while a privacy block is active** (a browser in front, a locked session), because it does
+  not depend on the program in front. A **manual pause always wins**: nothing is read while paused, and what Windows logged during a pause is
+  never recorded afterwards. The only exception: if the app was *closed* after a run that ended while recording, the log of that closed
+  interval (up to 7 days) is read once at the next start, so an unexpected shutdown logged on the next boot is not lost.
+- **Performance counters** have their own switch: Privacy tab, **"Record system performance counters"** (on by default). Turning it off stops
+  reading the counters at once; if the setting cannot be read back, they stay off.
+- The event log, inventory and power sources have **no separate switch**: pause recording to stop all of them, and use **Storage > Delete
+  activity** to remove what was recorded. While **test mode** (a temporary authorization for a browser) is collecting because the authorized program is in front,
+  health collection waits too, because in that mode nothing outside the authorized program is collected; it resumes when you leave it.
+- Exporting an incident includes the health data of its window, checked again against today's rules (see [Export format](#export-format)).
+
+### What it cannot see without administrator rights
+
+These need administrator rights, a separate elevated component or a vendor driver, so they are **not** part of this version:
+
+- disk health (SMART/NVMe: wear, temperature, power-on hours);
+- the TPM chip;
+- the `WHEA-Logger/Operational` log channel (only the events listed above are read);
+- per-core temperature, fans and voltages;
+- the **battery wear** (design capacity versus full charge): it was not shown to be readable without administrator rights, so it is not recorded.
+
+Libraries that read sensors by **loading a kernel driver** will not be used: they require administrator rights, have a history of
+vulnerabilities and are often flagged by antivirus.
+
+### What is not checked yet on a real Windows
+
+The portable logic (rules, validation, privacy, tests with synthetic data) is tested on every change, and the Windows code compiles, but the
+event IDs and field names, the performance counters (thermal zones, network, GPU) and the registry values were written from Microsoft's
+documentation and **have not been verified on a real machine yet**. A source that does not behave as expected shows as unavailable instead of
+inventing a value.
+
+### Storage cost
+
+Measured with the real recorder and one day of pseudo-random synthetic samples (every 30 s): about **0.115 MB per day** once sealed, and up
+to about **1 MB per day** while the current journal is still open. The storage limit and retention of the Storage tab apply as usual.
+
 ## How privacy is guaranteed
 
 ![Privacy tab with example exclusion rules](assets/readme-images/privacy-rules.png)
@@ -196,6 +263,9 @@ JSON and **not encrypted**: the app says so before you export.
 - Protected or elevated processes are not seen.
 - Protection depends on your Windows account: whoever uses your signed-in account can use the key.
 - The export file is **not encrypted** (the interface warns about it).
+- The system health data does not include what needs administrator rights (disk SMART/NVMe, TPM, the WHEA Operational channel, per-core
+  temperature, fans, voltages, battery wear); see [System health](#system-health). Its Windows event IDs and counters have not been verified
+  on a real machine yet.
 - Metadata such as the number of incidents and their times sit in the database unencrypted (only app
   names, notes and settings are encrypted).
 - Sensitive-context detection is per foreground application, not per password field.
@@ -254,28 +324,13 @@ de comando.
   sessão bloqueada ou detector indisponível. Ausência de sinal nunca é tratada como "seguro".
 - **Incidentes:** captura manual, CPU sustentada, memória alta, falhas e travamentos (Event Log do
   Windows), com evidências da janela anterior e posterior.
-- **Eventos de saúde do sistema:** desligamento inesperado, tela azul (código de parada), erros de hardware (WHEA),
-  reinício do driver de vídeo, erros de disco e NTFS, serviços que encerraram sem querer e falhas de atualização do
-  Windows, de uma **lista fixa de IDs do Event Log**. Só a categoria, o ID do evento e um número (como o código de
-  parada) são gravados, nunca o texto da mensagem. Continuam sendo gravados durante um bloqueio de privacidade (não
-  dependem do app em primeiro plano), mas a pausa manual sempre vence.
-- **Aba Saúde do sistema:** o estado de cada fonte (OK, atenção, indisponível, pausada, desligada), a última amostra de desempenho, uma linha
-  do tempo de eventos de saúde, mudanças de energia e suspensão, as mudanças de inventário, e uma lista clara do que **não** é monitorado e do que
-  **nunca** é gravado. Uma tela azul, um desligamento inesperado, um erro de hardware ou uma redução de desempenho por calor prolongada abre um
-  incidente sozinha, com as evidências de antes e depois. Uma fonte que a sua máquina não oferece aparece como indisponível, nunca como alarme.
+- **Saúde do sistema:** uma aba **Saúde do sistema** e incidentes automáticos (tela azul, desligamento inesperado, erro de hardware,
+  redução de desempenho por calor prolongada), alimentados por eventos do Windows de uma lista fixa, mudanças de inventário, energia e
+  bateria e contadores de desempenho, tudo **sem administrador** e só com números e códigos. Veja [Saúde do sistema](#saúde-do-sistema)
+  para saber exatamente o que é lido, o que nunca é gravado, como desligar e o que ela não enxerga.
 
   ![Aba Saúde do sistema com dados de exemplo](assets/readme-images/health-pt.png)
 
-- **Telemetria de desempenho do sistema:** cerca de uma amostra a cada 30 segundos de contadores do sistema inteiro (temperatura e limite
-  térmico, CPU, memória, disco, erros de rede como um total só, uso da GPU), lida sem administrador. Só números, nada por programa, por usuário
-  ou por conexão. **Ligada por padrão**; desligue na aba Privacidade ("Gravar contadores de desempenho do sistema"). Custa cerca de 0,1 MB por
-  dia depois de selada (cerca de 1 MB por dia antes de o journal aberto ser selado), medido com amostras sintéticas.
-- **Energia e bateria:** na tomada ou na bateria e a porcentagem de carga (só variações relevantes), mais suspensão e retomada vindas do
-  log do Windows. Computador sem bateria mostra esta fonte como indisponível. Sem localização e sem informação de rede. O desgaste da
-  bateria **não** é gravado: não ficou provado que dê para ler sem administrador.
-- **Mudanças no inventário do sistema:** versão e data da BIOS, firmware UEFI ou legado, Secure Boot, build do Windows e dispositivos
-  com problema de driver são lidos sem administrador, e **só as mudanças** são gravadas (`anterior -> novo`, só números; nunca número
-  de série, UUID, nome do computador ou dos dispositivos, nem o modelo da máquina).
 - **Painel:** visão geral, atividade com filtros, processos, incidentes (linha do tempo, anotações,
   exportação), privacidade, armazenamento e verificação de integridade.
 - **Regras em vigor num relance:** a Visão Geral lista os aplicativos protegidos e cada regra de exclusão, com quantas vezes
@@ -381,6 +436,91 @@ segredos no repositório e em todo o histórico) e, de preferência, também um 
 `%LOCALAPPDATA%\DeveloperBlackBox\`: `key.bin` (chave protegida por DPAPI), `meta.db`, `recorder\`
 (segmentos cifrados) e `exports\`. Nada disso vive no repositório e tudo está no `.gitignore`.
 
+## Saúde do sistema
+
+Além do que os programas fazem, o app pode registrar sinais da própria máquina, para ajudar a investigar falhas, travamentos e lentidão. Tudo
+abaixo segue as mesmas regras do resto do app: **esquema fechado** (só números, códigos e nomes fixos; nenhum campo de texto livre), **tudo
+passa pelo Privacy Guard**, **sem administrador**, **local e cifrado**, e **a pausa manual sempre vence**.
+
+### O que é lido
+
+| Fonte | O quê | Como é lida |
+|---|---|---|
+| Log de eventos do Windows | Uma **lista fixa** de eventos do log `System` (tabela abaixo) | A API de eventos do Windows, só leitura; só a categoria, o ID do evento e um número são guardados |
+| Inventário e mudanças | Versão e data da BIOS, firmware UEFI ou legado, Secure Boot, build do Windows e quantos dispositivos têm código de problema de driver | Valores do registro legíveis por usuários comuns, `GetFirmwareType` e o código de problema de cada dispositivo presente. **Só as mudanças** entre duas leituras são gravadas (`anterior -> novo`) |
+| Energia e bateria | Na tomada ou na bateria, porcentagem de carga | `GetSystemPowerStatus`. Computador sem bateria mostra esta fonte como *indisponível* |
+| Contadores de desempenho | A cada ~30 s: zona térmica mais quente e limite térmico, carga, desempenho e frequência da CPU, commit e memória disponível, falhas de página, latência e tempo ocupado do disco, erros de rede (um total), uso 3D da GPU | Contadores de desempenho do Windows (PDH), com os nomes de contador em inglês, para funcionar igual num Windows em português |
+
+A lista fixa de IDs do log de eventos (seguem a documentação pública da Microsoft):
+
+| Categoria | Provedor e ID | Número guardado |
+|---|---|---|
+| Desligamento inesperado | Kernel-Power 41; EventLog 6008 | o código de verificação (só o 41) |
+| Tela azul | WER-SystemErrorReporting 1001 | o código de parada |
+| Erro de hardware | WHEA-Logger 1, 17, 18, 19, 20, 47 | nenhum |
+| Reinício do driver de vídeo | Display 4101 | nenhum |
+| Erro de disco | disk 7, 11, 51, 153 | nenhum |
+| Erro do sistema de arquivos | Ntfs 55, 98, 140 | nenhum |
+| Serviço encerrou sem querer | Service Control Manager 7031, 7034 | a contagem de quedas (nunca o nome do serviço) |
+| Falha ao instalar atualização | WindowsUpdateClient 20 | o código de erro (nunca o título da atualização) |
+| Suspensão e retomada | Kernel-Power 42 (estado de destino), 107 | o estado de energia / nenhum |
+
+Se uma fonte não puder ser lida na sua máquina (sem bateria, sem zona térmica, um contador que não existe), ela aparece como **indisponível** na
+aba Saúde do sistema: isso nunca é um alarme e nunca conta como "seguro" nem como problema. Esses valores simplesmente ficam de fora.
+
+### O que nunca é gravado
+
+- O **texto das mensagens de eventos do Windows** (podem conter caminhos e nomes de usuário): só o ID do evento, a categoria e um número.
+- **Números de série, UUIDs, endereços MAC, SSIDs e endereços IP**, e o modelo da máquina.
+- **Nomes de usuário, computador, serviço, adaptador de rede e dispositivo**, e caminhos de pastas.
+- Qualquer coisa **por programa, por usuário ou por conexão**: os contadores são totais do sistema inteiro, e da GPU só o total 3D é guardado
+  (o texto da instância por processo é descartado).
+- Informação de localização ou de rede.
+
+Um teste percorre cada tipo de registro de saúde e confere que só números, nulos e nomes fixos são gravados; o repositório usa somente
+dados de teste inventados.
+
+### Quando grava e como desligar
+
+- **Bloqueio de privacidade:** os dados de saúde são gravados **mesmo com um bloqueio de privacidade ativo** (um navegador em primeiro plano,
+  sessão bloqueada), porque não dependem do programa em primeiro plano. A **pausa manual sempre vence**: nada é lido enquanto pausado, e o que
+  o Windows registrou durante uma pausa nunca é gravado depois. A única exceção: se o app esteve *fechado* depois de uma execução que terminou
+  gravando, o log desse intervalo fechado (até 7 dias) é lido uma vez no início seguinte, para não perder um desligamento inesperado
+  registrado no boot.
+- Os **contadores de desempenho** têm chave própria: aba Privacidade, **"Gravar contadores de desempenho do sistema"** (ligada por padrão).
+  Desligar para a leitura dos contadores na hora; se a configuração não puder ser lida de volta, ficam desligados.
+- As fontes de log de eventos, inventário e energia **não têm chave separada**: pause a gravação para parar todas, e use **Armazenamento >
+  Excluir atividade** para apagar o que foi gravado. Enquanto o **modo de teste** (autorização temporária para um navegador) está coletando porque o programa autorizado está em primeiro
+  plano, a coleta de saúde também espera, porque nesse modo nada fora do programa autorizado é coletado; ela volta quando você sai dele.
+- Exportar um incidente inclui os dados de saúde da janela dele, conferidos de novo contra as regras de agora (veja
+  [Formato da exportação](#formato-da-exportação)).
+
+### O que ela não enxerga sem administrador
+
+Isto exige administrador, um componente separado com privilégios ou um driver de fabricante, e **não** faz parte desta versão:
+
+- saúde do disco (SMART/NVMe: desgaste, temperatura, horas ligado);
+- o chip TPM;
+- o canal `WHEA-Logger/Operational` do log (só os eventos listados acima são lidos);
+- temperatura por núcleo, ventoinhas e tensões;
+- o **desgaste da bateria** (capacidade de projeto versus carga cheia): não ficou provado que dê para ler sem administrador, então não é gravado.
+
+Bibliotecas que leem sensores **carregando um driver de kernel** não serão usadas: exigem administrador, têm histórico de vulnerabilidades e
+muitas vezes são sinalizadas por antivírus.
+
+### O que ainda não foi conferido num Windows real
+
+A lógica portátil (regras, validação, privacidade, testes com dados sintéticos) é testada a cada mudança, e o código do Windows compila, mas
+os IDs e nomes de campo dos eventos, os contadores de desempenho (zonas térmicas, rede, GPU) e os valores do registro foram escritos a partir
+da documentação da Microsoft e **ainda não foram verificados numa máquina real**. Uma fonte que não se comportar como esperado aparece como
+indisponível, em vez de inventar um valor.
+
+### Custo de armazenamento
+
+Medido com o gravador real e um dia de amostras sintéticas pseudoaleatórias (a cada 30 s): cerca de **0,115 MB por dia** depois de selado, e
+até cerca de **1 MB por dia** enquanto o journal atual ainda está aberto. O limite de armazenamento e a retenção da aba Armazenamento valem
+como sempre.
+
 ## Como a privacidade é garantida
 
 ![Aba Privacidade com regras de exclusão de exemplo](assets/readme-images/privacy-rules.png)
@@ -430,6 +570,9 @@ exportação**. O arquivo é JSON puro e **não é cifrado**: o app avisa antes 
 - Processos protegidos ou elevados não são vistos.
 - A proteção depende da conta do Windows: quem usa a sua conta aberta consegue usar a chave.
 - O arquivo de exportação **não é cifrado** (a interface avisa).
+- Os dados de saúde do sistema não incluem o que exige administrador (SMART/NVMe do disco, TPM, o canal WHEA Operational, temperatura por núcleo,
+  ventoinhas, tensões, desgaste da bateria); veja [Saúde do sistema](#saúde-do-sistema). Os IDs de eventos e os contadores do Windows ainda não
+  foram verificados numa máquina real.
 - Metadados como o número de incidentes e horários ficam no banco sem cifra (só nomes de app,
   anotações e configurações são cifrados).
 - A detecção de contexto sensível é por aplicativo em primeiro plano, não por campo de senha.

@@ -7,6 +7,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- Documentation of the system health feature (#76). The README (English and Portuguese) has a new **System health** section: what each
+  source reads and how, the full fixed list of Event Log IDs with the number kept for each, what is **never** recorded, when it records
+  (also during a privacy block; a manual pause always wins, with the one explicit exception for the interval in which the app was closed),
+  how to turn it off (the performance counters have a switch in the Privacy tab; the other sources are controlled by the pause and by
+  deleting the activity, and have no switch of their own), what it cannot see **without administrator rights** (disk SMART/NVMe, TPM, the
+  WHEA Operational channel, per-core temperature, fans and voltages, battery wear) and why libraries that load a kernel driver will not be
+  used, what has **not** been verified on a real Windows yet, and the measured storage cost. The "What it does" list now points to it, and
+  the Limitations section mentions the same limits. New README tests keep the documentation in step with the code: every rule of the fixed
+  Event Log list must appear in the tables in both languages (adding a rule without documenting it fails), the telemetry switch must be named
+  exactly as in the Privacy tab, and the limits and the "not verified yet" notice must stay.
 - Tests and synthetic fixtures for the machine health data (#75). `tests/fixtures/health/` holds, all invented, one Windows event XML for
   each rule of the fixed Event Log list (plus events that must be ignored), performance counter readings (healthy, throttled, values in the
   wrong unit, nothing available, several GPU engines, not-a-number) and inventory readings, each with the numbers it must become; the tests
