@@ -7,6 +7,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- The incident export now carries the **machine health around the incident** (#74), in a new `health` section; the export format is now
+  `developer-blackbox-export/2` (documented in the README, "Export format"). It holds the Windows health events, inventory changes,
+  power records and performance samples whose timestamp falls inside the incident window: from the start of the evidence window to its
+  end and, for blue screens, unexpected shutdowns, hardware errors and throttling, from where the condition began (the incident summary
+  now ends with that time, up to 8 days back), so the event that caused an incident is in its own export even when the app only read it
+  after a long gap. Nothing outside the window is exported. **Every health row is checked again at export time** against closed sets
+  (exact keys, fixed category and item lists, numbers within range; anything else is dropped and counted, never quoted), so no free-text
+  field can reach the file. **Today's rules apply**: performance samples are left out if the counters are turned off now. Notes are still
+  never exported, application events keep the same exclusion and protection rules as before (health rows do not count in
+  `droppedEvents`), at most 5,000 health rows are exported (the closest to the incident, with `truncated: true` otherwise), and the
+  interface still warns that the file is **not encrypted**, now also mentioning the health data.
 - Automatic health incidents and the "System health" tab (#73). **Incidents** now open on their own for a **blue screen** (Kernel-Power 41
   with a non-zero stop code, or the stop code event), an **unexpected shutdown** (power loss or freeze, with no stop code), a **hardware error**
   (WHEA) and **sustained thermal throttling** (see #70: about 5 minutes of passive limit below 100% with the CPU at 70% or more). They are

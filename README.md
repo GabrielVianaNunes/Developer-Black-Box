@@ -153,13 +153,33 @@ segments) and `exports\`. None of it lives in the repository and all of it is in
   7 days) is read once at the next start, so an unexpected shutdown logged on the following boot is not lost.
 - **Encryption at rest:** events and the sensitive database fields use AES-256-GCM, with a key protected
   by DPAPI (tied to your Windows account). Deleted content is overwritten in the file.
-- **Re-filtered export:** it applies today's privacy rules again and never includes notes.
+- **Re-filtered export:** it applies today's privacy rules again and never includes notes. It also carries the **machine health around the
+  incident** (see "Export format" below). The exported file is **not encrypted**.
 - **No cloud and no telemetry.** The core does not depend on any network library.
   The only network access is the optional update feature, off by default: one HTTPS request to the GitHub Releases
   of this project (app name and version only) tells you a newer version exists. Nothing is downloaded until you
   click "Download update"; the installer is then checked (SHA-256 and an Ed25519 signature bound to the version)
   and discarded if it does not verify, and it is only run when you click "Install and restart". It uses Windows'
   own HTTPS stack (no third-party network library) and a test fails if any other code opens a connection.
+
+### Export format
+
+An incident export is one JSON file, `format: "developer-blackbox-export/2"` (version 1 had no `health` section). Top level:
+`format`, `exportedAtUtcMs`, `incident` (kind, severity, time, summary code, state), `events` (the application events of the evidence,
+filtered again by today's exclusion and protected-application rules), `droppedEvents` (how many were removed, never citing them) and
+`notesIncluded` (always `false`: notes never leave). The new `health` section is the **machine health in the incident window**:
+
+| Field | Meaning |
+|---|---|
+| `fromUtcMs`, `toUtcMs` | The window. From the start of the evidence window (60 s before the incident; for blue screens, unexpected shutdowns, hardware errors and throttling, from where the condition began, up to 8 days back) to the end of the window after. Only rows timestamped inside it are included. |
+| `events` | Rows in time order, each with `offsetMs` from the incident: Windows health events (`HealthEvent`: category, event ID, optional code), inventory changes (`InventoryChange`: item, previous, current), power (`PowerStatus`: plugged in or not, charge) and performance samples (`HealthSample`: 12 optional numbers). |
+| `dropped` | How many health rows in the window were left out, without saying what they were. |
+| `truncated` | `true` if there were more than 5,000 rows; the ones closest to the incident were kept. |
+
+Every health row is **checked again at export time** against closed sets: exact keys only, categories and items from fixed lists, everything
+else a number (or null) within its range; anything else is dropped. There is no free-text field, so nothing like a message text, a name or an
+identifier can be in it. Performance samples are included **only if the counters are on at the moment of the export**. The file is plain
+JSON and **not encrypted**: the app says so before you export.
 
 ## Limitations
 
@@ -358,13 +378,33 @@ segredos no repositório e em todo o histórico) e, de preferência, também um 
   (até 7 dias) é lido uma vez no início seguinte, para não perder um desligamento inesperado registrado no boot.
 - **Cifra em repouso:** eventos e campos sensíveis do banco em AES-256-GCM, com chave protegida por
   DPAPI (ligada à sua conta do Windows). Conteúdo apagado é sobrescrito no arquivo.
-- **Exportação refiltrada:** aplica de novo as regras de privacidade de agora e nunca inclui anotações.
+- **Exportação refiltrada:** aplica de novo as regras de privacidade de agora e nunca inclui anotações. Também traz a **saúde da máquina em torno do
+  incidente** (veja "Formato da exportação" abaixo). O arquivo exportado **não é cifrado**.
 - **Sem nuvem e sem telemetria.** O núcleo não depende de nenhuma biblioteca de rede.
   O único acesso à rede é o recurso opcional de atualização, desligado por padrão: uma requisição HTTPS às Releases
   deste projeto no GitHub (só o nome e a versão do app) avisa que existe versão nova. Nada é baixado até você clicar
   em "Baixar atualização"; o instalador é então conferido (SHA-256 e assinatura Ed25519 amarrada à versão) e
   descartado se não conferir, e só roda quando você clica em "Instalar e reiniciar". Usa o próprio HTTPS do Windows
   (nenhuma biblioteca de rede de terceiros) e um teste falha se qualquer outro código abrir uma conexão.
+
+### Formato da exportação
+
+A exportação de um incidente é um arquivo JSON, `format: "developer-blackbox-export/2"` (a versão 1 não tinha a seção `health`). Nível
+principal: `format`, `exportedAtUtcMs`, `incident` (tipo, gravidade, horário, código do resumo, estado), `events` (os eventos de aplicativos
+da evidência, filtrados de novo pelas regras de exclusão e de apps protegidos de agora), `droppedEvents` (quantos saíram, sem citá-los) e
+`notesIncluded` (sempre `false`: anotações nunca saem). A nova seção `health` é a **saúde da máquina na janela do incidente**:
+
+| Campo | Significado |
+|---|---|
+| `fromUtcMs`, `toUtcMs` | A janela. Do início da janela de evidência (60 s antes do incidente; para tela azul, desligamento inesperado, erro de hardware e throttling, do começo da condição, até 8 dias para trás) até o fim da janela posterior. Só entram linhas com horário dentro dela. |
+| `events` | Linhas em ordem de horário, cada uma com `offsetMs` em relação ao incidente: eventos de saúde do Windows (`HealthEvent`: categoria, ID do evento, código opcional), mudanças de inventário (`InventoryChange`: item, anterior, novo), energia (`PowerStatus`: na tomada ou não, carga) e amostras de desempenho (`HealthSample`: 12 números opcionais). |
+| `dropped` | Quantas linhas de saúde da janela ficaram de fora, sem dizer quais. |
+| `truncated` | `true` se havia mais de 5.000 linhas; ficaram as mais próximas do incidente. |
+
+Cada linha de saúde é **conferida de novo na hora da exportação** contra conjuntos fechados: só as chaves exatas, categorias e itens de listas
+fixas, todo o resto número (ou nulo) dentro da faixa; qualquer outra coisa é descartada. Não existe campo de texto livre, então nada como texto de
+mensagem, nome ou identificador pode estar ali. As amostras de desempenho entram **só se os contadores estiverem ligados no momento da
+exportação**. O arquivo é JSON puro e **não é cifrado**: o app avisa antes de exportar.
 
 ## Limitações
 

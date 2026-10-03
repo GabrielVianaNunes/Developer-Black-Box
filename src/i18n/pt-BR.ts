@@ -119,7 +119,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "incidents.add": "Adicionar",
   "incidents.exportTitle": "Exportar evidências",
   "incidents.exportHelp":
-    "As regras de privacidade de agora são aplicadas de novo: aplicativos excluídos ou protegidos depois da gravação saem do arquivo, e eventos de origem desconhecida são descartados. Anotações não são exportadas. O arquivo exportado não é cifrado.",
+    "As regras de privacidade de agora são aplicadas de novo: aplicativos excluídos ou protegidos depois da gravação saem do arquivo, e eventos de origem desconhecida são descartados. Anotações não são exportadas. O arquivo também traz a saúde da máquina em torno do incidente (só números e códigos fixos), conferida de novo contra as regras de agora; as amostras de desempenho ficam de fora se os contadores estão desligados agora. O arquivo exportado não é cifrado.",
   "incidents.exportButton": "Exportar incidente",
   "incidents.exported": "Exportado em {path} ({events} eventos; {dropped} removidos pela filtragem).",
   "incidents.delete": "Excluir incidente",

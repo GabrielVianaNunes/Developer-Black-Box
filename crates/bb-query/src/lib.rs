@@ -389,6 +389,10 @@ pub struct ExportRules {
     pub partial: std::collections::HashMap<String, bb_core::ExclusionSet>,
     /// Programas excluídos por inteiro cuja exclusão vale também para o que eles iniciaram (filhos, netos...).
     pub trees: std::collections::HashSet<String>,
+    /// Janela de evidência anterior ao incidente (ms): a janela de saúde da exportação começa ali.
+    pub pre_window_ms: i64,
+    /// As amostras de contadores de desempenho só saem se a telemetria estiver LIGADA agora (padrão fechado: não saem).
+    pub include_samples: bool,
 }
 
 impl ExportRules {
@@ -464,6 +468,150 @@ pub struct ExportDoc {
     pub dropped_events: usize,
     /// Anotações são texto privado seu e nunca entram na exportação.
     pub notes_included: bool,
+    /// A saúde da máquina na janela do incidente, sempre refiltrada. Formato em `HealthExport`.
+    pub health: HealthExport,
+}
+
+/// A saúde da máquina (eventos do Windows, mudanças de inventário, energia e amostras de desempenho) na janela do
+/// incidente. Só números e enumerações fechadas: cada linha é conferida de novo na exportação contra os conjuntos de
+/// valores permitidos, e o que não bater é descartado.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthExport {
+    /// Início e fim da janela (ms UTC). Só entra o que tem horário dentro dela.
+    pub from_utc_ms: i64,
+    pub to_utc_ms: i64,
+    /// Linhas em ordem cronológica, com `offsetMs` em relação ao horário do incidente.
+    pub events: Vec<TimelineRow>,
+    /// Quantas linhas de saúde da janela ficaram de fora (falharam a conferência ou as regras de hoje). Sem citar conteúdo.
+    pub dropped: usize,
+    /// Havia mais linhas do que o teto (`MAX_HEALTH_ROWS`): ficaram as mais próximas do incidente.
+    pub truncated: bool,
+}
+
+/// Teto de linhas de saúde por exportação (um dia de amostras a cada 30 s são 2.880).
+pub const MAX_HEALTH_ROWS: usize = 5_000;
+/// A janela de saúde não recua mais que isto antes do incidente (o limite da leitura do que ocorreu com o app fechado).
+const MAX_HEALTH_LOOKBACK_MS: i64 = 8 * 86_400_000;
+
+const HEALTH_CATEGORIES: &[&str] = &[
+    "UnexpectedShutdown", "BugCheck", "HardwareError", "DisplayDriverReset", "DiskError", "FileSystemError", "ServiceCrash",
+    "UpdateFailure", "SleepEntered", "Resumed",
+];
+const INVENTORY_ITEMS: &[&str] =
+    &["BiosVersion", "BiosDate", "FirmwareType", "SecureBoot", "OsBuild", "DeviceProblemCount", "DeviceProblemCodes"];
+const AC_VALUES: &[&str] = &["Offline", "Online"];
+const SAMPLE_KEYS: &[&str] = &[
+    "thermal_kelvin", "passive_limit_pct", "cpu_load_pct", "cpu_perf_pct", "cpu_freq_mhz", "mem_commit_pct", "mem_available_mb",
+    "page_faults_per_sec", "disk_latency_us", "disk_busy_pct", "net_errors", "gpu_pct",
+];
+/// Tudo é abaixo de 2^53: a interface (JavaScript) lê sem perder precisão.
+const MAX_SAFE_NUMBER: u64 = 1 << 53;
+
+fn is_kind_of_health(kind: &str) -> bool {
+    matches!(kind, "HealthEvent" | "InventoryChange" | "PowerStatus" | "HealthSample")
+}
+
+/// Um campo que só pode ser número (ou ausente) dentro do limite.
+fn number_or_null(body: &Value, key: &str, max: u64) -> bool {
+    match body.get(key) {
+        None => false, // o campo existe sempre; ausente = linha estranha
+        Some(Value::Null) => true,
+        Some(v) => v.as_u64().is_some_and(|n| n <= max),
+    }
+}
+
+/// Um campo de texto que só pode ser um dos valores fechados.
+fn one_of(body: &Value, key: &str, allowed: &[&str]) -> bool {
+    body.get(key).and_then(Value::as_str).is_some_and(|s| allowed.contains(&s))
+}
+
+/// A linha de saúde tem EXATAMENTE as chaves esperadas, cada uma com um valor dos conjuntos fechados ou um número
+/// dentro do limite? Qualquer chave a mais (um possível campo de texto), texto fora do conjunto ou número fora do
+/// limite faz a linha ser descartada. As regras de hoje também entram: amostras só com a telemetria ligada.
+fn health_row_allowed(kind: &str, body: &Value, rules: &ExportRules) -> bool {
+    let Some(obj) = body.as_object() else { return false };
+    let only_keys = |keys: &[&str]| obj.len() == keys.len() && keys.iter().all(|k| obj.contains_key(*k));
+    match kind {
+        "HealthEvent" => {
+            only_keys(&["category", "event_id", "code"])
+                && one_of(body, "category", HEALTH_CATEGORIES)
+                && number_or_null(body, "code", u64::from(u32::MAX))
+                && body.get("event_id").and_then(Value::as_u64).is_some_and(|n| n <= u64::from(u16::MAX))
+        }
+        "InventoryChange" => {
+            only_keys(&["item", "previous", "current"])
+                && one_of(body, "item", INVENTORY_ITEMS)
+                && number_or_null(body, "previous", MAX_SAFE_NUMBER)
+                && number_or_null(body, "current", MAX_SAFE_NUMBER)
+        }
+        "PowerStatus" => {
+            only_keys(&["ac", "charge_percent"])
+                && (body.get("ac").is_some_and(Value::is_null) || one_of(body, "ac", AC_VALUES))
+                && number_or_null(body, "charge_percent", 100)
+        }
+        "HealthSample" => {
+            rules.include_samples && only_keys(SAMPLE_KEYS) && SAMPLE_KEYS.iter().all(|k| number_or_null(body, k, u64::from(u32::MAX)))
+        }
+        _ => false,
+    }
+}
+
+/// Quando a condição de um incidente de saúde começou, gravado como o último número do resumo (ms UTC). Só vale para os
+/// tipos de saúde, só se o número for plausível (nunca depois do incidente, nem mais de 8 dias antes).
+fn health_since(inc: &Incident) -> Option<i64> {
+    use bb_store::IncidentKind::*;
+    if !matches!(inc.kind, UnexpectedShutdown | BlueScreen | HardwareError | Throttling) {
+        return None;
+    }
+    let since: i64 = inc.summary.rsplit('|').next()?.parse().ok()?;
+    (since <= inc.created_utc_ms && inc.created_utc_ms - since <= MAX_HEALTH_LOOKBACK_MS).then_some(since)
+}
+
+/// Lê, dos segmentos que tocam a janela e do journal ativo, só as linhas de saúde com horário dentro dela.
+fn health_events_in(rec: &Recorder, from: i64, to: i64) -> Vec<Ev> {
+    let mut out = Vec::new();
+    let mut take = |lines: Vec<String>| {
+        out.extend(lines.iter().filter_map(|l| parse_line(l)).filter(|e| is_kind_of_health(&e.kind) && e.ts >= from && e.ts <= to));
+    };
+    for idx in rec.segments_overlapping(from, to).unwrap_or_default() {
+        if let Ok(lines) = rec.read_segment(idx) {
+            take(lines);
+        }
+    }
+    take(rec.journal_lines());
+    // Um evento está ou num segmento selado ou no journal ativo, nunca nos dois; o `seq` recomeça a cada execução do app,
+    // por isso não serve para deduplicar.
+    out.sort_by_key(|e| (e.ts, e.seq));
+    out
+}
+
+fn health_export(rec: &Recorder, inc: &Incident, rules: &ExportRules) -> HealthExport {
+    let pre = rules.pre_window_ms.max(0);
+    let from = health_since(inc).map_or(inc.created_utc_ms, |s| s.min(inc.created_utc_ms)) - pre;
+    let to = inc.post_until_utc_ms;
+    let candidates = health_events_in(rec, from, to);
+    let total = candidates.len();
+    let exes = HashMap::new();
+    let rows: Vec<TimelineRow> = candidates
+        .iter()
+        .filter(|e| health_row_allowed(&e.kind, &e.body, rules))
+        .map(|e| TimelineRow { offset_ms: e.ts - inc.created_utc_ms, row: row_of(e, &exes) })
+        .collect();
+    let dropped = total - rows.len();
+    let (events, truncated) = cap_rows(rows, MAX_HEALTH_ROWS);
+    HealthExport { from_utc_ms: from, to_utc_ms: to, events, dropped, truncated }
+}
+
+/// No máximo `max` linhas: se passar, ficam as mais próximas do incidente, de volta em ordem cronológica.
+fn cap_rows(mut rows: Vec<TimelineRow>, max: usize) -> (Vec<TimelineRow>, bool) {
+    if rows.len() <= max {
+        return (rows, false);
+    }
+    rows.sort_by_key(|r| (r.offset_ms.unsigned_abs(), r.row.seq));
+    rows.truncate(max);
+    rows.sort_by_key(|r| (r.row.ts_utc_ms, r.row.seq));
+    (rows, true)
 }
 
 /// Exporta as evidências de um incidente APLICANDO DE NOVO as regras de privacidade atuais.
@@ -480,6 +628,9 @@ pub fn export_incident(rec: &Recorder, store: &Store, id: i64, rules: &ExportRul
     let exes = exe_map(&events);
     let tree = tree_members(&events, &rules.trees);
 
+    // As linhas de saúde têm a própria seção (`health`, com janela e conferência próprias): aqui não contam nem como mantidas
+    // nem como removidas.
+    events.retain(|e| !is_kind_of_health(&e.kind));
     let total = events.len();
     let mut kept = Vec::new();
     for e in &events {
@@ -507,12 +658,13 @@ pub fn export_incident(rec: &Recorder, store: &Store, id: i64, rules: &ExportRul
         dto.exe_name = None;
     }
     Some(ExportDoc {
-        format: "developer-blackbox-export/1",
+        format: "developer-blackbox-export/2",
         exported_at_utc_ms: now_utc_ms,
         incident: dto,
         dropped_events: total - kept.len(),
         events: kept,
         notes_included: false,
+        health: health_export(rec, &inc, rules),
     })
 }
 
@@ -548,4 +700,149 @@ pub fn incident_detail(rec: &Recorder, store: &Store, id: i64) -> Option<Inciden
         .collect();
 
     Some(IncidentDetail { incident: IncidentDto::from(&inc), notes, segments, timeline })
+}
+
+#[cfg(test)]
+mod health_export_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn rules(samples: bool) -> ExportRules {
+        ExportRules { include_samples: samples, pre_window_ms: 60_000, ..ExportRules::default() }
+    }
+
+    fn sample_body() -> Value {
+        let mut o = serde_json::Map::new();
+        for k in SAMPLE_KEYS {
+            o.insert((*k).to_owned(), json!(5));
+        }
+        Value::Object(o)
+    }
+
+    #[test]
+    fn well_formed_rows_of_each_health_kind_pass() {
+        let r = rules(true);
+        assert!(health_row_allowed("HealthEvent", &json!({"category":"BugCheck","event_id":1001,"code":209}), &r));
+        assert!(health_row_allowed("HealthEvent", &json!({"category":"Resumed","event_id":107,"code":null}), &r));
+        assert!(health_row_allowed("InventoryChange", &json!({"item":"OsBuild","previous":1,"current":null}), &r));
+        assert!(health_row_allowed("PowerStatus", &json!({"ac":"Online","charge_percent":80}), &r));
+        assert!(health_row_allowed("PowerStatus", &json!({"ac":null,"charge_percent":null}), &r));
+        assert!(health_row_allowed("HealthSample", &sample_body(), &r));
+    }
+
+    #[test]
+    fn an_extra_key_is_never_allowed_because_it_could_be_free_text() {
+        let r = rules(true);
+        assert!(!health_row_allowed("HealthEvent", &json!({"category":"BugCheck","event_id":1,"code":1,"note":"synth text"}), &r));
+        assert!(!health_row_allowed("InventoryChange", &json!({"item":"OsBuild","previous":1,"current":2,"name":"synth"}), &r));
+        assert!(!health_row_allowed("PowerStatus", &json!({"ac":"Online","charge_percent":1,"ssid":"synth"}), &r));
+        let mut s = sample_body();
+        s.as_object_mut().unwrap().insert("adapter".into(), json!("synth"));
+        assert!(!health_row_allowed("HealthSample", &s, &r));
+    }
+
+    #[test]
+    fn a_missing_key_is_not_allowed_either() {
+        let r = rules(true);
+        assert!(!health_row_allowed("HealthEvent", &json!({"category":"BugCheck","event_id":1}), &r));
+        assert!(!health_row_allowed("PowerStatus", &json!({"ac":"Online"}), &r));
+    }
+
+    #[test]
+    fn text_outside_the_closed_sets_is_not_allowed() {
+        let r = rules(true);
+        assert!(!health_row_allowed("HealthEvent", &json!({"category":"C:\\Users\\synth","event_id":1,"code":1}), &r));
+        assert!(!health_row_allowed("HealthEvent", &json!({"category":"bugcheck","event_id":1,"code":1}), &r), "case matters");
+        assert!(!health_row_allowed("InventoryChange", &json!({"item":"SerialNumber","previous":1,"current":2}), &r));
+        assert!(!health_row_allowed("PowerStatus", &json!({"ac":"HomeWifi","charge_percent":1}), &r));
+    }
+
+    #[test]
+    fn a_number_field_holding_text_or_out_of_range_is_not_allowed() {
+        let r = rules(true);
+        assert!(!health_row_allowed("HealthEvent", &json!({"category":"BugCheck","event_id":1,"code":"abc"}), &r));
+        assert!(!health_row_allowed("HealthEvent", &json!({"category":"BugCheck","event_id":70_000,"code":1}), &r));
+        assert!(!health_row_allowed("HealthEvent", &json!({"category":"BugCheck","event_id":1,"code":4_294_967_296u64}), &r));
+        assert!(!health_row_allowed("HealthEvent", &json!({"category":"BugCheck","event_id":1,"code":-1}), &r));
+        assert!(!health_row_allowed("InventoryChange", &json!({"item":"OsBuild","previous":9_007_199_254_740_993u64,"current":1}), &r));
+        assert!(!health_row_allowed("PowerStatus", &json!({"ac":"Online","charge_percent":101}), &r));
+        let mut s = sample_body();
+        s["gpu_pct"] = json!("7");
+        assert!(!health_row_allowed("HealthSample", &s, &r));
+        s["gpu_pct"] = json!(1.5);
+        assert!(!health_row_allowed("HealthSample", &s, &r));
+    }
+
+    #[test]
+    fn samples_need_the_counters_to_be_on_today_and_other_rows_do_not() {
+        let off = rules(false);
+        assert!(!health_row_allowed("HealthSample", &sample_body(), &off));
+        assert!(health_row_allowed("PowerStatus", &json!({"ac":"Online","charge_percent":10}), &off));
+    }
+
+    #[test]
+    fn unknown_kinds_and_non_objects_are_never_allowed() {
+        let r = rules(true);
+        assert!(!health_row_allowed("ProcessStarted", &json!({}), &r));
+        assert!(!health_row_allowed("SomethingNew", &json!({"a":1}), &r));
+        assert!(!health_row_allowed("HealthEvent", &json!("text"), &r));
+        assert!(!health_row_allowed("HealthEvent", &json!([1, 2]), &r));
+    }
+
+    fn incident(kind: bb_store::IncidentKind, summary: &str, created: i64) -> Incident {
+        Incident {
+            id: 1,
+            kind,
+            severity: bb_store::Severity::Critical,
+            created_utc_ms: created,
+            exe_name: None,
+            summary: summary.into(),
+            state: bb_store::InvestigationState::New,
+            capture: bb_store::CaptureState::Preserved,
+            post_until_utc_ms: created + 30_000,
+            segments: vec![],
+        }
+    }
+
+    #[test]
+    fn the_start_of_the_condition_comes_only_from_a_health_incident_with_a_plausible_number() {
+        use bb_store::IncidentKind::*;
+        let c = 10_000_000_000;
+        assert_eq!(health_since(&incident(BlueScreen, "blue_screen|209|9999000000", c)), Some(9_999_000_000));
+        assert_eq!(health_since(&incident(Throttling, "throttling|70|95|9999700000", c)), Some(9_999_700_000));
+        assert_eq!(health_since(&incident(CpuSustained, "cpu_sustained|900|3|9999000000", c)), None, "not a health incident");
+        assert_eq!(health_since(&incident(BlueScreen, "blue_screen|209|10000000001", c)), None, "after the incident: implausible");
+        assert_eq!(health_since(&incident(BlueScreen, "blue_screen|209|1", c)), None, "more than 8 days back: implausible");
+        assert_eq!(health_since(&incident(BlueScreen, "blue_screen|abc", c)), None);
+        assert_eq!(health_since(&incident(BlueScreen, "", c)), None);
+    }
+
+    fn row(seq: u64, ts: i64, offset: i64) -> TimelineRow {
+        TimelineRow {
+            offset_ms: offset,
+            row: ActivityRow { seq, ts_utc_ms: ts, kind: "HealthSample".into(), pid: None, exe_name: None, detail: Detail::Unknown },
+        }
+    }
+
+    #[test]
+    fn under_the_cap_nothing_is_cut() {
+        let (rows, truncated) = cap_rows(vec![row(1, 10, -5), row(2, 20, 5)], 2);
+        assert_eq!((rows.len(), truncated), (2, false));
+    }
+
+    #[test]
+    fn over_the_cap_the_rows_closest_to_the_incident_stay_in_time_order() {
+        let all = vec![row(1, 100, -400), row(2, 200, -300), row(3, 300, -10), row(4, 400, 20), row(5, 500, 350), row(6, 600, 450)];
+        let (rows, truncated) = cap_rows(all, 3);
+        assert!(truncated);
+        assert_eq!(rows.iter().map(|r| r.row.seq).collect::<Vec<_>>(), vec![2, 3, 4], "the nearest three (offsets 10, 20 and 300), oldest first");
+    }
+
+    #[test]
+    fn the_real_cap_is_five_thousand_rows() {
+        assert_eq!(MAX_HEALTH_ROWS, 5_000);
+        let many: Vec<TimelineRow> = (0..5_001u64).map(|i| row(i, i as i64, i as i64)).collect();
+        let (rows, truncated) = cap_rows(many, MAX_HEALTH_ROWS);
+        assert_eq!((rows.len(), truncated), (5_000, true));
+    }
 }

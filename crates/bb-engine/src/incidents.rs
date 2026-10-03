@@ -65,6 +65,8 @@ pub struct Detector {
 const HEALTH_INCIDENT_COOLDOWN_MS: i64 = 300_000;
 /// Throttling prolongado é uma condição que dura: um aviso por meia hora, não um por amostra.
 const THROTTLING_INCIDENT_COOLDOWN_MS: i64 = 30 * 60_000;
+/// O throttling só vira incidente depois de `SUSTAINED_SAMPLES` amostras de ~30 s: a condição começou isto antes.
+const THROTTLING_LOOKBACK_MS: i64 = 10 * 30_000;
 
 /// Intervalo mínimo entre incidentes do mesmo tipo para o mesmo aplicativo (falha/travamento).
 const APP_INCIDENT_COOLDOWN_MS: i64 = 60_000;
@@ -115,7 +117,8 @@ impl Detector {
             kind: IncidentKind::Throttling,
             severity: Severity::Warning,
             exe_name: None,
-            summary: format!("throttling|{}|{}", passive_limit_pct.unwrap_or(0), cpu_load_pct.unwrap_or(0)),
+            // O último número é quando a condição começou (milissegundos UTC): a exportação usa para incluir a saúde do período.
+            summary: format!("throttling|{}|{}|{}", passive_limit_pct.unwrap_or(0), cpu_load_pct.unwrap_or(0), ts_utc_ms - THROTTLING_LOOKBACK_MS),
         })
     }
 
@@ -130,11 +133,12 @@ impl Detector {
                 // Kernel-Power 41 com código de verificação diferente de zero É uma tela azul; sem código é falta de energia.
                 let (kind, summary) = match category {
                     HealthCategory::UnexpectedShutdown if code.is_some_and(|c| c != 0) => {
-                        (IncidentKind::BlueScreen, format!("blue_screen|{}", code.unwrap_or(0)))
+                        (IncidentKind::BlueScreen, format!("blue_screen|{}|{ts_utc_ms}", code.unwrap_or(0)))
                     }
-                    HealthCategory::UnexpectedShutdown => (IncidentKind::UnexpectedShutdown, format!("unexpected_shutdown|{event_id}")),
-                    HealthCategory::BugCheck => (IncidentKind::BlueScreen, format!("blue_screen|{}", code.unwrap_or(0))),
-                    HealthCategory::HardwareError => (IncidentKind::HardwareError, format!("hardware_error|{event_id}")),
+                    // O último número de cada resumo de saúde é o horário do evento (ms UTC): a exportação inclui a saúde desde ali.
+                    HealthCategory::UnexpectedShutdown => (IncidentKind::UnexpectedShutdown, format!("unexpected_shutdown|{event_id}|{ts_utc_ms}")),
+                    HealthCategory::BugCheck => (IncidentKind::BlueScreen, format!("blue_screen|{}|{ts_utc_ms}", code.unwrap_or(0))),
+                    HealthCategory::HardwareError => (IncidentKind::HardwareError, format!("hardware_error|{event_id}|{ts_utc_ms}")),
                     _ => return None,
                 };
                 // Falta de energia e tela azul são o mesmo desligamento ruim: um incidente só.
@@ -348,14 +352,14 @@ mod tests {
     fn an_unexpected_shutdown_without_a_stop_code_opens_a_critical_incident_with_no_app() {
         let mut d = Detector::new(IncidentConfig::default());
         let f = d.observe(&health(HealthCategory::UnexpectedShutdown, 6008, None), 10).unwrap();
-        assert_eq!((f.kind, f.severity, f.exe_name, f.summary.as_str()), (IncidentKind::UnexpectedShutdown, Severity::Critical, None, "unexpected_shutdown|6008"));
+        assert_eq!((f.kind, f.severity, f.exe_name, f.summary.as_str()), (IncidentKind::UnexpectedShutdown, Severity::Critical, None, "unexpected_shutdown|6008|10"));
     }
 
     #[test]
     fn kernel_power_41_with_a_stop_code_is_a_blue_screen_and_without_one_a_power_loss() {
         let mut d = Detector::new(IncidentConfig::default());
         let f = d.observe(&health(HealthCategory::UnexpectedShutdown, 41, Some(209)), 10).unwrap();
-        assert_eq!((f.kind, f.summary.as_str()), (IncidentKind::BlueScreen, "blue_screen|209"));
+        assert_eq!((f.kind, f.summary.as_str()), (IncidentKind::BlueScreen, "blue_screen|209|10"));
         let mut d = Detector::new(IncidentConfig::default());
         let f = d.observe(&health(HealthCategory::UnexpectedShutdown, 41, Some(0)), 10).unwrap();
         assert_eq!(f.kind, IncidentKind::UnexpectedShutdown, "a zero stop code is a power loss, not a blue screen");
@@ -374,7 +378,7 @@ mod tests {
     fn a_whea_error_opens_a_hardware_incident_and_repeats_are_condensed() {
         let mut d = Detector::new(IncidentConfig::default());
         let f = d.observe(&health(HealthCategory::HardwareError, 18, None), 10).unwrap();
-        assert_eq!((f.kind, f.severity, f.summary.as_str()), (IncidentKind::HardwareError, Severity::Critical, "hardware_error|18"));
+        assert_eq!((f.kind, f.severity, f.summary.as_str()), (IncidentKind::HardwareError, Severity::Critical, "hardware_error|18|10"));
         assert!(d.observe(&health(HealthCategory::HardwareError, 17, None), 20_000).is_none());
     }
 
@@ -398,7 +402,7 @@ mod tests {
     fn throttling_opens_one_warning_per_half_hour() {
         let mut d = Detector::new(IncidentConfig::default());
         let f = d.throttling_finding(Some(70), Some(95), 1_000).unwrap();
-        assert_eq!((f.kind, f.severity, f.exe_name, f.summary.as_str()), (IncidentKind::Throttling, Severity::Warning, None, "throttling|70|95"));
+        assert_eq!((f.kind, f.severity, f.exe_name, f.summary.as_str()), (IncidentKind::Throttling, Severity::Warning, None, "throttling|70|95|-299000"));
         assert!(d.throttling_finding(Some(70), Some(95), 1_000 + 29 * 60_000).is_none());
         assert!(d.throttling_finding(Some(70), Some(95), 1_000 + 30 * 60_000).is_some());
     }

@@ -495,6 +495,9 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             authorized_now: self.guard.authorizations(mono_ms).into_iter().map(|a| a.exe.as_str().to_owned()).collect(),
             partial: cfg.partial_exclusions.iter().map(|(n, set)| (n.as_str().to_owned(), *set)).collect(),
             trees: cfg.excluded_trees.iter().filter(|n| cfg.excluded_apps.contains(*n)).map(|n| n.as_str().to_owned()).collect(),
+            pre_window_ms: inc.detector.config().pre_window_ms,
+            // As amostras de contadores só saem se a telemetria está LIGADA agora: desligou depois de gravar, não saem.
+            include_samples: self.settings.telemetry_enabled,
         };
         let doc = bb_query::export_incident(&self.recorder, &inc.store, id, &rules, utc_ms)
             .ok_or_else(|| EngineError::Invalid("export.not_found".into()))?;
