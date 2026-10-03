@@ -15,7 +15,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent, Wry};
 
-use bb_collector::{MetricsConfig, WindowsContextSource, WindowsCrashSource, WindowsHealthSource, WindowsInventorySource, WindowsPowerSource, WindowsProcessSource};
+use bb_collector::{MetricsConfig, WindowsContextSource, WindowsCrashSource, WindowsHealthSource, WindowsInventorySource, WindowsPowerSource, WindowsProcessSource, WindowsTelemetrySource};
 use bb_core::{GuardConfig, ReasonCode, RecorderState};
 use bb_engine::{Engine, IncidentConfig};
 use bb_recorder::{DpapiKeyStore, KeyProvider, Recorder, RecorderConfig};
@@ -287,6 +287,10 @@ fn build_engine() -> Result<(WinEngine, Lang), String> {
     engine.set_health_source(Box::new(WindowsHealthSource::new()), utc_ms());
     engine.set_inventory_source(Box::new(WindowsInventorySource::new()));
     engine.set_power_source(Box::new(WindowsPowerSource::new()));
+    // Sem a consulta PDH a telemetria simplesmente não existe (fonte indisponível), sem erro.
+    if let Ok(src) = WindowsTelemetrySource::new() {
+        engine.set_telemetry_source(Box::new(src));
+    }
     engine.load_settings().map_err(|e| format!("settings: {e}"))?;
     // Início conservador: nada é gravado até você autorizar em "Retomar gravação",
     // a menos que você tenha ligado o início automático nas configurações.

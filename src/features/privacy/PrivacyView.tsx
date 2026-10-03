@@ -60,6 +60,15 @@ export function PrivacyView({ status, onShowNews, privacy }: { status: Status; o
           {t("privacy.autoStart")}
         </label>
         <p className="muted small">{t("privacy.autoStartHelp")}</p>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={draft.telemetryEnabled}
+            onChange={(e) => setDraft({ ...draft, telemetryEnabled: e.target.checked })}
+          />
+          {t("privacy.telemetry")}
+        </label>
+        <p className="muted small">{t("privacy.telemetryHelp")}</p>
         <div className="row">
           <button className="primary" disabled={!dirty} onClick={() => void apply()}>{t("privacy.apply")}</button>
           <button disabled={!dirty} onClick={discard}>{t("privacy.discard")}</button>

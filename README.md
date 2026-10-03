@@ -28,6 +28,10 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
   Event Log IDs**. Only the category, the event ID and one number (such as the stop code) are stored, never the message
   text. They keep being recorded while a privacy block is active (they do not depend on the app in front), but a manual
   pause always wins.
+- **System performance telemetry:** about one sample every 30 seconds of system-wide counters (temperature and thermal limit, CPU,
+  memory, disk, network errors as a single total, GPU use), read without administrator rights. Only numbers, nothing per program, per user
+  or per connection. **On by default**; turn it off in the Privacy tab ("Record system performance counters"). It costs about 0.1 MB per day
+  once sealed (about 1 MB per day before the open journal is sealed), measured with synthetic samples.
 - **Power and battery:** plugged in or on battery and the charge percentage (only meaningful changes), plus sleep and resume from the
   Windows log. A computer without a battery shows this source as unavailable. No location and no network information. Battery wear is
   **not** recorded: it was not shown to be readable without administrator rights.
@@ -220,6 +224,10 @@ de comando.
   Windows, de uma **lista fixa de IDs do Event Log**. Só a categoria, o ID do evento e um número (como o código de
   parada) são gravados, nunca o texto da mensagem. Continuam sendo gravados durante um bloqueio de privacidade (não
   dependem do app em primeiro plano), mas a pausa manual sempre vence.
+- **Telemetria de desempenho do sistema:** cerca de uma amostra a cada 30 segundos de contadores do sistema inteiro (temperatura e limite
+  térmico, CPU, memória, disco, erros de rede como um total só, uso da GPU), lida sem administrador. Só números, nada por programa, por usuário
+  ou por conexão. **Ligada por padrão**; desligue na aba Privacidade ("Gravar contadores de desempenho do sistema"). Custa cerca de 0,1 MB por
+  dia depois de selada (cerca de 1 MB por dia antes de o journal aberto ser selado), medido com amostras sintéticas.
 - **Energia e bateria:** na tomada ou na bateria e a porcentagem de carga (só variações relevantes), mais suspensão e retomada vindas do
   log do Windows. Computador sem bateria mostra esta fonte como indisponível. Sem localização e sem informação de rede. O desgaste da
   bateria **não** é gravado: não ficou provado que dê para ler sem administrador.

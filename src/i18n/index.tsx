@@ -4,6 +4,7 @@ import type { Detail } from "../types/dashboard";
 import { en } from "./en";
 import { inventoryValueText } from "./inventory";
 import { ptBR } from "./pt-BR";
+import { sampleText } from "./telemetry";
 
 export type Lang = "en" | "pt-BR";
 export type Key = keyof typeof en;
@@ -172,6 +173,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
                 code: `0x${d.value.toString(16).toUpperCase().padStart(8, "0")}`,
               });
         }
+        case "healthSample":
+          return sampleText(d, tAny);
         case "powerStatus":
           return t("detail.powerStatus", {
             ac: d.ac === "online" ? t("power.ac.online") : d.ac === "offline" ? t("power.ac.offline") : t("power.ac.unknown"),

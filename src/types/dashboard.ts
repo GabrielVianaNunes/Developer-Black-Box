@@ -10,6 +10,21 @@ export type Detail =
   | { code: "appHang" }
   | { code: "userMarker"; marker: number }
   | { code: "healthEvent"; category: string; eventId: number; value: number | null }
+  | {
+      code: "healthSample";
+      thermalKelvin: number | null;
+      passiveLimitPct: number | null;
+      cpuLoadPct: number | null;
+      cpuPerfPct: number | null;
+      cpuFreqMhz: number | null;
+      memCommitPct: number | null;
+      memAvailableMb: number | null;
+      pageFaultsPerSec: number | null;
+      diskLatencyUs: number | null;
+      diskBusyPct: number | null;
+      netErrors: number | null;
+      gpuPct: number | null;
+    }
   | { code: "powerStatus"; ac: string | null; chargePercent: number | null }
   | { code: "inventoryChange"; item: string; previous: number | null; current: number | null }
   | { code: "recorderStateChanged" }
@@ -121,6 +136,8 @@ export interface Settings {
   autoStart: boolean;
   retentionMaxMb: number;
   retentionMaxHours: number;
+  /** Telemetria contínua de desempenho do sistema (contadores PDH). Volta intacta ao salvar. */
+  telemetryEnabled: boolean;
 }
 
 export interface ExportResult {

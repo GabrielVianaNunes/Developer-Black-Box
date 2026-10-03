@@ -21,6 +21,7 @@ const KINDS = [
   "HealthEvent",
   "InventoryChange",
   "PowerStatus",
+  "HealthSample",
   "RecorderStateChanged",
   "UserMarker",
 ];

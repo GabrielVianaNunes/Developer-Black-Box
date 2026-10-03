@@ -210,6 +210,9 @@ pub struct SettingsDto {
     auto_start: bool,
     retention_max_mb: u64,
     retention_max_hours: u64,
+    // Sem `default`, como os campos acima: um cliente que esqueça este campo é recusado em vez de ligar ou desligar a
+    // telemetria em silêncio.
+    telemetry_enabled: bool,
 }
 
 impl From<&Settings> for SettingsDto {
@@ -230,6 +233,7 @@ impl From<&Settings> for SettingsDto {
             auto_start: s.auto_start,
             retention_max_mb: s.retention_max_mb,
             retention_max_hours: s.retention_max_hours,
+            telemetry_enabled: s.telemetry_enabled,
         }
     }
 }
@@ -250,6 +254,7 @@ impl From<SettingsDto> for Settings {
             auto_start: d.auto_start,
             retention_max_mb: d.retention_max_mb,
             retention_max_hours: d.retention_max_hours,
+            telemetry_enabled: d.telemetry_enabled,
         }
     }
 }

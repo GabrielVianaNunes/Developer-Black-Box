@@ -224,3 +224,22 @@ fn a_power_row_exposes_only_ac_and_percent() {
     let json = serde_json::to_string(&rows[0]).unwrap();
     assert!(json.contains("\"code\":\"powerStatus\"") && json.contains("\"chargePercent\":42"), "{json}");
 }
+
+#[test]
+fn a_sample_row_exposes_only_numbers_and_keeps_missing_counters_as_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut rec = Recorder::open(dir.path(), &StaticKey([1u8; 32]), RecorderConfig::default()).unwrap();
+    let mut g = PrivacyGuard::new(GuardConfig::default());
+    g.observe(0, Observation { detector_ok: true, session_locked: false, foreground: Some(exe("synth-editor.exe")) });
+    let sample = bb_core::HealthSample { thermal_kelvin: Some(318), cpu_load_pct: Some(23), ..Default::default() };
+    rec.append(&g.admit_health(1, 7_000, EventKind::HealthSample(sample)).unwrap()).unwrap();
+    let rows = activity(&rec, &f(10));
+    match &rows[0].detail {
+        Detail::HealthSample { thermal_kelvin, cpu_load_pct, gpu_pct, net_errors, .. } => {
+            assert_eq!((*thermal_kelvin, *cpu_load_pct, *gpu_pct, *net_errors), (Some(318), Some(23), None, None));
+        }
+        other => panic!("unexpected detail: {other:?}"),
+    }
+    let json = serde_json::to_string(&rows[0]).unwrap();
+    assert!(json.contains("\"code\":\"healthSample\"") && json.contains("\"thermalKelvin\":318"), "{json}");
+}
