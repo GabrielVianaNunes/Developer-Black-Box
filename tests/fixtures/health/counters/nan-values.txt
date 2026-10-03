@@ -1,0 +1,8 @@
+# not-a-number and infinite values are never turned into numbers
+cpu_load_pct=nan
+mem_commit_pct=inf
+gpu=a_engtype_3D:inf
+expect.cpu_load_pct=none
+expect.mem_commit_pct=none
+expect.gpu_pct=none
+expect.empty=true

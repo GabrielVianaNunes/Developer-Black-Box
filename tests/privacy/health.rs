@@ -1307,3 +1307,52 @@ fn app_events_in_the_export_keep_the_old_rules_and_health_rows_do_not_inflate_th
     assert_eq!(doc["droppedEvents"], 0, "health rows have their own section and are not counted as filtered app events");
     assert!(doc["events"].is_array());
 }
+
+// ---- fecho do conjunto: tudo indisponível ao mesmo tempo ----
+
+#[test]
+fn when_every_health_source_is_unavailable_nothing_breaks_nothing_is_recorded_and_no_alarm_is_raised() {
+    let (mut r, t) = tel_rig();
+    let (inv, pw) = (
+        Arc::new(Mutex::new(Inv { fail: true, ..Inv::default() })),
+        Arc::new(Mutex::new(Pwr { fail: true, ..Pwr::default() })),
+    );
+    r.engine.set_inventory_source(Box::new(FakeInv(inv)));
+    r.engine.set_power_source(Box::new(FakePower(pw)));
+    t.lock().unwrap().fail = true;
+    r.feed.lock().unwrap().fail = true;
+    for _ in 0..3 {
+        let (state, _) = r.cycle();
+        assert_eq!(state, RecorderState::Recording, "the recorder keeps working (no SafetyFault)");
+    }
+    let lines = r.lines();
+    for kind in ["HealthEvent", "InventoryChange", "PowerStatus", "HealthSample"] {
+        assert!(!lines.iter().any(|l| l.contains(kind)), "nothing of kind {kind} was invented");
+    }
+    assert!(incidents(&r).is_empty(), "unavailable sources raise no incident");
+    for id in [HealthSourceId::EventLog, HealthSourceId::Inventory, HealthSourceId::Power, HealthSourceId::Telemetry] {
+        assert_eq!(state_of(&r, id), SourceState::Unavailable, "{id:?}");
+    }
+    assert!(lines.iter().any(|l| l.contains("SystemMetrics")), "positive control: normal activity is still being recorded");
+}
+
+#[test]
+fn with_the_manual_pause_on_no_health_source_is_even_read() {
+    let (mut r, t) = tel_rig();
+    let inv: SharedInv = Arc::new(Mutex::new(Inv { snap: vec![(InventoryItem::OsBuild, Some(1))], ..Inv::default() }));
+    let pw: SharedPwr = Arc::new(Mutex::new(Pwr { reading: battery(AcLine::Online, 50), ..Pwr::default() }));
+    r.engine.set_inventory_source(Box::new(FakeInv(inv.clone())));
+    r.engine.set_power_source(Box::new(FakePower(pw.clone())));
+    r.engine.pause();
+    for _ in 0..3 {
+        r.cycle();
+    }
+    assert_eq!(r.polls(), 0, "event log");
+    assert_eq!(inv.lock().unwrap().reads, 0, "inventory");
+    assert_eq!(pw.lock().unwrap().reads, 0, "power");
+    assert_eq!(t.lock().unwrap().reads, 0, "counters");
+    // controle positivo: sem a pausa, as quatro fontes são lidas
+    r.engine.resume(r.mono);
+    r.cycle();
+    assert!(r.polls() > 0 && inv.lock().unwrap().reads > 0 && pw.lock().unwrap().reads > 0 && t.lock().unwrap().reads > 0);
+}

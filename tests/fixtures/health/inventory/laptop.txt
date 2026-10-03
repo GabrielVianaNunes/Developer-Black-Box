@@ -1,0 +1,14 @@
+# a typical laptop
+bios_version=1.22.333
+bios_date=03/07/2024
+firmware=2
+secure_boot=1
+os=26100.1742
+problem_codes=0,10,43,22
+expect.BiosVersion=551234936832
+expect.BiosDate=20240307
+expect.FirmwareType=2
+expect.SecureBoot=1
+expect.OsBuild=27367835342
+expect.DeviceProblemCount=2
+expect.DeviceProblemCodes=8796093023232

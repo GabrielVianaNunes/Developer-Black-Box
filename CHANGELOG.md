@@ -7,6 +7,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- Tests and synthetic fixtures for the machine health data (#75). `tests/fixtures/health/` holds, all invented, one Windows event XML for
+  each rule of the fixed Event Log list (plus events that must be ignored), performance counter readings (healthy, throttled, values in the
+  wrong unit, nothing available, several GPU engines, not-a-number) and inventory readings, each with the numbers it must become; the tests
+  require exactly one fixture per rule, so removing or adding a rule without its fixture fails. A schema test walks **every** variant of
+  the health events (categories, inventory items, power sources, the four event types) and checks that only numbers, nulls and the closed
+  names are stored, with no path, name, address or GUID in any text, and it stops compiling when a variant is added without updating it.
+  A matrix test checks each health event type in each of 8 Guard states (recording, privacy block by protected app, locked session,
+  detector failure, manual pause, shutdown, start, restricted test mode) and that the regular door never admits them. Engine tests check
+  that with every source unavailable nothing breaks, nothing is recorded and no incident is raised, and that with the manual pause on no
+  source is even read. `npm run check:repo` now also runs a fixture hygiene check that rejects values that look real (computer or user
+  names without a synthetic marker, emails, MAC addresses, non-zero GUIDs and SIDs, private IP addresses, serial numbers). Mutation testing
+  of these rules (breaking each on purpose and confirming a test fails) was done and reported in the pull requests.
 - The incident export now carries the **machine health around the incident** (#74), in a new `health` section; the export format is now
   `developer-blackbox-export/2` (documented in the README, "Export format"). It holds the Windows health events, inventory changes,
   power records and performance samples whose timestamp falls inside the incident window: from the start of the evidence window to its

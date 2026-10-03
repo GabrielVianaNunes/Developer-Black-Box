@@ -8,6 +8,9 @@ publish.workspace = true
 [dependencies]
 serde.workspace = true
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [[test]]
 name = "privacy_guard"
 path = "../../tests/privacy/guard.rs"
@@ -27,3 +30,7 @@ path = "../../tests/privacy/exclusion_kinds.rs"
 [[test]]
 name = "privacy_exclusion_tree"
 path = "../../tests/privacy/exclusion_tree.rs"
+
+[[test]]
+name = "privacy_health_schema"
+path = "../../tests/privacy/health_schema.rs"

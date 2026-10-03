@@ -40,3 +40,7 @@ path = "../../tests/privacy/apps_windows.rs"
 
 [dev-dependencies]
 tempfile = "3"
+
+[[test]]
+name = "privacy_health_fixtures"
+path = "../../tests/privacy/health_fixtures.rs"

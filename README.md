@@ -128,6 +128,14 @@ The privacy tests use **synthetic data only** and cover, among other things: man
 respects the Guard, excluded apps, temporary authorizations, encryption on disk, export with
 re-filtering, crash recovery and the absence of network libraries in the core.
 
+For the machine health data there are **synthetic fixtures** in `tests/fixtures/health/` (one Windows event XML for every rule of the fixed
+Event Log list, performance counter values and inventory readings, with the numbers each one must become). The tests require one fixture per
+rule, walk **every** variant of the health events to check that only numbers, nulls and closed names are stored (a new variant does not
+compile until it is added), check every health event type in every Guard state (manual pause and shutdown always win; a privacy block does
+not stop them), check that all sources degrade quietly when unavailable, and check that retention keeps the samples within the storage
+budget. `npm run check:repo` also rejects any fixture that looks like real data (computer or user names, emails, MAC addresses, non-zero
+GUIDs and SIDs, private IP addresses, serial numbers).
+
 ### Publishing a Release (maintainer)
 
 Releases follow Git Flow and a documented procedure: see [RELEASING.md](RELEASING.md). Before publishing, run `npm run check:repo` and `npm run check:history` (they look for sensitive files
@@ -352,6 +360,15 @@ npm run check:repo       # nenhum arquivo sensível rastreado + scanner de segre
 Os testes de privacidade usam **somente dados sintéticos** e cobrem, entre outros: pausa manual, retomada
 que respeita o Guard, apps excluídos, autorizações temporárias, cifra em disco, exportação com nova
 filtragem, recuperação após queda e ausência de bibliotecas de rede no núcleo.
+
+Para os dados de saúde da máquina há **fixtures sintéticas** em `tests/fixtures/health/` (um XML de evento do Windows para cada regra da lista
+fixa do Event Log, valores de contadores de desempenho e leituras de inventário, com os números em que cada um deve se transformar). Os
+testes exigem uma fixture por regra, percorrem **todas** as variantes dos eventos de saúde para conferir que só números, nulos e nomes
+fechados são gravados (uma variante nova não compila até ser incluída), conferem cada tipo de evento de saúde em cada estado do Guard (a pausa
+manual e o encerramento sempre vencem; um bloqueio de privacidade não os impede), conferem que todas as fontes degradam em silêncio quando
+indisponíveis e que a retenção mantém as amostras dentro do orçamento de armazenamento. O `npm run check:repo` também reprova qualquer
+fixture que pareça dado real (nomes de computador ou usuário, e-mails, endereços MAC, GUIDs e SIDs não zerados, endereços IP privados,
+números de série).
 
 ### Publicar uma Release (mantenedor)
 
