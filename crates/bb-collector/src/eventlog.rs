@@ -86,14 +86,14 @@ pub fn iso_from_ms(ms: i64) -> String {
 
 // ---------- XML ----------
 
-fn between<'a>(s: &'a str, start: &str, end: &str) -> Option<&'a str> {
+pub(crate) fn between<'a>(s: &'a str, start: &str, end: &str) -> Option<&'a str> {
     let i = s.find(start)? + start.len();
     let j = s[i..].find(end)? + i;
     Some(&s[i..j])
 }
 
 /// Valor de um atributo XML, com aspas simples ou duplas (o Windows usa aspas simples).
-fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
     for q in ['\'', '"'] {
         if let Some(v) = between(s, &format!("{name}={q}"), &q.to_string()) {
             return Some(v);
@@ -103,7 +103,7 @@ fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
 }
 
 /// Elementos `<Data>` do evento na ordem: (valor do atributo `Name` se houver, texto).
-fn data_fields(xml: &str) -> Vec<(Option<&str>, &str)> {
+pub(crate) fn data_fields(xml: &str) -> Vec<(Option<&str>, &str)> {
     let mut out = Vec::new();
     let mut rest = xml;
     while let Some(i) = rest.find("<Data") {

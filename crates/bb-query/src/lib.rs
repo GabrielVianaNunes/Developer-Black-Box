@@ -67,6 +67,8 @@ pub enum Detail {
     SystemMetrics { cpu_permille: u64, mem_used_kb: u64, mem_total_kb: u64 },
     AppCrash { exception_code: u64 },
     AppHang,
+    /// Evento de saúde da máquina: categoria (enumeração fechada), ID do evento e um número opcional (sem texto).
+    HealthEvent { category: String, event_id: u64, value: Option<u64> },
     UserMarker { marker: u64 },
     RecorderStateChanged,
     Unknown,
@@ -114,6 +116,11 @@ fn row_of(e: &Ev, exes: &HashMap<(u64, i64), String>) -> ActivityRow {
         },
         "AppCrash" => Detail::AppCrash { exception_code: n("exception_code") },
         "AppHang" => Detail::AppHang,
+        "HealthEvent" => Detail::HealthEvent {
+            category: e.body.get("category").and_then(Value::as_str).unwrap_or("").to_owned(),
+            event_id: n("event_id"),
+            value: e.body.get("code").and_then(Value::as_u64),
+        },
         "UserMarker" => Detail::UserMarker { marker: n("code") },
         "RecorderStateChanged" => Detail::RecorderStateChanged,
         _ => Detail::Unknown,

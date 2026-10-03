@@ -23,6 +23,11 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
   session is locked or the detector is unavailable. The absence of a signal is never treated as "safe".
 - **Incidents:** manual capture, sustained CPU, high memory, crashes and hangs (Windows Event Log),
   with evidence from the window before and after.
+- **System health events:** unexpected shutdowns, blue screens (stop code), hardware errors (WHEA), display driver
+  resets, disk and NTFS errors, services that stopped unexpectedly and failed Windows Updates, from a **fixed list of
+  Event Log IDs**. Only the category, the event ID and one number (such as the stop code) are stored, never the message
+  text. They keep being recorded while a privacy block is active (they do not depend on the app in front), but a manual
+  pause always wins.
 - **Dashboard:** overview, activity with filters, processes, incidents (timeline, notes, export),
   privacy, storage and integrity verification.
 - **Rules in effect at a glance:** the Overview lists the protected applications and each exclusion rule, with how many times
@@ -126,7 +131,9 @@ segments) and `exports\`. None of it lives in the repository and all of it is in
 - **Every event goes through the Privacy Guard** before reaching the recorder (the event type can only
   be created by the Guard).
 - **No reconstruction:** what happens during a pause or block is never recorded afterwards, including
-  crashes logged by Windows in that interval.
+  crashes logged by Windows in that interval. The only exception is system health events: if the app was
+  **closed** (not paused) and the previous run ended while recording, the Windows log of that closed interval (up to
+  7 days) is read once at the next start, so an unexpected shutdown logged on the following boot is not lost.
 - **Encryption at rest:** events and the sensitive database fields use AES-256-GCM, with a key protected
   by DPAPI (tied to your Windows account). Deleted content is overwritten in the file.
 - **Re-filtered export:** it applies today's privacy rules again and never includes notes.
@@ -202,6 +209,11 @@ de comando.
   sessão bloqueada ou detector indisponível. Ausência de sinal nunca é tratada como "seguro".
 - **Incidentes:** captura manual, CPU sustentada, memória alta, falhas e travamentos (Event Log do
   Windows), com evidências da janela anterior e posterior.
+- **Eventos de saúde do sistema:** desligamento inesperado, tela azul (código de parada), erros de hardware (WHEA),
+  reinício do driver de vídeo, erros de disco e NTFS, serviços que encerraram sem querer e falhas de atualização do
+  Windows, de uma **lista fixa de IDs do Event Log**. Só a categoria, o ID do evento e um número (como o código de
+  parada) são gravados, nunca o texto da mensagem. Continuam sendo gravados durante um bloqueio de privacidade (não
+  dependem do app em primeiro plano), mas a pausa manual sempre vence.
 - **Painel:** visão geral, atividade com filtros, processos, incidentes (linha do tempo, anotações,
   exportação), privacidade, armazenamento e verificação de integridade.
 - **Regras em vigor num relance:** a Visão Geral lista os aplicativos protegidos e cada regra de exclusão, com quantas vezes
@@ -307,7 +319,9 @@ segredos no repositório e em todo o histórico) e, de preferência, também um 
 - **Todo evento passa pelo Privacy Guard** antes de chegar ao gravador (o tipo do evento só pode ser
   criado pelo Guard).
 - **Sem reconstrução:** o que ocorre durante uma pausa ou bloqueio nunca é gravado depois, inclusive
-  falhas registradas pelo Windows nesse intervalo.
+  falhas registradas pelo Windows nesse intervalo. A única exceção são os eventos de saúde do sistema: se o app
+  esteve **fechado** (não pausado) e a execução anterior terminou gravando, o log do Windows desse intervalo fechado
+  (até 7 dias) é lido uma vez no início seguinte, para não perder um desligamento inesperado registrado no boot.
 - **Cifra em repouso:** eventos e campos sensíveis do banco em AES-256-GCM, com chave protegida por
   DPAPI (ligada à sua conta do Windows). Conteúdo apagado é sobrescrito no arquivo.
 - **Exportação refiltrada:** aplica de novo as regras de privacidade de agora e nunca inclui anotações.

@@ -6,6 +6,7 @@
 //! - Ao parar de gravar, o estado do `Differ` é esquecido; o que ocorrer no
 //!   intervalo nunca é reconstruído ao retomar.
 
+pub mod health;
 pub mod incidents;
 pub mod settings;
 
@@ -13,7 +14,7 @@ use std::fmt;
 use std::time::Duration;
 
 use bb_collector::{
-    CollectError, ContextSource, CrashKind, CrashSource, Differ, MetricsConfig, ProcessSource,
+    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, MetricsConfig, ProcessSource,
 };
 use bb_core::{AuthError, EventKind, ExeName, GuardConfig, PrivacyGuard, ProcessRef, ReasonCode, RecorderState};
 use bb_recorder::{Recorder, RecorderError};
@@ -125,7 +126,18 @@ pub struct Engine<P: ProcessSource, C: ContextSource> {
     settings: Settings,
     crashes: Option<Box<dyn CrashSource + Send>>,
     crash_state: CrashState,
+    health: Option<Box<dyn HealthSource + Send>>,
+    health_win: health::HealthWindow,
+    /// Última consulta de saúde (relógio monotônico). `None` = consultar assim que puder.
+    health_last_poll_mono: Option<u64>,
+    /// A última consulta falhou: a fonte aparece como indisponível, sem erro nem alarme.
+    health_unavailable: bool,
+    shutting_down: bool,
 }
+
+/// Chaves (cifradas) da marca d'água de saúde: até onde a última execução leu, e se terminou lendo.
+const HEALTH_CURSOR_KEY: &str = "health.cursor";
+const HEALTH_ACTIVE_KEY: &str = "health.active";
 
 /// Uma falha registrada pelo Windows só interessa se foi registrada DURANTE uma gravação.
 /// O que ocorreu numa pausa ou bloqueio nunca é reconstruído depois.
@@ -166,12 +178,40 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             settings: Settings::default(),
             crashes: None,
             crash_state: CrashState::default(),
+            health: None,
+            health_win: health::HealthWindow::new(),
+            health_last_poll_mono: None,
+            health_unavailable: false,
+            shutting_down: false,
         }
     }
 
     /// Liga a leitura de falhas e travamentos (Windows Event Log).
     pub fn set_crash_source(&mut self, src: Box<dyn CrashSource + Send>) {
         self.crashes = Some(src);
+    }
+
+    /// Liga a leitura de eventos de saúde da máquina (Windows Event Log `System`). Chame DEPOIS de `enable_incidents`: a
+    /// marca d'água da execução anterior vem do armazenamento cifrado. Se a execução anterior terminou lendo, o intervalo
+    /// em que o app esteve fechado (até 7 dias) entra na primeira leitura; senão (pausa manual, primeira vez) começa de agora.
+    pub fn set_health_source(&mut self, src: Box<dyn HealthSource + Send>, utc_ms: i64) {
+        self.health_win = match self.incidents.as_ref().map(|i| &i.store) {
+            Some(store) => {
+                let active = store.get_setting(HEALTH_ACTIVE_KEY).ok().flatten().as_deref() == Some("1");
+                let cursor = store.get_setting(HEALTH_CURSOR_KEY).ok().flatten().and_then(|v| v.parse::<i64>().ok());
+                match (active, cursor) {
+                    (true, Some(c)) => health::HealthWindow::with_backlog(c, utc_ms),
+                    _ => health::HealthWindow::new(),
+                }
+            }
+            None => health::HealthWindow::new(),
+        };
+        self.health = Some(src);
+    }
+
+    /// A leitura de saúde falhou na última tentativa (canal indisponível): a fonte é mostrada como indisponível.
+    pub fn health_unavailable(&self) -> bool {
+        self.health_unavailable
     }
 
     pub fn settings(&self) -> &Settings {
@@ -442,6 +482,8 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
 
     /// Sela o journal e encerra. Depois disto nada mais é gravado.
     pub fn shutdown(&mut self) -> Result<(), EngineError> {
+        // Encerrar normalmente NÃO conta como pausa: a marca d'água segue "lendo", e o próximo início cobre o intervalo fechado.
+        self.shutting_down = true;
         self.guard.begin_shutdown();
         self.stop_recording();
         self.recorder.seal()?;
@@ -515,6 +557,57 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         Ok(out)
     }
 
+    fn save_health_marks(&self, active: bool, cursor: Option<i64>) {
+        // Melhor esforço: falhar em salvar a marca d'água nunca derruba o ciclo.
+        if let Some(i) = self.incidents.as_ref() {
+            let _ = i.store.set_setting(HEALTH_ACTIVE_KEY, if active { "1" } else { "0" });
+            if let Some(c) = cursor {
+                let _ = i.store.set_setting(HEALTH_CURSOR_KEY, &c.to_string());
+            }
+        }
+    }
+
+    /// Lê e grava os eventos de saúde do ciclo. Devolve quantos foram gravados.
+    fn health_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
+        if self.health.is_none() {
+            return Ok(0);
+        }
+        if !self.guard.health_allowed(mono_ms) {
+            if self.health_win.deactivate() && !self.shutting_down {
+                self.save_health_marks(false, None);
+            }
+            self.health_last_poll_mono = None;
+            return Ok(0);
+        }
+        if self.health_last_poll_mono.is_some_and(|t| mono_ms.saturating_sub(t) < health::POLL_INTERVAL_MS) {
+            return Ok(0);
+        }
+        self.health_last_poll_mono = Some(mono_ms);
+        self.health_win.activate(utc_ms);
+        let Some(since) = self.health_win.since() else { return Ok(0) };
+        let Some(src) = self.health.as_mut() else { return Ok(0) };
+        let records = match src.poll(since) {
+            Ok(r) => r,
+            Err(_) => {
+                // Fonte indisponível: segue sem ela, sem erro; a janela fica como está para a próxima tentativa.
+                self.health_unavailable = true;
+                return Ok(0);
+            }
+        };
+        self.health_unavailable = false;
+        let mut persisted = 0;
+        for r in self.health_win.accept(records) {
+            let kind = EventKind::HealthEvent { category: r.category, event_id: r.event_id, code: r.code };
+            if let Some(ev) = self.guard.admit_health(mono_ms, r.ts_utc_ms, kind) {
+                self.recorder.append(&ev)?;
+                persisted += 1;
+            }
+        }
+        self.health_win.finish_poll(utc_ms);
+        self.save_health_marks(true, Some(utc_ms));
+        Ok(persisted)
+    }
+
     fn tick_inner(&mut self, mono_ms: u64, utc_ms: i64) -> Result<TickReport, EngineError> {
         self.first_seen_utc.get_or_insert(utc_ms);
         // 1. O contexto é sempre observado, com ou sem pausa manual.
@@ -524,9 +617,12 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         let (state, reason) = self.guard.state(mono_ms);
         // Janelas posteriores vencem mesmo com a gravação bloqueada.
         self.finalize_captures(utc_ms, false)?;
+        // A saúde da máquina não depende do app em primeiro plano: segue mesmo com bloqueio de privacidade.
+        // A pausa manual (e o modo restrito) a param no próprio Guard.
+        let health_persisted = self.health_tick(mono_ms, utc_ms)?;
         if !state.is_recording() {
             self.stop_recording();
-            return Ok(TickReport { state, reason, persisted: 0, dropped_by_guard: 0, incidents_opened: 0 });
+            return Ok(TickReport { state, reason, persisted: health_persisted, dropped_by_guard: 0, incidents_opened: 0 });
         }
 
         // 2. Só agora as fontes de atividade são consultadas.
@@ -556,7 +652,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         timed.extend(self.poll_crashes(utc_ms)?);
 
         // 3. Todo evento passa pelo Guard antes de chegar ao recorder.
-        let (mut persisted, mut dropped) = (0, 0);
+        let (mut persisted, mut dropped) = (health_persisted, 0);
         let mut findings = Vec::new();
         for (ts, kind) in timed {
             match self.guard.admit(mono_ms, ts, kind) {

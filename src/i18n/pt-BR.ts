@@ -287,6 +287,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "kind.AppCrash": "Falha de aplicativo",
   "kind.AppHang": "Aplicativo sem resposta",
   "kind.RecorderStateChanged": "Estado do recorder",
+  "kind.HealthEvent": "Saúde do sistema",
   "kind.UserMarker": "Marcador",
 
   // ---- detalhes de evento (formatados a partir de código + números) ----
@@ -297,9 +298,22 @@ export const ptBR: Record<keyof typeof en, string> = {
   "detail.systemMetrics": "CPU {cpu} · memória {used} de {total}",
   "detail.appCrash": "código de exceção {code}",
   "detail.appHang": "aplicativo deixou de responder",
+  "detail.healthEvent": "{category} · evento {id}",
+  "detail.healthEventCode": "{category} · evento {id} · código {code}",
+  "detail.healthEventCount": "{category} · evento {id} · contagem {n}",
   "detail.userMarker": "marcador {n}",
   "detail.recorderStateChanged": "estado do recorder alterado",
   "detail.unknown": "—",
+
+  // ---- eventos de saúde do sistema (Event Log do Windows, lista fixa; nunca o texto da mensagem) ----
+  "health.category.UnexpectedShutdown": "Desligamento inesperado",
+  "health.category.BugCheck": "Tela azul (código de parada)",
+  "health.category.HardwareError": "Erro de hardware (WHEA)",
+  "health.category.DisplayDriverReset": "Reinício do driver de vídeo",
+  "health.category.DiskError": "Erro de disco",
+  "health.category.FileSystemError": "Erro do sistema de arquivos (NTFS)",
+  "health.category.ServiceCrash": "Serviço do Windows encerrou sem querer",
+  "health.category.UpdateFailure": "Falha ao instalar atualização do Windows",
 
   // ---- incidentes: tipos, gravidade, estados, resumos ----
   "incidentKind.manual": "Captura manual",

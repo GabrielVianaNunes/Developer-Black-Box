@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- System health events from the Windows Event Log `System` channel (#69), read without administrator rights from a **fixed list** of
+  provider + ID pairs. Only the category, the event ID and one optional number are stored; the message text, service names, paths, user
+  and computer names are discarded on the spot (the closed schema has nowhere to keep them). Each event is created only by the Privacy
+  Guard, through a dedicated door (`admit_health`) that the regular activity door cannot reach. The list (the IDs follow Microsoft's public
+  documentation; **they were not yet checked on a real Windows machine**, only against synthetic XML):
+
+  | Category | Provider and ID | Stored number |
+  |---|---|---|
+  | Unexpected shutdown | Kernel-Power 41; EventLog 6008 | bug check code (41 only) |
+  | Blue screen | WER-SystemErrorReporting 1001 | stop code |
+  | Hardware error | WHEA-Logger 1, 17, 18, 19, 20, 47 | none |
+  | Display driver reset | Display 4101 | none |
+  | Disk error | disk 7, 11, 51, 153 | none |
+  | File system error | Ntfs 55, 98, 140 | none |
+  | Service stopped unexpectedly | Service Control Manager 7031, 7034 | crash count (never the service name) |
+  | Update install failed | WindowsUpdateClient 20 | error code (never the update title) |
+
+  Behaviour: recorded even during a privacy block (they do not depend on the app in front), but a manual pause, shutdown, the start
+  (no observation yet) and restricted test mode always win. What Windows logged while the app was paused is never recorded afterwards;
+  the only exception is the interval in which the app was **closed** after a run that ended while recording (capped at 7 days), so an
+  unexpected shutdown logged on the next boot is not lost. The source is read at most every 30 s, incrementally with a watermark kept
+  encrypted in the settings; repeated identical events within 60 s are stored once and one read stores at most 50 events. If the channel
+  cannot be read the source is simply "unavailable", with no error. The Activity tab lists the new events in both languages.
+
 ## [0.4.0] - 2026-10-02
 
 ### Fixed

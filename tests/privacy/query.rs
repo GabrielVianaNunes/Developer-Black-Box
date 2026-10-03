@@ -191,3 +191,22 @@ fn an_unreadable_segment_is_skipped_without_failing_the_dashboard() {
     assert_eq!(rows.len(), 2, "only the journal events remain readable");
     assert!(rec.verify().is_err(), "the integrity check is what reports the corruption");
 }
+
+#[test]
+fn a_health_event_row_exposes_only_category_id_and_number() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut rec = Recorder::open(dir.path(), &StaticKey([1u8; 32]), RecorderConfig::default()).unwrap();
+    let mut g = PrivacyGuard::new(GuardConfig::default());
+    g.observe(0, Observation { detector_ok: true, session_locked: false, foreground: Some(exe("synth-editor.exe")) });
+    let kind = EventKind::HealthEvent { category: bb_core::HealthCategory::BugCheck, event_id: 1001, code: Some(0xd1) };
+    let ev = g.admit_health(1, 7_000, kind).expect("health door admits it");
+    rec.append(&ev).unwrap();
+
+    let rows = activity(&rec, &f(10));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].kind, "HealthEvent");
+    assert_eq!(rows[0].exe_name, None);
+    assert_eq!(rows[0].detail, Detail::HealthEvent { category: "BugCheck".into(), event_id: 1001, value: Some(0xd1) });
+    let json = serde_json::to_string(&rows[0]).unwrap();
+    assert!(json.contains("\"code\":\"healthEvent\"") && json.contains("\"eventId\":1001"), "{json}");
+}

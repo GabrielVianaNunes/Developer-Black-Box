@@ -9,6 +9,7 @@ export type Detail =
   | { code: "appCrash"; exceptionCode: number }
   | { code: "appHang" }
   | { code: "userMarker"; marker: number }
+  | { code: "healthEvent"; category: string; eventId: number; value: number | null }
   | { code: "recorderStateChanged" }
   | { code: "unknown" };
 

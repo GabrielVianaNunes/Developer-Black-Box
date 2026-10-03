@@ -1,0 +1,340 @@
+//! Testes de privacidade dos eventos de saúde da máquina: motor + Guard + gravador, com fontes falsas e dados sintéticos.
+//!
+//! Regras sob teste: só o Guard cria o evento; a pausa manual sempre vence; um bloqueio de privacidade NÃO impede;
+//! o que ocorreu numa pausa nunca é gravado depois; fonte indisponível degrada sem erro; nada de texto livre.
+
+use std::sync::{Arc, Mutex};
+
+use bb_collector::{
+    CollectError, ContextSource, HealthRecord, HealthSource, MetricsConfig, ProcessSample, ProcessSource, SystemSample,
+};
+use bb_core::{ExeName, GuardConfig, HealthCategory, Observation, RecorderState};
+use bb_engine::{Engine, IncidentConfig};
+use bb_recorder::{Recorder, RecorderConfig, StaticKey};
+use bb_store::Store;
+
+#[derive(Default)]
+struct World {
+    foreground: Option<&'static str>,
+}
+type Shared = Arc<Mutex<World>>;
+
+struct NoProcs;
+impl ProcessSource for NoProcs {
+    fn processes(&mut self) -> Result<Vec<ProcessSample>, CollectError> {
+        Ok(Vec::new())
+    }
+    fn system(&mut self) -> Result<SystemSample, CollectError> {
+        Ok(SystemSample { cpu_permille: 1, mem_used_kb: 1, mem_total_kb: 2 })
+    }
+}
+
+struct Ctx(Shared);
+impl ContextSource for Ctx {
+    fn observe(&mut self) -> Observation {
+        Observation {
+            detector_ok: true,
+            session_locked: false,
+            foreground: self.0.lock().unwrap().foreground.map(|n| ExeName::new(n).unwrap()),
+        }
+    }
+}
+
+#[derive(Default)]
+struct Feed {
+    records: Vec<HealthRecord>,
+    fail: bool,
+    /// O `since` de cada consulta recebida.
+    polls: Vec<i64>,
+}
+type SharedFeed = Arc<Mutex<Feed>>;
+
+struct FakeHealth(SharedFeed);
+impl HealthSource for FakeHealth {
+    fn poll(&mut self, since: i64) -> Result<Vec<HealthRecord>, CollectError> {
+        let mut f = self.0.lock().unwrap();
+        f.polls.push(since);
+        if f.fail {
+            return Err(CollectError("synthetic channel failure".into()));
+        }
+        // uma fonte "ingênua": devolve tudo a partir de `since`, sem saber de pausas
+        Ok(f.records.iter().copied().filter(|r| r.ts_utc_ms >= since).collect())
+    }
+}
+
+fn rec(ts: i64, cat: HealthCategory, id: u16, code: Option<u32>) -> HealthRecord {
+    HealthRecord { ts_utc_ms: ts, category: cat, event_id: id, code }
+}
+
+const ORIGIN: i64 = 1_000_000_000;
+/// Menor que a validade da observação do Guard (10 s); sete ciclos passam do intervalo de consulta (30 s).
+const STEP: u64 = 5_000;
+const CYCLE: usize = 7;
+
+struct Rig {
+    engine: Engine<NoProcs, Ctx>,
+    world: Shared,
+    feed: SharedFeed,
+    mono: u64,
+    _dir: tempfile::TempDir,
+}
+
+fn cfg() -> GuardConfig {
+    GuardConfig { stability_window_ms: 1_000, ..GuardConfig::default() }
+}
+
+fn engine_on(dir: &std::path::Path, world: &Shared, store: Option<Store>) -> Engine<NoProcs, Ctx> {
+    let rcfg = RecorderConfig { max_events_per_segment: 10_000, max_age: None, ..RecorderConfig::default() };
+    let recorder = Recorder::open(dir, &StaticKey([3u8; 32]), rcfg).unwrap();
+    let metrics = MetricsConfig { every_n_ticks: 1, min_cpu_permille: 0, min_working_set_kb: 0 };
+    let mut e = Engine::new(cfg(), metrics, recorder, NoProcs, Ctx(world.clone()), 1);
+    if let Some(s) = store {
+        e.enable_incidents(s, IncidentConfig::default());
+    }
+    e
+}
+
+fn rig() -> Rig {
+    let dir = tempfile::tempdir().unwrap();
+    let world: Shared = Arc::new(Mutex::new(World { foreground: Some("synth-editor.exe") }));
+    let feed: SharedFeed = Arc::default();
+    let mut engine = engine_on(dir.path(), &world, Some(Store::open_in_memory().unwrap()));
+    engine.set_health_source(Box::new(FakeHealth(feed.clone())), ORIGIN);
+    Rig { engine, world, feed, mono: 0, _dir: dir }
+}
+
+impl Rig {
+    fn utc(&self) -> i64 {
+        ORIGIN + self.mono as i64
+    }
+    fn tick(&mut self) -> bb_engine::TickReport {
+        self.mono += STEP;
+        self.engine.tick(self.mono, self.utc()).unwrap()
+    }
+    /// Passa do intervalo de consulta de saúde. Devolve o estado final e quantos eventos foram gravados no total.
+    fn cycle(&mut self) -> (RecorderState, usize) {
+        let mut total = 0;
+        let mut state = RecorderState::Starting;
+        for _ in 0..CYCLE {
+            let rep = self.tick();
+            state = rep.state;
+            total += rep.persisted;
+        }
+        (state, total)
+    }
+    fn until_recording(&mut self) {
+        for _ in 0..6 {
+            if self.tick().state == RecorderState::Recording {
+                return;
+            }
+        }
+        panic!("never reached Recording");
+    }
+    fn lines(&mut self) -> Vec<String> {
+        self.engine.recorder_mut().seal().unwrap();
+        let rec = self.engine.recorder();
+        rec.list_segments().unwrap().iter().flat_map(|s| rec.read_segment(s.index).unwrap()).collect()
+    }
+    fn health_lines(&mut self) -> Vec<String> {
+        self.lines().into_iter().filter(|l| l.contains("HealthEvent")).collect()
+    }
+    fn polls(&self) -> usize {
+        self.feed.lock().unwrap().polls.len()
+    }
+    fn push(&self, r: HealthRecord) {
+        self.feed.lock().unwrap().records.push(r);
+    }
+}
+
+#[test]
+fn health_events_are_recorded_with_only_category_id_and_number() {
+    let mut r = rig();
+    r.until_recording();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    r.cycle();
+    let lines = r.health_lines();
+    assert_eq!(lines.len(), 1, "positive control: the event must be stored: {lines:?}");
+    assert!(lines[0].contains("\"BugCheck\"") && lines[0].contains("1001") && lines[0].contains("209"));
+    // o corpo gravado tem exatamente estas chaves: nenhum texto livre
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let body = v["kind"]["HealthEvent"].as_object().expect("HealthEvent body");
+    let mut keys: Vec<&str> = body.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, vec!["category", "code", "event_id"]);
+}
+
+#[test]
+fn a_privacy_block_does_not_stop_health_but_still_stops_activity() {
+    let mut r = rig();
+    r.until_recording();
+    // um app protegido vai para o primeiro plano: a atividade para, a saúde não
+    r.world.lock().unwrap().foreground = Some("chrome.exe");
+    let (state, _) = r.cycle();
+    assert_eq!(state, RecorderState::PrivacyBlocked, "setup: really blocked");
+    let activity_before = r.lines().iter().filter(|l| l.contains("SystemMetrics")).count();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::DiskError, 51, None));
+    let (state, persisted) = r.cycle();
+    assert_eq!(state, RecorderState::PrivacyBlocked);
+    assert_eq!(persisted, 1, "only the health event is persisted");
+    assert_eq!(r.health_lines().len(), 1);
+    let activity_after = r.lines().iter().filter(|l| l.contains("SystemMetrics")).count();
+    assert_eq!(activity_before, activity_after, "no activity while blocked");
+}
+
+#[test]
+fn manual_pause_beats_health_and_nothing_from_the_pause_is_recorded_after() {
+    let mut r = rig();
+    r.until_recording();
+    r.engine.pause();
+    let polls = r.polls();
+    let in_pause = r.utc() + 10;
+    r.push(rec(in_pause, HealthCategory::HardwareError, 18, None));
+    for _ in 0..3 {
+        let rep = r.tick();
+        assert_eq!((rep.state, rep.persisted), (RecorderState::ManualPause, 0));
+    }
+    assert_eq!(r.polls(), polls, "the Event Log must not even be queried while paused");
+
+    // retomar: a leitura volta, mas o evento da pausa nunca entra
+    r.engine.resume(r.mono);
+    r.cycle();
+    r.cycle();
+    assert!(r.polls() > polls, "positive control: reading resumed");
+    let after = r.utc() + 10;
+    r.push(rec(after, HealthCategory::HardwareError, 19, None));
+    r.cycle();
+    let lines = r.health_lines();
+    assert!(lines.iter().any(|l| l.contains("19")), "the event after the resume is recorded: {lines:?}");
+    assert!(!lines.iter().any(|l| l.contains("\"event_id\":18")), "the pause event must never be recorded: {lines:?}");
+}
+
+#[test]
+fn an_unavailable_source_degrades_without_error_and_recovers() {
+    let mut r = rig();
+    r.until_recording();
+    r.feed.lock().unwrap().fail = true;
+    let (state, _) = r.cycle(); // não pode virar erro nem SafetyFault
+    assert_eq!(state, RecorderState::Recording);
+    assert!(r.engine.health_unavailable());
+    r.feed.lock().unwrap().fail = false;
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::DisplayDriverReset, 4101, None));
+    r.cycle();
+    assert!(!r.engine.health_unavailable());
+    assert_eq!(r.health_lines().len(), 1, "the event that happened while the channel was down is read once it is back");
+}
+
+#[test]
+fn the_source_is_polled_at_most_once_per_interval() {
+    let mut r = rig();
+    r.until_recording();
+    let before = r.polls();
+    // ciclos de 2 s por 20 s: nenhuma consulta nova
+    for _ in 0..10 {
+        r.mono += 2_000;
+        r.engine.tick(r.mono, r.utc()).unwrap();
+    }
+    assert_eq!(r.polls(), before);
+}
+
+#[test]
+fn a_burst_of_identical_disk_errors_is_stored_once() {
+    let mut r = rig();
+    r.until_recording();
+    let t0 = r.utc();
+    for i in 0..40 {
+        r.push(rec(t0 + 5 + i * 50, HealthCategory::DiskError, 51, None));
+    }
+    r.cycle();
+    assert_eq!(r.health_lines().len(), 1);
+}
+
+#[test]
+fn a_restart_reads_what_happened_while_the_app_was_closed_but_not_what_happened_in_the_new_pause() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("meta.db");
+    let world: Shared = Arc::new(Mutex::new(World { foreground: Some("synth-editor.exe") }));
+    let feed: SharedFeed = Arc::default();
+
+    // execução 1: lendo, depois encerra normalmente
+    {
+        let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+        e.set_health_source(Box::new(FakeHealth(feed.clone())), ORIGIN);
+        let mut mono = 0u64;
+        for _ in 0..4 {
+            mono += STEP;
+            e.tick(mono, ORIGIN + mono as i64).unwrap();
+        }
+        e.shutdown().unwrap();
+        // um ciclo depois de encerrar NÃO pode contar como pausa (a marca d'água segue "lendo")
+        mono += STEP;
+        e.tick(mono, ORIGIN + mono as i64).unwrap();
+    }
+    let closed_at = ORIGIN + 4 * STEP as i64;
+    let restart = closed_at + 600_000; // o app ficou fechado 10 min
+    // o Windows registra o desligamento inesperado no boot seguinte (dentro do intervalo fechado)
+    feed.lock().unwrap().records.push(rec(closed_at + 30_000, HealthCategory::UnexpectedShutdown, 41, Some(0)));
+    // e há um evento que acontecerá na pausa desta nova execução
+    let during_pause = restart + 60_000;
+    feed.lock().unwrap().records.push(rec(during_pause, HealthCategory::DiskError, 7, None));
+
+    // execução 2: abre PAUSADA (padrão conservador), o usuário retoma bem depois
+    let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+    e.set_health_source(Box::new(FakeHealth(feed.clone())), restart);
+    e.pause();
+    let mut mono = 0u64;
+    for _ in 0..20 {
+        // 100 s de pausa; o evento "da pausa" está em restart + 60 s
+        mono += STEP;
+        let rep = e.tick(mono, restart + mono as i64).unwrap();
+        assert_eq!(rep.persisted, 0, "paused: nothing is read");
+    }
+    e.resume(mono);
+    for _ in 0..8 {
+        mono += STEP;
+        e.tick(mono, restart + mono as i64).unwrap();
+    }
+    e.recorder_mut().seal().unwrap();
+    let rec_ = e.recorder();
+    let lines: Vec<String> = rec_.list_segments().unwrap().iter().flat_map(|s| rec_.read_segment(s.index).unwrap()).collect();
+    let health: Vec<&String> = lines.iter().filter(|l| l.contains("HealthEvent")).collect();
+    assert!(health.iter().any(|l| l.contains("UnexpectedShutdown")), "the shutdown from the closed interval is read: {health:?}");
+    assert!(!health.iter().any(|l| l.contains("DiskError")), "the new pause is never reconstructed: {health:?}");
+}
+
+#[test]
+fn quitting_while_paused_leaves_no_backlog_for_the_next_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("meta.db");
+    let world: Shared = Arc::new(Mutex::new(World { foreground: Some("synth-editor.exe") }));
+    let feed: SharedFeed = Arc::default();
+    {
+        let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+        e.set_health_source(Box::new(FakeHealth(feed.clone())), ORIGIN);
+        let mut mono = 0u64;
+        for _ in 0..4 {
+            mono += STEP;
+            e.tick(mono, ORIGIN + mono as i64).unwrap();
+        }
+        e.pause();
+        mono += STEP;
+        e.tick(mono, ORIGIN + mono as i64).unwrap(); // o ciclo percebe a pausa e marca "parou de ler"
+        e.shutdown().unwrap();
+    }
+    let restart = ORIGIN + 10 * STEP as i64;
+    feed.lock().unwrap().records.push(rec(ORIGIN + 6 * STEP as i64, HealthCategory::UnexpectedShutdown, 6008, None));
+    let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+    e.set_health_source(Box::new(FakeHealth(feed.clone())), restart);
+    let mut mono = 0u64;
+    for _ in 0..8 {
+        mono += STEP;
+        e.tick(mono, restart + mono as i64).unwrap();
+    }
+    assert!(!feed.lock().unwrap().polls.is_empty(), "positive control: it did read");
+    e.recorder_mut().seal().unwrap();
+    let rec_ = e.recorder();
+    let stored = rec_.list_segments().unwrap().iter().flat_map(|s| rec_.read_segment(s.index).unwrap()).filter(|l| l.contains("HealthEvent")).count();
+    assert_eq!(stored, 0, "events from a stretch that ended in a manual pause are never reconstructed");
+}
