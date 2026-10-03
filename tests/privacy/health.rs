@@ -485,3 +485,158 @@ fn the_stored_baseline_contains_only_known_keys_and_numbers() {
     let stored = Store::open(&db).unwrap().get_setting("health.inventory").unwrap().expect("baseline saved");
     assert_eq!(stored, "bios_version=5;problem_codes=1024");
 }
+
+// ---- energia e bateria ----
+
+use bb_collector::{PowerReading, PowerSource};
+use bb_core::AcLine;
+
+#[derive(Default)]
+struct Pwr {
+    reading: Option<PowerReading>,
+    fail: bool,
+    reads: usize,
+}
+type SharedPwr = Arc<Mutex<Pwr>>;
+
+struct FakePower(SharedPwr);
+impl PowerSource for FakePower {
+    fn read(&mut self) -> Result<Option<PowerReading>, CollectError> {
+        let mut p = self.0.lock().unwrap();
+        p.reads += 1;
+        if p.fail {
+            return Err(CollectError("synthetic power failure".into()));
+        }
+        Ok(p.reading)
+    }
+}
+
+fn battery(ac: AcLine, pct: u8) -> Option<PowerReading> {
+    Some(PowerReading { ac: Some(ac), charge_percent: Some(pct) })
+}
+
+fn power_rig(reading: Option<PowerReading>) -> (Rig, SharedPwr) {
+    let mut r = rig();
+    let p: SharedPwr = Arc::new(Mutex::new(Pwr { reading, ..Pwr::default() }));
+    r.engine.set_power_source(Box::new(FakePower(p.clone())));
+    (r, p)
+}
+
+/// 70 s de relógio: passa do intervalo de leitura de energia (60 s).
+fn power_interval(r: &mut Rig) {
+    for _ in 0..14 {
+        r.tick();
+    }
+}
+
+fn power_lines(r: &mut Rig) -> Vec<String> {
+    r.lines().into_iter().filter(|l| l.contains("PowerStatus")).collect()
+}
+
+#[test]
+fn the_first_power_reading_is_recorded_with_only_ac_and_percent() {
+    let (mut r, p) = power_rig(battery(AcLine::Offline, 80));
+    r.until_recording();
+    assert_eq!(p.lock().unwrap().reads, 1, "read once, and not again on every cycle");
+    let lines = power_lines(&mut r);
+    assert_eq!(lines.len(), 1, "positive control: {lines:?}");
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let body = v["kind"]["PowerStatus"].as_object().expect("PowerStatus body");
+    let mut keys: Vec<&str> = body.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, vec!["ac", "charge_percent"]);
+    assert_eq!((body["ac"].as_str(), body["charge_percent"].as_u64()), (Some("Offline"), Some(80)));
+}
+
+#[test]
+fn only_meaningful_changes_are_recorded() {
+    let (mut r, p) = power_rig(battery(AcLine::Offline, 80));
+    r.until_recording();
+    p.lock().unwrap().reading = battery(AcLine::Offline, 78);
+    power_interval(&mut r);
+    assert_eq!(power_lines(&mut r).len(), 1, "a 2-point drop is not worth a record");
+    p.lock().unwrap().reading = battery(AcLine::Online, 78);
+    power_interval(&mut r);
+    assert_eq!(power_lines(&mut r).len(), 2, "plugging in is");
+    p.lock().unwrap().reading = battery(AcLine::Online, 90);
+    power_interval(&mut r);
+    assert_eq!(power_lines(&mut r).len(), 3, "a 12-point charge step is");
+}
+
+#[test]
+fn a_desktop_without_a_battery_is_unavailable_and_records_nothing() {
+    let (mut r, p) = power_rig(None);
+    r.until_recording();
+    power_interval(&mut r);
+    assert!(p.lock().unwrap().reads >= 1, "positive control: it did try to read");
+    assert!(r.engine.power_unavailable());
+    assert!(power_lines(&mut r).is_empty());
+}
+
+#[test]
+fn a_failing_power_source_degrades_without_error_and_recovers() {
+    let (mut r, p) = power_rig(battery(AcLine::Online, 100));
+    r.until_recording();
+    p.lock().unwrap().fail = true;
+    p.lock().unwrap().reading = battery(AcLine::Offline, 40);
+    power_interval(&mut r);
+    assert!(r.engine.power_unavailable());
+    p.lock().unwrap().fail = false;
+    power_interval(&mut r);
+    assert!(!r.engine.power_unavailable());
+    assert_eq!(power_lines(&mut r).len(), 2, "first reading plus the change seen after the recovery");
+}
+
+#[test]
+fn power_obeys_the_pause_and_survives_a_privacy_block() {
+    let (mut r, p) = power_rig(battery(AcLine::Offline, 80));
+    r.until_recording();
+    r.engine.pause();
+    let reads = p.lock().unwrap().reads;
+    p.lock().unwrap().reading = battery(AcLine::Online, 30);
+    power_interval(&mut r);
+    assert_eq!(p.lock().unwrap().reads, reads, "no reading while paused");
+    assert_eq!(power_lines(&mut r).len(), 1, "nothing new from the pause");
+
+    r.world.lock().unwrap().foreground = Some("chrome.exe");
+    r.engine.resume(r.mono);
+    let (state, _) = r.cycle();
+    assert_eq!(state, RecorderState::PrivacyBlocked, "setup: really blocked");
+    let lines = power_lines(&mut r);
+    assert_eq!(lines.len(), 2, "after the resume the current state is recorded again, even under a block: {lines:?}");
+    assert!(lines[1].contains("\"Online\"") && lines[1].contains("30"));
+}
+
+#[test]
+fn sleep_and_resume_come_from_the_event_log_with_the_same_gates() {
+    let mut r = rig();
+    r.until_recording();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::SleepEntered, 42, Some(3)));
+    r.push(rec(ts + 20_000, HealthCategory::Resumed, 107, None));
+    r.cycle();
+    let lines = r.health_lines();
+    assert!(lines.iter().any(|l| l.contains("SleepEntered") && l.contains('3')), "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("Resumed")), "{lines:?}");
+}
+
+#[test]
+fn after_a_pause_the_current_power_state_is_recorded_again_even_if_it_did_not_change() {
+    let (mut r, _p) = power_rig(battery(AcLine::Offline, 80));
+    r.until_recording();
+    assert_eq!(power_lines(&mut r).len(), 1);
+    r.engine.pause();
+    power_interval(&mut r);
+    r.engine.resume(r.mono);
+    r.cycle();
+    assert_eq!(power_lines(&mut r).len(), 2, "the state after a pause is a fresh reference, so it is recorded");
+}
+
+#[test]
+fn power_is_read_once_per_interval_not_on_every_cycle() {
+    let (mut r, p) = power_rig(battery(AcLine::Offline, 80));
+    r.until_recording();
+    let before = p.lock().unwrap().reads;
+    power_interval(&mut r);
+    assert_eq!(p.lock().unwrap().reads, before + 1, "one more reading after 70 s");
+}

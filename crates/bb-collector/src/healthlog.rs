@@ -60,6 +60,9 @@ pub const RULES: &[Rule] = &[
     rule("Service Control Manager", 7031, HealthCategory::ServiceCrash, CodeSource::Decimal("param2")),
     rule("Service Control Manager", 7034, HealthCategory::ServiceCrash, CodeSource::Decimal("param2")),
     rule("Microsoft-Windows-WindowsUpdateClient", 20, HealthCategory::UpdateFailure, CodeSource::Hex("errorCode")),
+    // Suspensão e retomada. O número de 42 é o estado de destino (3 = suspensão, 4 = hibernação), segundo a documentação.
+    rule("Microsoft-Windows-Kernel-Power", 42, HealthCategory::SleepEntered, CodeSource::Decimal("TargetState")),
+    rule("Microsoft-Windows-Kernel-Power", 107, HealthCategory::Resumed, CodeSource::None),
 ];
 
 /// Um evento de saúde já reduzido ao que pode ser guardado.
@@ -227,10 +230,18 @@ mod tests {
     }
 
     #[test]
+    fn sleep_keeps_only_the_target_state_and_resume_keeps_nothing() {
+        let r = rec("Microsoft-Windows-Kernel-Power", 42, "<Data Name='TargetState'>4</Data><Data Name='EffectiveState'>4</Data><Data Name='Reason'>0</Data>").unwrap();
+        assert_eq!((r.category, r.event_id, r.code), (HealthCategory::SleepEntered, 42, Some(4)));
+        let r = rec("Microsoft-Windows-Kernel-Power", 107, "<Data Name='TargetState'>3</Data><Data Name='ResumeTime'>x</Data>").unwrap();
+        assert_eq!((r.category, r.event_id, r.code), (HealthCategory::Resumed, 107, None));
+    }
+
+    #[test]
     fn provider_and_id_must_match_together() {
         // ID da lista com provedor de fora, e provedor da lista com ID de fora: ignorados.
         assert!(rec("Some-Other-Provider", 41, "").is_none());
-        assert!(rec("Microsoft-Windows-Kernel-Power", 42, "").is_none());
+        assert!(rec("Microsoft-Windows-Kernel-Power", 43, "").is_none());
         assert!(rec("disk", 41, "").is_none());
     }
 

@@ -289,6 +289,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "kind.RecorderStateChanged": "Estado do recorder",
   "kind.HealthEvent": "Saúde do sistema",
   "kind.InventoryChange": "Inventário do sistema",
+  "kind.PowerStatus": "Energia e bateria",
   "kind.UserMarker": "Marcador",
 
   // ---- detalhes de evento (formatados a partir de código + números) ----
@@ -302,6 +303,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "detail.healthEvent": "{category} · evento {id}",
   "detail.healthEventCode": "{category} · evento {id} · código {code}",
   "detail.healthEventCount": "{category} · evento {id} · contagem {n}",
+  "detail.powerStatus": "{ac} · carga {charge}",
   "detail.inventoryChange": "{item}: {from} → {to}",
   "detail.userMarker": "marcador {n}",
   "detail.recorderStateChanged": "estado do recorder alterado",
@@ -316,6 +318,12 @@ export const ptBR: Record<keyof typeof en, string> = {
   "health.category.FileSystemError": "Erro do sistema de arquivos (NTFS)",
   "health.category.ServiceCrash": "Serviço do Windows encerrou sem querer",
   "health.category.UpdateFailure": "Falha ao instalar atualização do Windows",
+  "health.category.SleepEntered": "Entrou em suspensão ou hibernação",
+  "health.category.Resumed": "Voltou da suspensão",
+  "power.ac.online": "na tomada",
+  "power.ac.offline": "na bateria",
+  "power.ac.unknown": "fonte de energia desconhecida",
+  "power.charge.unknown": "desconhecida",
 
   // ---- inventário do sistema (só números; nunca número de série, UUID ou nomes) ----
   "inventory.item.BiosVersion": "Versão da BIOS",

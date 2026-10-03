@@ -15,7 +15,7 @@ use std::fmt;
 use std::time::Duration;
 
 use bb_collector::{
-    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, ProcessSource,
+    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, PowerSource, ProcessSource,
 };
 use bb_core::{AuthError, EventKind, ExeName, GuardConfig, PrivacyGuard, ProcessRef, ReasonCode, RecorderState};
 use bb_recorder::{Recorder, RecorderError};
@@ -139,6 +139,12 @@ pub struct Engine<P: ProcessSource, C: ContextSource> {
     /// Próxima leitura do inventário (relógio monotônico). `None` = ler assim que a saúde puder ser lida.
     inventory_next_mono: Option<u64>,
     inventory_unavailable: bool,
+    power: Option<Box<dyn PowerSource + Send>>,
+    power_tracker: bb_collector::power::PowerTracker,
+    /// Próxima leitura de energia (relógio monotônico). `None` = ler assim que a saúde puder ser lida.
+    power_next_mono: Option<u64>,
+    /// Sem bateria ou leitura falha: a fonte aparece como indisponível, sem erro nem alarme.
+    power_unavailable: bool,
 }
 
 /// Chaves (cifradas) da marca d'água de saúde: até onde a última execução leu, e se terminou lendo.
@@ -148,6 +154,8 @@ const HEALTH_ACTIVE_KEY: &str = "health.active";
 const INVENTORY_KEY: &str = "health.inventory";
 /// Intervalo entre leituras do inventário (relógio monotônico): detecta, por exemplo, um dispositivo que passou a falhar.
 const INVENTORY_INTERVAL_MS: u64 = 10 * 60_000;
+/// Intervalo entre leituras de energia (relógio monotônico). Só variações relevantes viram evento.
+const POWER_INTERVAL_MS: u64 = 60_000;
 
 /// Uma falha registrada pelo Windows só interessa se foi registrada DURANTE uma gravação.
 /// O que ocorreu numa pausa ou bloqueio nunca é reconstruído depois.
@@ -197,6 +205,10 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             inventory_base: inventory::Baseline::default(),
             inventory_next_mono: None,
             inventory_unavailable: false,
+            power: None,
+            power_tracker: bb_collector::power::PowerTracker::new(),
+            power_next_mono: None,
+            power_unavailable: false,
         }
     }
 
@@ -233,6 +245,16 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             .map(|s| inventory::Baseline::parse(&s))
             .unwrap_or_default();
         self.inventory = Some(src);
+    }
+
+    /// Liga a leitura de energia e bateria (tomada e porcentagem de carga).
+    pub fn set_power_source(&mut self, src: Box<dyn PowerSource + Send>) {
+        self.power = Some(src);
+    }
+
+    /// Sem bateria ou leitura falha: a fonte de energia é mostrada como indisponível.
+    pub fn power_unavailable(&self) -> bool {
+        self.power_unavailable
     }
 
     /// A última leitura do inventário falhou: a fonte aparece como indisponível, sem erro.
@@ -598,6 +620,41 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         }
     }
 
+    /// Lê a energia (a cada minuto) e grava a primeira leitura, mudanças de tomada e variações de carga. Mesma porta e
+    /// mesmas travas da saúde. Sem bateria, a fonte fica indisponível e nada é gravado.
+    fn power_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
+        if self.power.is_none() {
+            return Ok(0);
+        }
+        if !self.guard.health_allowed(mono_ms) {
+            self.power_next_mono = None; // depois de uma pausa, a primeira leitura volta a ser gravada
+            self.power_tracker.reset();
+            return Ok(0);
+        }
+        if self.power_next_mono.is_some_and(|t| mono_ms < t) {
+            return Ok(0);
+        }
+        self.power_next_mono = Some(mono_ms.saturating_add(POWER_INTERVAL_MS));
+        let Some(src) = self.power.as_mut() else { return Ok(0) };
+        let reading = match src.read() {
+            Ok(Some(r)) => r,
+            Ok(None) | Err(_) => {
+                self.power_unavailable = true;
+                return Ok(0);
+            }
+        };
+        self.power_unavailable = false;
+        let Some(r) = self.power_tracker.decide(reading) else { return Ok(0) };
+        let kind = EventKind::PowerStatus { ac: r.ac, charge_percent: r.charge_percent };
+        match self.guard.admit_health(mono_ms, utc_ms, kind) {
+            Some(ev) => {
+                self.recorder.append(&ev)?;
+                Ok(1)
+            }
+            None => Ok(0),
+        }
+    }
+
     /// Lê o inventário (no início e a cada 10 min) e grava só as mudanças. Mesma porta e mesmas travas da saúde: pausa
     /// manual, encerramento e modo restrito param a leitura. Devolve quantos eventos foram gravados.
     fn inventory_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
@@ -691,7 +748,8 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         self.finalize_captures(utc_ms, false)?;
         // A saúde da máquina não depende do app em primeiro plano: segue mesmo com bloqueio de privacidade.
         // A pausa manual (e o modo restrito) a param no próprio Guard.
-        let health_persisted = self.health_tick(mono_ms, utc_ms)? + self.inventory_tick(mono_ms, utc_ms)?;
+        let health_persisted = self.health_tick(mono_ms, utc_ms)? + self.inventory_tick(mono_ms, utc_ms)?
+            + self.power_tick(mono_ms, utc_ms)?;
         if !state.is_recording() {
             self.stop_recording();
             return Ok(TickReport { state, reason, persisted: health_persisted, dropped_by_guard: 0, incidents_opened: 0 });

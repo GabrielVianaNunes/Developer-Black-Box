@@ -285,6 +285,7 @@ export const en = {
   "kind.RecorderStateChanged": "Recorder state",
   "kind.HealthEvent": "System health",
   "kind.InventoryChange": "System inventory",
+  "kind.PowerStatus": "Power and battery",
   "kind.UserMarker": "Marker",
 
   // ---- event details (formatted from code + numbers) ----
@@ -298,6 +299,7 @@ export const en = {
   "detail.healthEvent": "{category} · event {id}",
   "detail.healthEventCode": "{category} · event {id} · code {code}",
   "detail.healthEventCount": "{category} · event {id} · count {n}",
+  "detail.powerStatus": "{ac} · charge {charge}",
   "detail.inventoryChange": "{item}: {from} → {to}",
   "detail.userMarker": "marker {n}",
   "detail.recorderStateChanged": "recorder state changed",
@@ -312,6 +314,12 @@ export const en = {
   "health.category.FileSystemError": "File system (NTFS) error",
   "health.category.ServiceCrash": "Windows service stopped unexpectedly",
   "health.category.UpdateFailure": "Windows Update install failed",
+  "health.category.SleepEntered": "Entered sleep or hibernation",
+  "health.category.Resumed": "Resumed from sleep",
+  "power.ac.online": "plugged in",
+  "power.ac.offline": "on battery",
+  "power.ac.unknown": "power source unknown",
+  "power.charge.unknown": "unknown",
 
   // ---- system inventory (numbers only; never serial numbers, UUIDs or names) ----
   "inventory.item.BiosVersion": "BIOS version",

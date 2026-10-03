@@ -172,6 +172,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
                 code: `0x${d.value.toString(16).toUpperCase().padStart(8, "0")}`,
               });
         }
+        case "powerStatus":
+          return t("detail.powerStatus", {
+            ac: d.ac === "online" ? t("power.ac.online") : d.ac === "offline" ? t("power.ac.offline") : t("power.ac.unknown"),
+            charge: d.chargePercent == null ? t("power.charge.unknown") : `${d.chargePercent}%`,
+          });
         case "inventoryChange":
           return t("detail.inventoryChange", {
             item: lookup("inventory.item", d.item),

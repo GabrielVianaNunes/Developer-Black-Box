@@ -20,6 +20,7 @@ const KINDS = [
   "AppHang",
   "HealthEvent",
   "InventoryChange",
+  "PowerStatus",
   "RecorderStateChanged",
   "UserMarker",
 ];

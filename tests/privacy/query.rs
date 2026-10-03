@@ -210,3 +210,17 @@ fn a_health_event_row_exposes_only_category_id_and_number() {
     let json = serde_json::to_string(&rows[0]).unwrap();
     assert!(json.contains("\"code\":\"healthEvent\"") && json.contains("\"eventId\":1001"), "{json}");
 }
+
+#[test]
+fn a_power_row_exposes_only_ac_and_percent() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut rec = Recorder::open(dir.path(), &StaticKey([1u8; 32]), RecorderConfig::default()).unwrap();
+    let mut g = PrivacyGuard::new(GuardConfig::default());
+    g.observe(0, Observation { detector_ok: true, session_locked: false, foreground: Some(exe("synth-editor.exe")) });
+    let kind = EventKind::PowerStatus { ac: Some(bb_core::AcLine::Offline), charge_percent: Some(42) };
+    rec.append(&g.admit_health(1, 7_000, kind).unwrap()).unwrap();
+    let rows = activity(&rec, &f(10));
+    assert_eq!(rows[0].detail, Detail::PowerStatus { ac: Some("offline".into()), charge_percent: Some(42) });
+    let json = serde_json::to_string(&rows[0]).unwrap();
+    assert!(json.contains("\"code\":\"powerStatus\"") && json.contains("\"chargePercent\":42"), "{json}");
+}

@@ -7,6 +7,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- Power and battery (#72), without administrator rights. `GetSystemPowerStatus` gives the power source (plugged in or on battery) and the
+  charge percentage; the raw bytes are converted by a pure function, and any value outside the documented ranges becomes "unknown",
+  never an invented number. A reading is recorded the first time, whenever the power source changes, and when the charge moved 5
+  percentage points or more since the last recorded one (read every minute), so a day on battery stays a handful of records. A computer
+  **without a battery** (or whose battery cannot be identified) has this source marked "unavailable" and records nothing. Only two states
+  and a percentage are stored: no location, network, battery name, manufacturer or serial number. Same gates as the other health events
+  (recorded during a privacy block; manual pause, shutdown, start and restricted test mode win); after a pause the current state is
+  recorded again. **Sleep and resume** come from the Windows Event Log (`Kernel-Power` 42 "entering sleep", with the target state 3 or 4,
+  and 107 "resumed"), through the same fixed list, watermark and "no reconstruction" rules as the other Event Log health events. These two
+  IDs and the meaning of the state number follow Microsoft's public documentation and were **not checked on a real Windows machine**.
+  **Battery wear (design capacity x full charge) was not implemented**: this environment cannot prove that Windows exposes it without
+  administrator rights, and the issue says not to implement it in that case. The
+  Activity tab shows the new records in both languages.
 - System inventory and changes (#71): the app reads, without administrator rights, the BIOS version and date, the firmware type
   (UEFI or legacy), Secure Boot, the Windows build (with revision) and the **count and codes** of present devices with a driver problem
   code (a device you disabled yourself, code 22, is not a failure and is not counted). It records **only changes** between two readings,

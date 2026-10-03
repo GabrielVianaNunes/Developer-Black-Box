@@ -375,3 +375,18 @@ fn inventory_changes_obey_pause_and_survive_a_privacy_block() {
     g.pause_manual();
     assert!(g.admit_health(t + 1, 0, inventory_change()).is_none(), "manual pause always wins");
 }
+
+fn power_status() -> EventKind {
+    EventKind::PowerStatus { ac: Some(bb_core::AcLine::Online), charge_percent: Some(80) }
+}
+
+#[test]
+fn power_status_uses_the_health_door_only_and_obeys_pause_and_block() {
+    let (mut g, t) = recording_guard();
+    assert!(g.admit(t, 0, power_status()).is_none(), "the regular door never admits it");
+    assert!(g.admit_health(t, 0, power_status()).is_some(), "positive control");
+    g.observe(t + 1, protected_obs());
+    assert!(g.admit_health(t + 1, 0, power_status()).is_some(), "a block does not stop it");
+    g.pause_manual();
+    assert!(g.admit_health(t + 1, 0, power_status()).is_none(), "manual pause always wins");
+}
