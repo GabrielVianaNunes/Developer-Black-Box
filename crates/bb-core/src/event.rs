@@ -70,6 +70,25 @@ pub enum HealthCategory {
     UpdateFailure,
 }
 
+/// O que o inventário acompanha. Enumeração fechada; cada item tem um valor NUMÉRICO (ver `bb-collector::inventory`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+pub enum InventoryItem {
+    /// Versão da BIOS/UEFI: versão pontuada empacotada, ou um código de hash quando o formato não é numérico.
+    BiosVersion,
+    /// Data da BIOS como AAAAMMDD.
+    BiosDate,
+    /// 1 = BIOS legada, 2 = UEFI.
+    FirmwareType,
+    /// 0 = desligado, 1 = ligado.
+    SecureBoot,
+    /// Build do Windows e revisão: `build << 20 | revisão`.
+    OsBuild,
+    /// Quantos dispositivos presentes têm código de problema de driver.
+    DeviceProblemCount,
+    /// Máscara dos códigos de problema presentes (bit N = código N; códigos acima de 52 caem no bit 0).
+    DeviceProblemCodes,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum EventKind {
     ProcessStarted { key: ProcessKey, exe_name: ExeName, parent_pid: u32 },
@@ -88,6 +107,9 @@ pub enum EventKind {
     /// um número opcional (ex. o código da tela azul); nunca o texto da mensagem, nomes de serviço, caminhos ou usuários.
     /// Só `PrivacyGuard::admit_health` cria este evento, porque ele não depende do app em primeiro plano.
     HealthEvent { category: HealthCategory, event_id: u16, code: Option<u32> },
+    /// Mudança de inventário entre duas leituras: valor anterior e novo (números; `None` = não lido). Nunca número de
+    /// série, UUID, nome do computador ou qualquer identificador. Mesma porta do evento de saúde (`admit_health`).
+    InventoryChange { item: InventoryItem, previous: Option<u64>, current: Option<u64> },
 }
 
 /// Só o Privacy Guard constrói este tipo (construtor `pub(crate)`), então o

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { getLanguage, setLanguage as saveLanguage } from "../services/backend";
 import type { Detail } from "../types/dashboard";
 import { en } from "./en";
+import { inventoryValueText } from "./inventory";
 import { ptBR } from "./pt-BR";
 
 export type Lang = "en" | "pt-BR";
@@ -136,6 +137,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const has = (key: string): key is Key => key in DICTS[lang];
     const lookup = (prefix: string, code: string) => (has(`${prefix}.${code}`) ? t(`${prefix}.${code}` as Key) : code);
 
+    // As chaves do inventário são montadas em tempo de execução (um texto por valor), por isso o tradutor é solto.
+    const tAny = (key: string, params?: Record<string, string | number>) => t(key as Key, params);
+
     const detailText = (d: Detail): string => {
       switch (d.code) {
         case "processStarted":
@@ -168,6 +172,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
                 code: `0x${d.value.toString(16).toUpperCase().padStart(8, "0")}`,
               });
         }
+        case "inventoryChange":
+          return t("detail.inventoryChange", {
+            item: lookup("inventory.item", d.item),
+            from: inventoryValueText(d.item, d.previous, tAny),
+            to: inventoryValueText(d.item, d.current, tAny),
+          });
         case "userMarker":
           return t("detail.userMarker", { n: d.marker });
         case "recorderStateChanged":
