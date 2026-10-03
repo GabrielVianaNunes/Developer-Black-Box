@@ -7,6 +7,7 @@
 //!   intervalo nunca é reconstruído ao retomar.
 
 pub mod health;
+pub mod inventory;
 pub mod incidents;
 pub mod settings;
 
@@ -14,7 +15,7 @@ use std::fmt;
 use std::time::Duration;
 
 use bb_collector::{
-    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, MetricsConfig, ProcessSource,
+    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, ProcessSource,
 };
 use bb_core::{AuthError, EventKind, ExeName, GuardConfig, PrivacyGuard, ProcessRef, ReasonCode, RecorderState};
 use bb_recorder::{Recorder, RecorderError};
@@ -133,11 +134,20 @@ pub struct Engine<P: ProcessSource, C: ContextSource> {
     /// A última consulta falhou: a fonte aparece como indisponível, sem erro nem alarme.
     health_unavailable: bool,
     shutting_down: bool,
+    inventory: Option<Box<dyn InventorySource + Send>>,
+    inventory_base: inventory::Baseline,
+    /// Próxima leitura do inventário (relógio monotônico). `None` = ler assim que a saúde puder ser lida.
+    inventory_next_mono: Option<u64>,
+    inventory_unavailable: bool,
 }
 
 /// Chaves (cifradas) da marca d'água de saúde: até onde a última execução leu, e se terminou lendo.
 const HEALTH_CURSOR_KEY: &str = "health.cursor";
 const HEALTH_ACTIVE_KEY: &str = "health.active";
+/// Referência do inventário (números por item, cifrada no armazenamento).
+const INVENTORY_KEY: &str = "health.inventory";
+/// Intervalo entre leituras do inventário (relógio monotônico): detecta, por exemplo, um dispositivo que passou a falhar.
+const INVENTORY_INTERVAL_MS: u64 = 10 * 60_000;
 
 /// Uma falha registrada pelo Windows só interessa se foi registrada DURANTE uma gravação.
 /// O que ocorreu numa pausa ou bloqueio nunca é reconstruído depois.
@@ -183,6 +193,10 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             health_last_poll_mono: None,
             health_unavailable: false,
             shutting_down: false,
+            inventory: None,
+            inventory_base: inventory::Baseline::default(),
+            inventory_next_mono: None,
+            inventory_unavailable: false,
         }
     }
 
@@ -207,6 +221,23 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             None => health::HealthWindow::new(),
         };
         self.health = Some(src);
+    }
+
+    /// Liga a leitura do inventário da máquina (BIOS, firmware, Secure Boot, build, drivers com problema). Chame DEPOIS de
+    /// `enable_incidents`: a referência da execução anterior vem do armazenamento cifrado. Só MUDANÇAS viram evento.
+    pub fn set_inventory_source(&mut self, src: Box<dyn InventorySource + Send>) {
+        self.inventory_base = self
+            .incidents
+            .as_ref()
+            .and_then(|i| i.store.get_setting(INVENTORY_KEY).ok().flatten())
+            .map(|s| inventory::Baseline::parse(&s))
+            .unwrap_or_default();
+        self.inventory = Some(src);
+    }
+
+    /// A última leitura do inventário falhou: a fonte aparece como indisponível, sem erro.
+    pub fn inventory_unavailable(&self) -> bool {
+        self.inventory_unavailable
     }
 
     /// A leitura de saúde falhou na última tentativa (canal indisponível): a fonte é mostrada como indisponível.
@@ -567,6 +598,47 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         }
     }
 
+    /// Lê o inventário (no início e a cada 10 min) e grava só as mudanças. Mesma porta e mesmas travas da saúde: pausa
+    /// manual, encerramento e modo restrito param a leitura. Devolve quantos eventos foram gravados.
+    fn inventory_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
+        if self.inventory.is_none() {
+            return Ok(0);
+        }
+        if !self.guard.health_allowed(mono_ms) {
+            self.inventory_next_mono = None; // ao poder ler de novo, lê o estado de AGORA
+            return Ok(0);
+        }
+        if self.inventory_next_mono.is_some_and(|t| mono_ms < t) {
+            return Ok(0);
+        }
+        self.inventory_next_mono = Some(mono_ms.saturating_add(INVENTORY_INTERVAL_MS));
+        let Some(src) = self.inventory.as_mut() else { return Ok(0) };
+        let snap = match src.read() {
+            Ok(s) => s,
+            Err(_) => {
+                self.inventory_unavailable = true;
+                return Ok(0);
+            }
+        };
+        self.inventory_unavailable = false;
+        let (changes, next) = inventory::compare(&self.inventory_base, &snap);
+        let mut persisted = 0;
+        for c in changes {
+            let kind = EventKind::InventoryChange { item: c.item, previous: c.previous, current: c.current };
+            if let Some(ev) = self.guard.admit_health(mono_ms, utc_ms, kind) {
+                self.recorder.append(&ev)?;
+                persisted += 1;
+            }
+        }
+        if next != self.inventory_base {
+            if let Some(i) = self.incidents.as_ref() {
+                let _ = i.store.set_setting(INVENTORY_KEY, &next.serialize()); // melhor esforço
+            }
+            self.inventory_base = next;
+        }
+        Ok(persisted)
+    }
+
     /// Lê e grava os eventos de saúde do ciclo. Devolve quantos foram gravados.
     fn health_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
         if self.health.is_none() {
@@ -619,7 +691,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         self.finalize_captures(utc_ms, false)?;
         // A saúde da máquina não depende do app em primeiro plano: segue mesmo com bloqueio de privacidade.
         // A pausa manual (e o modo restrito) a param no próprio Guard.
-        let health_persisted = self.health_tick(mono_ms, utc_ms)?;
+        let health_persisted = self.health_tick(mono_ms, utc_ms)? + self.inventory_tick(mono_ms, utc_ms)?;
         if !state.is_recording() {
             self.stop_recording();
             return Ok(TickReport { state, reason, persisted: health_persisted, dropped_by_guard: 0, incidents_opened: 0 });

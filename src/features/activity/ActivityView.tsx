@@ -19,6 +19,7 @@ const KINDS = [
   "AppCrash",
   "AppHang",
   "HealthEvent",
+  "InventoryChange",
   "RecorderStateChanged",
   "UserMarker",
 ];

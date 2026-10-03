@@ -288,6 +288,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "kind.AppHang": "Aplicativo sem resposta",
   "kind.RecorderStateChanged": "Estado do recorder",
   "kind.HealthEvent": "Saúde do sistema",
+  "kind.InventoryChange": "Inventário do sistema",
   "kind.UserMarker": "Marcador",
 
   // ---- detalhes de evento (formatados a partir de código + números) ----
@@ -301,6 +302,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "detail.healthEvent": "{category} · evento {id}",
   "detail.healthEventCode": "{category} · evento {id} · código {code}",
   "detail.healthEventCount": "{category} · evento {id} · contagem {n}",
+  "detail.inventoryChange": "{item}: {from} → {to}",
   "detail.userMarker": "marcador {n}",
   "detail.recorderStateChanged": "estado do recorder alterado",
   "detail.unknown": "—",
@@ -314,6 +316,22 @@ export const ptBR: Record<keyof typeof en, string> = {
   "health.category.FileSystemError": "Erro do sistema de arquivos (NTFS)",
   "health.category.ServiceCrash": "Serviço do Windows encerrou sem querer",
   "health.category.UpdateFailure": "Falha ao instalar atualização do Windows",
+
+  // ---- inventário do sistema (só números; nunca número de série, UUID ou nomes) ----
+  "inventory.item.BiosVersion": "Versão da BIOS",
+  "inventory.item.BiosDate": "Data da BIOS",
+  "inventory.item.FirmwareType": "Tipo de firmware",
+  "inventory.item.SecureBoot": "Secure Boot",
+  "inventory.item.OsBuild": "Build do Windows",
+  "inventory.item.DeviceProblemCount": "Dispositivos com problema de driver",
+  "inventory.item.DeviceProblemCodes": "Códigos de problema de driver",
+  "inventory.value.unavailable": "indisponível",
+  "inventory.value.hashed": "mudou (formato não numérico)",
+  "inventory.value.uefi": "UEFI",
+  "inventory.value.legacy": "BIOS legada",
+  "inventory.value.on": "ligado",
+  "inventory.value.off": "desligado",
+  "inventory.value.none": "nenhum",
 
   // ---- incidentes: tipos, gravidade, estados, resumos ----
   "incidentKind.manual": "Captura manual",

@@ -28,6 +28,9 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
   Event Log IDs**. Only the category, the event ID and one number (such as the stop code) are stored, never the message
   text. They keep being recorded while a privacy block is active (they do not depend on the app in front), but a manual
   pause always wins.
+- **System inventory changes:** the BIOS version and date, UEFI or legacy firmware, Secure Boot, the Windows build and devices with a
+  driver problem are read without administrator rights, and **only changes** are recorded (`previous -> new`, numbers only; never serial
+  numbers, UUIDs, computer or device names, or the machine model).
 - **Dashboard:** overview, activity with filters, processes, incidents (timeline, notes, export),
   privacy, storage and integrity verification.
 - **Rules in effect at a glance:** the Overview lists the protected applications and each exclusion rule, with how many times
@@ -214,6 +217,9 @@ de comando.
   Windows, de uma **lista fixa de IDs do Event Log**. Só a categoria, o ID do evento e um número (como o código de
   parada) são gravados, nunca o texto da mensagem. Continuam sendo gravados durante um bloqueio de privacidade (não
   dependem do app em primeiro plano), mas a pausa manual sempre vence.
+- **Mudanças no inventário do sistema:** versão e data da BIOS, firmware UEFI ou legado, Secure Boot, build do Windows e dispositivos
+  com problema de driver são lidos sem administrador, e **só as mudanças** são gravadas (`anterior -> novo`, só números; nunca número
+  de série, UUID, nome do computador ou dos dispositivos, nem o modelo da máquina).
 - **Painel:** visão geral, atividade com filtros, processos, incidentes (linha do tempo, anotações,
   exportação), privacidade, armazenamento e verificação de integridade.
 - **Regras em vigor num relance:** a Visão Geral lista os aplicativos protegidos e cada regra de exclusão, com quantas vezes

@@ -20,6 +20,7 @@ const SAME_IN_BOTH = new Set([
   "app.title", "lang.en", "lang.ptBR", "activity.colPid", "processes.colPid", "processes.colCpu",
   "incidents.colDelta", "detail.processMetrics", "detail.unknown", "privacy.guardTitle",
   "privacy.historyEntry", "auth.activeEntry_", "configKey.launch_at_login_", "guide.demo.box",
+  "detail.inventoryChange", "inventory.item.SecureBoot", "inventory.value.uefi",
 ]);
 
 test("both dictionaries have exactly the same keys", () => {

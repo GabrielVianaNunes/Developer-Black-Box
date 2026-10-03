@@ -355,3 +355,23 @@ fn health_is_not_collected_in_restricted_test_mode() {
     g.observe(1, protected_obs());
     assert!(g.admit_health(1, 0, health_event()).is_none(), "only the authorized app may be collected in this mode");
 }
+
+fn inventory_change() -> EventKind {
+    EventKind::InventoryChange { item: bb_core::InventoryItem::OsBuild, previous: Some(1), current: Some(2) }
+}
+
+#[test]
+fn inventory_changes_use_the_health_door_only() {
+    let (mut g, t) = recording_guard();
+    assert!(g.admit(t, 0, inventory_change()).is_none(), "the regular door never admits it");
+    assert!(g.admit_health(t, 0, inventory_change()).is_some(), "positive control");
+}
+
+#[test]
+fn inventory_changes_obey_pause_and_survive_a_privacy_block() {
+    let (mut g, t) = recording_guard();
+    g.observe(t + 1, protected_obs());
+    assert!(g.admit_health(t + 1, 0, inventory_change()).is_some(), "a block does not stop it");
+    g.pause_manual();
+    assert!(g.admit_health(t + 1, 0, inventory_change()).is_none(), "manual pause always wins");
+}

@@ -284,6 +284,7 @@ export const en = {
   "kind.AppHang": "Application not responding",
   "kind.RecorderStateChanged": "Recorder state",
   "kind.HealthEvent": "System health",
+  "kind.InventoryChange": "System inventory",
   "kind.UserMarker": "Marker",
 
   // ---- event details (formatted from code + numbers) ----
@@ -297,6 +298,7 @@ export const en = {
   "detail.healthEvent": "{category} · event {id}",
   "detail.healthEventCode": "{category} · event {id} · code {code}",
   "detail.healthEventCount": "{category} · event {id} · count {n}",
+  "detail.inventoryChange": "{item}: {from} → {to}",
   "detail.userMarker": "marker {n}",
   "detail.recorderStateChanged": "recorder state changed",
   "detail.unknown": "—",
@@ -310,6 +312,22 @@ export const en = {
   "health.category.FileSystemError": "File system (NTFS) error",
   "health.category.ServiceCrash": "Windows service stopped unexpectedly",
   "health.category.UpdateFailure": "Windows Update install failed",
+
+  // ---- system inventory (numbers only; never serial numbers, UUIDs or names) ----
+  "inventory.item.BiosVersion": "BIOS version",
+  "inventory.item.BiosDate": "BIOS date",
+  "inventory.item.FirmwareType": "Firmware type",
+  "inventory.item.SecureBoot": "Secure Boot",
+  "inventory.item.OsBuild": "Windows build",
+  "inventory.item.DeviceProblemCount": "Devices with a driver problem",
+  "inventory.item.DeviceProblemCodes": "Driver problem codes",
+  "inventory.value.unavailable": "unavailable",
+  "inventory.value.hashed": "changed (non-numeric format)",
+  "inventory.value.uefi": "UEFI",
+  "inventory.value.legacy": "legacy BIOS",
+  "inventory.value.on": "on",
+  "inventory.value.off": "off",
+  "inventory.value.none": "none",
 
   // ---- incidents: kinds, severity, states, summaries ----
   "incidentKind.manual": "Manual capture",

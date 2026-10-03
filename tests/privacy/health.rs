@@ -338,3 +338,150 @@ fn quitting_while_paused_leaves_no_backlog_for_the_next_start() {
     let stored = rec_.list_segments().unwrap().iter().flat_map(|s| rec_.read_segment(s.index).unwrap()).filter(|l| l.contains("HealthEvent")).count();
     assert_eq!(stored, 0, "events from a stretch that ended in a manual pause are never reconstructed");
 }
+
+// ---- inventário: só mudanças, só números ----
+
+use bb_collector::{InventorySource, Snapshot};
+use bb_core::InventoryItem;
+
+#[derive(Default)]
+struct Inv {
+    snap: Vec<(InventoryItem, Option<u64>)>,
+    fail: bool,
+    reads: usize,
+}
+type SharedInv = Arc<Mutex<Inv>>;
+
+struct FakeInv(SharedInv);
+impl InventorySource for FakeInv {
+    fn read(&mut self) -> Result<Snapshot, CollectError> {
+        let mut i = self.0.lock().unwrap();
+        i.reads += 1;
+        if i.fail {
+            return Err(CollectError("synthetic inventory failure".into()));
+        }
+        Ok(Snapshot(i.snap.clone()))
+    }
+}
+
+fn inv_rig() -> (Rig, SharedInv) {
+    let mut r = rig();
+    let inv: SharedInv = Arc::new(Mutex::new(Inv {
+        snap: vec![(InventoryItem::OsBuild, Some(100)), (InventoryItem::SecureBoot, Some(1))],
+        ..Inv::default()
+    }));
+    r.engine.set_inventory_source(Box::new(FakeInv(inv.clone())));
+    (r, inv)
+}
+
+/// 10 min de relógio monotônico: passa do intervalo de leitura do inventário.
+fn inventory_interval(r: &mut Rig) {
+    for _ in 0..125 {
+        r.tick();
+    }
+}
+
+fn inventory_lines(r: &mut Rig) -> Vec<String> {
+    r.lines().into_iter().filter(|l| l.contains("InventoryChange")).collect()
+}
+
+#[test]
+fn the_first_inventory_reading_is_a_baseline_and_a_later_change_is_recorded_with_previous_and_new() {
+    let (mut r, inv) = inv_rig();
+    r.until_recording();
+    assert_eq!(inv.lock().unwrap().reads, 1, "positive control: it read once, and not again on every cycle");
+    assert!(inventory_lines(&mut r).is_empty(), "the first reading is only a baseline");
+
+    inv.lock().unwrap().snap = vec![(InventoryItem::OsBuild, Some(101)), (InventoryItem::SecureBoot, Some(1))];
+    inventory_interval(&mut r);
+    assert_eq!(inv.lock().unwrap().reads, 2, "one more reading after the 10-minute interval");
+    let lines = inventory_lines(&mut r);
+    assert_eq!(lines.len(), 1, "only the item that changed: {lines:?}");
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let body = &v["kind"]["InventoryChange"];
+    assert_eq!((body["item"].as_str(), body["previous"].as_u64(), body["current"].as_u64()), (Some("OsBuild"), Some(100), Some(101)));
+    let mut keys: Vec<&str> = body.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, vec!["current", "item", "previous"], "numbers and an item name, nothing else");
+
+    // a mesma leitura de novo não repete o evento
+    inventory_interval(&mut r);
+    assert_eq!(inventory_lines(&mut r).len(), 1);
+}
+
+#[test]
+fn an_unavailable_inventory_is_not_a_change() {
+    let (mut r, inv) = inv_rig();
+    r.until_recording();
+    inv.lock().unwrap().fail = true;
+    inventory_interval(&mut r);
+    assert!(r.engine.inventory_unavailable());
+    inv.lock().unwrap().fail = false;
+    inventory_interval(&mut r);
+    assert!(!r.engine.inventory_unavailable());
+    assert!(inventory_lines(&mut r).is_empty(), "failing to read and reading the same values again is no change");
+}
+
+#[test]
+fn inventory_follows_the_same_gates_as_health_pause_wins_and_a_block_does_not_stop_it() {
+    let (mut r, inv) = inv_rig();
+    r.until_recording();
+    // pausa manual: nem lê
+    r.engine.pause();
+    let reads = inv.lock().unwrap().reads;
+    inv.lock().unwrap().snap = vec![(InventoryItem::OsBuild, Some(200))];
+    inventory_interval(&mut r);
+    assert_eq!(inv.lock().unwrap().reads, reads, "no reading while paused");
+    assert!(inventory_lines(&mut r).is_empty());
+
+    // retoma sob um bloqueio de privacidade: o inventário é lido e gravado mesmo assim
+    r.world.lock().unwrap().foreground = Some("chrome.exe");
+    r.engine.resume(r.mono);
+    let (state, _) = r.cycle();
+    assert_eq!(state, RecorderState::PrivacyBlocked, "setup: really blocked");
+    assert!(inv.lock().unwrap().reads > reads, "positive control: read again after the resume");
+    assert_eq!(inventory_lines(&mut r).len(), 1, "the change is recorded despite the block");
+}
+
+#[test]
+fn the_baseline_survives_a_restart_so_a_change_made_while_closed_is_detected() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("meta.db");
+    let world: Shared = Arc::new(Mutex::new(World { foreground: Some("synth-editor.exe") }));
+    let inv: SharedInv = Arc::new(Mutex::new(Inv { snap: vec![(InventoryItem::BiosVersion, Some(7))], ..Inv::default() }));
+    let run = |inv: &SharedInv| -> Vec<String> {
+        let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+        e.set_inventory_source(Box::new(FakeInv(inv.clone())));
+        let mut mono = 0u64;
+        for _ in 0..8 {
+            mono += STEP;
+            e.tick(mono, ORIGIN + mono as i64).unwrap();
+        }
+        e.shutdown().unwrap();
+        let rec_ = e.recorder();
+        rec_.list_segments().unwrap().iter().flat_map(|s| rec_.read_segment(s.index).unwrap()).filter(|l| l.contains("InventoryChange")).collect()
+    };
+    assert!(run(&inv).is_empty(), "first run: baseline only");
+    inv.lock().unwrap().snap = vec![(InventoryItem::BiosVersion, Some(8))];
+    let lines = run(&inv);
+    assert_eq!(lines.len(), 1, "second run sees the update: {lines:?}");
+    assert!(lines[0].contains("BiosVersion") && lines[0].contains('7') && lines[0].contains('8'));
+}
+
+#[test]
+fn the_stored_baseline_contains_only_known_keys_and_numbers() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("meta.db");
+    let world: Shared = Arc::new(Mutex::new(World { foreground: Some("synth-editor.exe") }));
+    let inv: SharedInv = Arc::new(Mutex::new(Inv {
+        snap: vec![(InventoryItem::BiosVersion, Some(5)), (InventoryItem::DeviceProblemCodes, Some(1 << 10))],
+        ..Inv::default()
+    }));
+    let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+    e.set_inventory_source(Box::new(FakeInv(inv)));
+    for i in 1..=4u64 {
+        e.tick(i * STEP, ORIGIN + (i * STEP) as i64).unwrap();
+    }
+    let stored = Store::open(&db).unwrap().get_setting("health.inventory").unwrap().expect("baseline saved");
+    assert_eq!(stored, "bios_version=5;problem_codes=1024");
+}

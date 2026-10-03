@@ -7,6 +7,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- System inventory and changes (#71): the app reads, without administrator rights, the BIOS version and date, the firmware type
+  (UEFI or legacy), Secure Boot, the Windows build (with revision) and the **count and codes** of present devices with a driver problem
+  code (a device you disabled yourself, code 22, is not a failure and is not counted). It records **only changes** between two readings,
+  as `previous -> new`, never the readings themselves. Everything is a number: dotted versions are packed into one number, and a version
+  that is not numeric (for example `F.12`) is stored only as a 52-bit hash, enough to say "it changed" but not what it was. The reference
+  (last known value of each item, numbers only) is kept encrypted in the settings. The first reading of an item is only a reference, an
+  item that cannot be read is never a change, and a reference that cannot be parsed is treated as a first reading. Read at start and every
+  10 minutes, with the same gates as the health events (recorded during a privacy block; manual pause, shutdown, start and restricted test
+  mode win). What the source reads: BIOS and Windows version values from the registry (HKLM, readable by regular users), `GetFirmwareType`,
+  the Secure Boot state value, and only the problem code of each present device through Windows' device configuration API. Serial numbers,
+  UUIDs, computer name, manufacturer, machine model and device names or instance IDs are never read. The optional machine model was **not**
+  implemented (it would identify the machine and was not asked for). Not yet checked on a real Windows machine: only compiled for Windows and
+  tested with synthetic readings. The Activity tab shows the changes in both languages. If a change happens while the app is closed, it is
+  recorded when the app reads again (the time shown is the detection time).
 - System health events from the Windows Event Log `System` channel (#69), read without administrator rights from a **fixed list** of
   provider + ID pairs. Only the category, the event ID and one optional number are stored; the message text, service names, paths, user
   and computer names are discarded on the spot (the closed schema has nowhere to keep them). Each event is created only by the Privacy

@@ -69,6 +69,8 @@ pub enum Detail {
     AppHang,
     /// Evento de saúde da máquina: categoria (enumeração fechada), ID do evento e um número opcional (sem texto).
     HealthEvent { category: String, event_id: u64, value: Option<u64> },
+    /// Mudança de inventário: item (enumeração fechada) e valores numéricos anterior e novo.
+    InventoryChange { item: String, previous: Option<u64>, current: Option<u64> },
     UserMarker { marker: u64 },
     RecorderStateChanged,
     Unknown,
@@ -120,6 +122,11 @@ fn row_of(e: &Ev, exes: &HashMap<(u64, i64), String>) -> ActivityRow {
             category: e.body.get("category").and_then(Value::as_str).unwrap_or("").to_owned(),
             event_id: n("event_id"),
             value: e.body.get("code").and_then(Value::as_u64),
+        },
+        "InventoryChange" => Detail::InventoryChange {
+            item: e.body.get("item").and_then(Value::as_str).unwrap_or("").to_owned(),
+            previous: e.body.get("previous").and_then(Value::as_u64),
+            current: e.body.get("current").and_then(Value::as_u64),
         },
         "UserMarker" => Detail::UserMarker { marker: n("code") },
         "RecorderStateChanged" => Detail::RecorderStateChanged,
