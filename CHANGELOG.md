@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-03
+
 ### Changed
 - System health, checked on a real Windows 11 laptop: the Event Log, inventory, power and performance counter sources returned real values
   (counts matched Windows' own tools for disk 11 and Windows Update 20), and in the running app health data kept being recorded during a
