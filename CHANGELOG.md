@@ -7,6 +7,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- Automatic health incidents and the "System health" tab (#73). **Incidents** now open on their own for a **blue screen** (Kernel-Power 41
+  with a non-zero stop code, or the stop code event), an **unexpected shutdown** (power loss or freeze, with no stop code), a **hardware error**
+  (WHEA) and **sustained thermal throttling** (see #70: about 5 minutes of passive limit below 100% with the CPU at 70% or more). They are
+  created only from events the Privacy Guard already admitted, state only a code and numbers (no app name, no message text), and carry the
+  same evidence as the other incidents: the window before is preserved at once and the window after when it ends. The events of one bad
+  shutdown (for example Kernel-Power 41 and the blue screen event, logged together on the next boot) open **one** incident, hardware errors
+  are condensed to one per 5 minutes and throttling to one per half hour. An incident about an event read when the app starts again is
+  anchored at the detection time, so its evidence is whatever the app recorded around that moment. **The tab** shows, for each source (Windows
+  event log, inventory and changes, power and battery, performance counters), its state: OK, Attention (devices with a driver problem, battery
+  at 10% or less while unplugged, sustained throttling), Unavailable (this machine does not offer it or the last reading failed: **never** an
+  alarm), Waiting (not read yet), Paused (manual pause) or Off (counters turned off). It also lists the latest performance sample, a 7-day
+  timeline of health events, power changes and sleep, the inventory changes, and what is **not** monitored and what is **never** recorded.
+  Texts in both languages, a "what is new" step for 0.5.0 and a synthetic screenshot in the README (made with an invented backend, no data from a
+  real machine). It only shows what was already recorded under the closed schema. Not checked on a real Windows machine: only the portable logic
+  (incident rules, source states) is tested here and by the CI.
 - System performance telemetry (#70): about one sample every 30 seconds of **system-wide counters**, read through the Windows
   performance counters (PDH) with the **English counter names** (`PdhAddEnglishCounter`, so it works the same on a Portuguese Windows),
   without administrator rights. One sample is a single record of plain numbers: hottest thermal zone (kelvin) and the lowest passive

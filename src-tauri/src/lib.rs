@@ -414,6 +414,7 @@ pub fn run() {
             commands::get_overview,
             commands::get_omitted_counts,
             commands::get_activity,
+            commands::get_health_status,
             commands::get_processes,
             commands::list_incidents,
             commands::get_incident,

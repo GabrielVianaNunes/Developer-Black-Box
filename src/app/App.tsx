@@ -9,6 +9,7 @@ import { UpdateBanner } from "../components/UpdateBanner";
 import { usePrivacyDraft } from "./usePrivacyDraft";
 import { useUpdate } from "./useUpdate";
 import { ActivityView } from "../features/activity/ActivityView";
+import { HealthView } from "../features/health/HealthView";
 import { IncidentsView } from "../features/incidents/IncidentsView";
 import { OverviewView } from "../features/overview/OverviewView";
 import { PrivacyView } from "../features/privacy/PrivacyView";
@@ -23,6 +24,7 @@ const VIEWS = [
   { id: "activity", label: "nav.activity" },
   { id: "processes", label: "nav.processes" },
   { id: "incidents", label: "nav.incidents" },
+  { id: "health", label: "nav.health" },
   { id: "privacy", label: "nav.privacy" },
   { id: "storage", label: "nav.storage" },
 ] as const satisfies ReadonlyArray<{ id: string; label: Key }>;
@@ -174,6 +176,7 @@ export function App() {
       {view === "overview" && <OverviewView status={status} />}
       {view === "activity" && <ActivityView />}
       {view === "processes" && <ProcessesView />}
+      {view === "health" && <HealthView />}
       {view === "incidents" && <IncidentsView />}
       {view === "privacy" && <PrivacyView status={status} onShowNews={() => setNews(newsFor(null, version ?? ""))} privacy={privacy} />}
       {view === "storage" && <StorageView />}

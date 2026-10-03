@@ -111,6 +111,9 @@ tr.before td { color: var(--muted); }
 .sev { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); }
 .sev-warning { border-color: #d9a400; }
 .sev-critical { border-color: var(--red); }
+.health-good { color: var(--green, #2e9e5b); }
+.health-warn { color: #d9a400; }
+.health-neutral { color: inherit; opacity: 0.7; }
 .danger-zone { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }

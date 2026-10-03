@@ -932,3 +932,201 @@ fn retention_keeps_the_samples_within_the_budget_and_drops_the_oldest_first() {
     assert_eq!(*ts.last().unwrap(), ORIGIN + 5_999 * 30_000, "the newest sample is always kept");
     assert!(ts[0] > ORIGIN, "the oldest are gone");
 }
+
+// ---- incidentes automáticos de saúde e estado por fonte ----
+
+use bb_engine::{HealthSourceId, SourceState};
+use bb_store::{CaptureState, IncidentKind};
+
+fn incidents(r: &Rig) -> Vec<bb_store::Incident> {
+    r.engine.store().unwrap().list_incidents().unwrap()
+}
+
+fn state_of(r: &Rig, id: HealthSourceId) -> SourceState {
+    r.engine.health_sources(r.mono).into_iter().find(|(i, _)| *i == id).map(|(_, s)| s).expect("source listed")
+}
+
+#[test]
+fn a_blue_screen_opens_an_incident_with_evidence_and_no_app_name() {
+    let mut r = rig();
+    r.until_recording();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    r.cycle();
+    let all = incidents(&r);
+    assert_eq!(all.len(), 1, "positive control: one incident");
+    assert_eq!((all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()), (IncidentKind::BlueScreen, None, "blue_screen|209"));
+    assert!(!all[0].segments.is_empty(), "the window before the incident is preserved right away");
+    // passada a janela posterior, a captura conclui e as evidências incluem o próprio evento de saúde
+    for _ in 0..8 {
+        r.tick();
+    }
+    let done = incidents(&r);
+    assert_eq!(done[0].capture, CaptureState::Preserved);
+    let rec_ = r.engine.recorder();
+    let lines: Vec<String> = done[0].segments.iter().flat_map(|s| rec_.read_segment(*s).unwrap()).collect();
+    assert!(lines.iter().any(|l| l.contains("BugCheck")), "the evidence holds the health event");
+}
+
+#[test]
+fn the_events_of_one_bad_shutdown_open_one_incident_and_unavailable_sources_open_none() {
+    let mut r = rig();
+    r.until_recording();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::UnexpectedShutdown, 41, Some(209)));
+    r.push(rec(ts + 3_000, HealthCategory::BugCheck, 1001, Some(209)));
+    r.push(rec(ts + 4_000, HealthCategory::UnexpectedShutdown, 6008, None));
+    r.cycle();
+    assert_eq!(incidents(&r).len(), 1);
+    r.feed.lock().unwrap().fail = true;
+    r.cycle();
+    assert_eq!(incidents(&r).len(), 1, "a source that cannot be read creates no incident");
+}
+
+#[test]
+fn health_incidents_obey_the_manual_pause() {
+    let mut r = rig();
+    r.until_recording();
+    r.engine.pause();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::HardwareError, 18, None));
+    r.cycle();
+    r.cycle();
+    assert!(incidents(&r).is_empty(), "nothing from the pause becomes an incident");
+    r.engine.resume(r.mono);
+    r.cycle();
+    assert!(incidents(&r).is_empty(), "and it is not reconstructed after the resume");
+}
+
+#[test]
+fn sustained_throttling_opens_exactly_one_warning_incident() {
+    let (mut r, t) = tel_rig();
+    t.lock().unwrap().sample = HealthSample { passive_limit_pct: Some(70), cpu_load_pct: Some(95), ..good_sample() };
+    r.until_recording();
+    for _ in 0..5 {
+        tel_interval(&mut r);
+    }
+    assert!(incidents(&r).is_empty(), "not sustained yet");
+    for _ in 0..10 {
+        tel_interval(&mut r);
+    }
+    let all = incidents(&r);
+    assert_eq!(all.len(), 1, "one incident for the condition, not one per sample: {all:?}");
+    assert_eq!((all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()), (IncidentKind::Throttling, None, "throttling|70|95"));
+}
+
+#[test]
+fn a_normal_machine_opens_no_health_incident() {
+    let (mut r, _t) = tel_rig();
+    r.until_recording();
+    for _ in 0..30 {
+        tel_interval(&mut r);
+    }
+    assert!(incidents(&r).is_empty());
+}
+
+#[test]
+fn sources_are_waiting_before_the_first_reading_and_ok_after() {
+    // máquina sem a fonte do Event Log instalada: indisponível (não "ok" nem "atenção")
+    let dir = tempfile::tempdir().unwrap();
+    let world: Shared = Arc::new(Mutex::new(World { foreground: Some("synth-editor.exe") }));
+    let bare = engine_on(dir.path(), &world, Some(Store::open_in_memory().unwrap()));
+    assert_eq!(bare.health_sources(0).into_iter().find(|(i, _)| *i == HealthSourceId::EventLog).unwrap().1, SourceState::Unavailable);
+    let mut r = rig();
+    let (mut r2, _t) = tel_rig();
+    r2.engine.set_inventory_source(Box::new(FakeInv(Arc::new(Mutex::new(Inv::default())))));
+    assert_eq!(state_of(&r2, HealthSourceId::Telemetry), SourceState::Waiting, "just opened: not read yet is neither 'ok' nor 'paused'");
+    r2.until_recording();
+    assert_eq!(state_of(&r2, HealthSourceId::Telemetry), SourceState::Ok);
+    assert_eq!(state_of(&r2, HealthSourceId::EventLog), SourceState::Ok);
+    r.until_recording();
+    assert_eq!(state_of(&r, HealthSourceId::EventLog), SourceState::Ok);
+}
+
+#[test]
+fn an_unavailable_source_is_shown_as_unavailable_never_as_attention() {
+    let (mut r, t) = tel_rig();
+    r.until_recording();
+    t.lock().unwrap().fail = true;
+    tel_interval(&mut r);
+    assert_eq!(state_of(&r, HealthSourceId::Telemetry), SourceState::Unavailable);
+    r.feed.lock().unwrap().fail = true;
+    r.cycle();
+    assert_eq!(state_of(&r, HealthSourceId::EventLog), SourceState::Unavailable);
+    // sem bateria: energia indisponível, também sem alarme
+    let (mut r2, _p) = power_rig(None);
+    r2.until_recording();
+    power_interval(&mut r2);
+    assert_eq!(state_of(&r2, HealthSourceId::Power), SourceState::Unavailable);
+}
+
+#[test]
+fn pause_and_the_switch_are_shown_as_such() {
+    let (mut r, _t) = tel_rig();
+    r.until_recording();
+    set_telemetry(&mut r, false);
+    assert_eq!(state_of(&r, HealthSourceId::Telemetry), SourceState::Off);
+    r.engine.pause();
+    assert_eq!(state_of(&r, HealthSourceId::EventLog), SourceState::Paused, "only the manual pause is shown as paused");
+    assert_eq!(state_of(&r, HealthSourceId::Telemetry), SourceState::Off, "off stays off while paused");
+}
+
+#[test]
+fn attention_is_for_real_signals_only() {
+    let (mut r, t) = tel_rig();
+    t.lock().unwrap().sample = HealthSample { passive_limit_pct: Some(70), cpu_load_pct: Some(95), ..good_sample() };
+    r.until_recording();
+    for _ in 0..12 {
+        tel_interval(&mut r);
+    }
+    assert_eq!(state_of(&r, HealthSourceId::Telemetry), SourceState::Attention, "throttling");
+
+    let (mut p, pw) = power_rig(battery(AcLine::Offline, 8));
+    p.until_recording();
+    assert_eq!(state_of(&p, HealthSourceId::Power), SourceState::Attention, "low battery on battery power");
+    pw.lock().unwrap().reading = battery(AcLine::Online, 8);
+    power_interval(&mut p);
+    assert_eq!(state_of(&p, HealthSourceId::Power), SourceState::Ok, "plugged in is not an alarm");
+
+    let mut i = (rig(),);
+    let inv: SharedInv = Arc::new(Mutex::new(Inv { snap: vec![(InventoryItem::DeviceProblemCount, Some(2))], ..Inv::default() }));
+    i.0.engine.set_inventory_source(Box::new(FakeInv(inv)));
+    i.0.until_recording();
+    assert_eq!(state_of(&i.0, HealthSourceId::Inventory), SourceState::Attention, "devices with a driver problem");
+}
+
+#[test]
+fn a_long_throttling_condition_opens_one_incident_not_one_per_half_hour() {
+    let (mut r, t) = tel_rig();
+    t.lock().unwrap().sample = HealthSample { passive_limit_pct: Some(70), cpu_load_pct: Some(95), ..good_sample() };
+    r.until_recording();
+    for _ in 0..90 {
+        tel_interval(&mut r); // ~52 minutos de throttling contínuo (passa do intervalo de 30 min entre avisos)
+    }
+    assert!(r.engine.throttling_sustained());
+    let all: Vec<_> = incidents(&r).into_iter().filter(|i| i.kind == IncidentKind::Throttling).collect();
+    assert_eq!(all.len(), 1, "the incident marks when it started, it does not repeat while the same condition lasts");
+}
+
+#[test]
+fn a_stale_attention_is_not_kept_when_the_source_becomes_unavailable() {
+    let mut r = rig();
+    let inv: SharedInv = Arc::new(Mutex::new(Inv { snap: vec![(InventoryItem::DeviceProblemCount, Some(2))], ..Inv::default() }));
+    r.engine.set_inventory_source(Box::new(FakeInv(inv.clone())));
+    r.until_recording();
+    assert_eq!(state_of(&r, HealthSourceId::Inventory), SourceState::Attention, "setup: attention while readable");
+    inv.lock().unwrap().fail = true;
+    inventory_interval(&mut r);
+    assert_eq!(state_of(&r, HealthSourceId::Inventory), SourceState::Unavailable, "a source that cannot be read is unavailable, not an old alarm");
+}
+
+#[test]
+fn a_source_installed_after_the_app_opened_is_waiting_until_its_first_reading() {
+    let mut r = rig();
+    r.until_recording();
+    let t: SharedTel = Arc::new(Mutex::new(Tel { sample: good_sample(), ..Tel::default() }));
+    r.engine.set_telemetry_source(Box::new(FakeTel(t)));
+    assert_eq!(state_of(&r, HealthSourceId::Telemetry), SourceState::Waiting, "present and allowed, but nothing read yet");
+    r.tick();
+    assert_eq!(state_of(&r, HealthSourceId::Telemetry), SourceState::Ok);
+}

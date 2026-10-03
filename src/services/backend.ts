@@ -10,6 +10,7 @@ import type {
   ConfigChange,
   Detection,
   ExportResult,
+  HealthSource,
   Incident,
   IncidentDetail,
   OmittedCount,
@@ -43,6 +44,7 @@ export const onNavigate = (cb: (view: string) => void): Promise<UnlistenFn> =>
 export const getOverview = () => invoke<Overview>("get_overview");
 export const getOmittedCounts = () => invoke<OmittedCount[]>("get_omitted_counts");
 export const getActivity = (filter: ActivityFilter) => invoke<ActivityRow[]>("get_activity", { filter });
+export const getHealthStatus = () => invoke<HealthSource[]>("get_health_status");
 export const getProcesses = () => invoke<ProcessRow[]>("get_processes");
 
 // Incidentes
