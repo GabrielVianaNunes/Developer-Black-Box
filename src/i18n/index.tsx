@@ -164,7 +164,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
         case "healthEvent": {
           const category = lookup("health.category", d.category);
           if (d.value == null) return t("detail.healthEvent", { category, id: d.eventId });
-          // Contagem de quedas do serviço em decimal; os demais números são códigos de erro, em hexadecimal.
+          // Contagem de quedas do serviço e estado de destino da suspensão são números comuns (decimal); os demais números
+          // são códigos de erro ou de parada, em hexadecimal.
+          if (d.category === "SleepEntered") return t("detail.healthEventState", { category, id: d.eventId, n: d.value });
           return d.category === "ServiceCrash"
             ? t("detail.healthEventCount", { category, id: d.eventId, n: d.value })
             : t("detail.healthEventCode", {
@@ -209,6 +211,16 @@ export function I18nProvider({ children }: { children: ReactNode }) {
           return t("summary.app_crash", { code: `0x${num(0).toString(16).toUpperCase().padStart(8, "0")}` });
         case "app_hang":
           return t("summary.app_hang");
+        case "unexpected_shutdown":
+          return t("summary.unexpected_shutdown");
+        case "blue_screen":
+          return num(0) > 0
+            ? t("summary.blue_screen", { code: `0x${num(0).toString(16).toUpperCase().padStart(8, "0")}` })
+            : t("summary.blue_screen_nocode");
+        case "hardware_error":
+          return t("summary.hardware_error");
+        case "throttling":
+          return t("summary.throttling", { limit: num(0), load: num(1) });
         default:
           return summary; // incidente antigo, já gravado como texto: mostra como está
       }

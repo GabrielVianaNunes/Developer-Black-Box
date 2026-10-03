@@ -30,6 +30,12 @@ export type Detail =
   | { code: "recorderStateChanged" }
   | { code: "unknown" };
 
+/** Uma fonte de saúde da máquina e o estado dela agora (enumerações fechadas do backend). */
+export interface HealthSource {
+  source: string;
+  state: string;
+}
+
 export interface ActivityRow {
   seq: number;
   tsUtcMs: number;

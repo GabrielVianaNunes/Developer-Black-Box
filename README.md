@@ -28,6 +28,13 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
   Event Log IDs**. Only the category, the event ID and one number (such as the stop code) are stored, never the message
   text. They keep being recorded while a privacy block is active (they do not depend on the app in front), but a manual
   pause always wins.
+- **System health tab:** the state of each source (OK, attention, unavailable, paused, off), the latest performance sample, a timeline of
+  health events, power changes and sleep, the inventory changes, and a plain list of what is **not** monitored and what is **never** recorded.
+  A blue screen, an unexpected shutdown, a hardware error or sustained thermal throttling opens an incident on its own, with the evidence from
+  before and after. A source that your machine does not offer is shown as unavailable, never as an alarm.
+
+  ![System health tab with example data](assets/readme-images/health.png)
+
 - **System performance telemetry:** about one sample every 30 seconds of system-wide counters (temperature and thermal limit, CPU,
   memory, disk, network errors as a single total, GPU use), read without administrator rights. Only numbers, nothing per program, per user
   or per connection. **On by default**; turn it off in the Privacy tab ("Record system performance counters"). It costs about 0.1 MB per day
@@ -224,6 +231,13 @@ de comando.
   Windows, de uma **lista fixa de IDs do Event Log**. Só a categoria, o ID do evento e um número (como o código de
   parada) são gravados, nunca o texto da mensagem. Continuam sendo gravados durante um bloqueio de privacidade (não
   dependem do app em primeiro plano), mas a pausa manual sempre vence.
+- **Aba Saúde do sistema:** o estado de cada fonte (OK, atenção, indisponível, pausada, desligada), a última amostra de desempenho, uma linha
+  do tempo de eventos de saúde, mudanças de energia e suspensão, as mudanças de inventário, e uma lista clara do que **não** é monitorado e do que
+  **nunca** é gravado. Uma tela azul, um desligamento inesperado, um erro de hardware ou uma redução de desempenho por calor prolongada abre um
+  incidente sozinha, com as evidências de antes e depois. Uma fonte que a sua máquina não oferece aparece como indisponível, nunca como alarme.
+
+  ![Aba Saúde do sistema com dados de exemplo](assets/readme-images/health-pt.png)
+
 - **Telemetria de desempenho do sistema:** cerca de uma amostra a cada 30 segundos de contadores do sistema inteiro (temperatura e limite
   térmico, CPU, memória, disco, erros de rede como um total só, uso da GPU), lida sem administrador. Só números, nada por programa, por usuário
   ou por conexão. **Ligada por padrão**; desligue na aba Privacidade ("Gravar contadores de desempenho do sistema"). Custa cerca de 0,1 MB por

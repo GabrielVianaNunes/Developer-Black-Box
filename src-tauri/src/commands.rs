@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use bb_core::ExclusionSet;
-use bb_engine::{EngineError, PartialExclusion, Settings};
+use bb_engine::{EngineError, HealthSourceId, PartialExclusion, Settings, SourceState};
 use bb_query::{ActivityFilter, ActivityRow, IncidentDetail, IncidentDto, Overview, ProcessRow, SegmentDto};
 use bb_recorder::RecorderError;
 use bb_store::InvestigationState;
@@ -193,6 +193,40 @@ pub struct OmittedDto {
 #[tauri::command]
 pub fn get_omitted_counts(app: AppHandle) -> Result<Vec<OmittedDto>, String> {
     with_engine(&app, |e| Ok(e.omitted_counts().into_iter().map(|(exe, count)| OmittedDto { exe, count }).collect()))
+}
+
+/// Uma linha da aba "Saúde do sistema": a fonte e o estado dela agora. Só enumerações fixas.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthSourceDto {
+    source: &'static str,
+    state: &'static str,
+}
+
+#[tauri::command]
+pub fn get_health_status(app: AppHandle) -> Result<Vec<HealthSourceDto>, String> {
+    let mono = app.state::<Arc<Runtime>>().mono_ms();
+    with_engine(&app, |e| {
+        Ok(e.health_sources(mono)
+            .into_iter()
+            .map(|(id, st)| HealthSourceDto {
+                source: match id {
+                    HealthSourceId::EventLog => "eventLog",
+                    HealthSourceId::Inventory => "inventory",
+                    HealthSourceId::Power => "power",
+                    HealthSourceId::Telemetry => "telemetry",
+                },
+                state: match st {
+                    SourceState::Ok => "ok",
+                    SourceState::Attention => "attention",
+                    SourceState::Unavailable => "unavailable",
+                    SourceState::Waiting => "waiting",
+                    SourceState::Paused => "paused",
+                    SourceState::Off => "off",
+                },
+            })
+            .collect())
+    })
 }
 
 #[derive(Serialize, Deserialize)]
