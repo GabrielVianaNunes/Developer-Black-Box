@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-02
+
 ### Fixed
 - Protected applications that are Windows (UWP) apps, such as Calculator or Settings, never paused the recording: for them the window in front
   belongs to the Windows window host (ApplicationFrameHost.exe), so the program name never matched the list. The app now finds the real app
@@ -32,8 +34,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   or removed rule takes effect on the next cycle with the programs already running, and exports apply the rule again to older data. It only
   applies to a full exclusion, never to one that still records something. Crash and hang records only carry the program name, so they cannot be
   tied to a tree.
-
-### Added
 - "Detect the app in front" in the Privacy tab: click, bring the program you want to the front during a 5-second countdown, and the app shows
   the program name it sees (the same name the privacy rules compare), with buttons to add it to the protected applications or to the
   exclusion rules. It only reads the executable name, never the window title, and saves and sends nothing; the buttons only change the
