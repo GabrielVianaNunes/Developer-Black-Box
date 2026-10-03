@@ -390,3 +390,15 @@ fn power_status_uses_the_health_door_only_and_obeys_pause_and_block() {
     g.pause_manual();
     assert!(g.admit_health(t + 1, 0, power_status()).is_none(), "manual pause always wins");
 }
+
+#[test]
+fn a_telemetry_sample_uses_the_health_door_only_and_obeys_pause_and_block() {
+    let sample = || EventKind::HealthSample(bb_core::HealthSample { cpu_load_pct: Some(10), ..Default::default() });
+    let (mut g, t) = recording_guard();
+    assert!(g.admit(t, 0, sample()).is_none(), "the regular door never admits it");
+    assert!(g.admit_health(t, 0, sample()).is_some(), "positive control");
+    g.observe(t + 1, protected_obs());
+    assert!(g.admit_health(t + 1, 0, sample()).is_some(), "a block does not stop it");
+    g.pause_manual();
+    assert!(g.admit_health(t + 1, 0, sample()).is_none(), "manual pause always wins");
+}

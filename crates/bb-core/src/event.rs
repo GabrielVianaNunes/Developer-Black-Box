@@ -100,6 +100,43 @@ pub enum InventoryItem {
     DeviceProblemCodes,
 }
 
+/// Uma amostra de contadores de desempenho do SISTEMA (nada por processo, por usuário ou por conexão). Só números;
+/// cada um é `None` quando o contador não existe ou o valor estava fora da faixa válida ("indisponível").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct HealthSample {
+    /// Maior temperatura entre as zonas térmicas, em kelvin (200 a 450).
+    pub thermal_kelvin: Option<u16>,
+    /// Menor "limite passivo" entre as zonas, em %: abaixo de 100 o Windows está reduzindo o desempenho por calor.
+    pub passive_limit_pct: Option<u8>,
+    /// Uso total da CPU, em %.
+    pub cpu_load_pct: Option<u8>,
+    /// Desempenho da CPU em relação ao nominal, em % (pode passar de 100 com turbo).
+    pub cpu_perf_pct: Option<u16>,
+    /// Frequência atual da CPU, em MHz.
+    pub cpu_freq_mhz: Option<u16>,
+    /// Memória comprometida em relação ao limite de commit, em %.
+    pub mem_commit_pct: Option<u8>,
+    /// Memória disponível, em MB.
+    pub mem_available_mb: Option<u32>,
+    /// Falhas de página por segundo.
+    pub page_faults_per_sec: Option<u32>,
+    /// Latência média por transferência de disco, em microssegundos.
+    pub disk_latency_us: Option<u32>,
+    /// Tempo de disco ocupado, em %.
+    pub disk_busy_pct: Option<u8>,
+    /// Erros de rede (recebidos + enviados) somados entre todos os adaptadores desde a amostra anterior. Sem nomes.
+    pub net_errors: Option<u32>,
+    /// Uso do motor 3D da GPU, em %.
+    pub gpu_pct: Option<u8>,
+}
+
+impl HealthSample {
+    /// Nenhum contador foi lido: a fonte está indisponível e a amostra não vale a pena gravar.
+    pub fn is_empty(&self) -> bool {
+        *self == HealthSample::default()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum EventKind {
     ProcessStarted { key: ProcessKey, exe_name: ExeName, parent_pid: u32 },
@@ -124,6 +161,8 @@ pub enum EventKind {
     /// Energia: tomada ligada ou não e carga da bateria em porcentagem (0 a 100). Só números e dois estados; nada de
     /// localização, rede ou identificador. Mesma porta do evento de saúde (`admit_health`).
     PowerStatus { ac: Option<AcLine>, charge_percent: Option<u8> },
+    /// Amostra de contadores de desempenho do sistema (PDH), a cada ~30 s. Só números agregados.
+    HealthSample(HealthSample),
 }
 
 /// Só o Privacy Guard constrói este tipo (construtor `pub(crate)`), então o

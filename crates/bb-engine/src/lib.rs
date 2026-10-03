@@ -10,12 +10,13 @@ pub mod health;
 pub mod inventory;
 pub mod incidents;
 pub mod settings;
+pub mod throttle;
 
 use std::fmt;
 use std::time::Duration;
 
 use bb_collector::{
-    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, PowerSource, ProcessSource,
+    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, PowerSource, ProcessSource, TelemetrySource,
 };
 use bb_core::{AuthError, EventKind, ExeName, GuardConfig, PrivacyGuard, ProcessRef, ReasonCode, RecorderState};
 use bb_recorder::{Recorder, RecorderError};
@@ -145,6 +146,12 @@ pub struct Engine<P: ProcessSource, C: ContextSource> {
     power_next_mono: Option<u64>,
     /// Sem bateria ou leitura falha: a fonte aparece como indisponível, sem erro nem alarme.
     power_unavailable: bool,
+    telemetry: Option<Box<dyn TelemetrySource + Send>>,
+    throttle: throttle::ThrottleDetector,
+    /// Próxima amostra de telemetria (relógio monotônico). `None` = amostrar assim que puder.
+    telemetry_next_mono: Option<u64>,
+    /// A fonte de contadores falhou ou não leu nada: aparece como indisponível, sem erro nem alarme.
+    telemetry_unavailable: bool,
 }
 
 /// Chaves (cifradas) da marca d'água de saúde: até onde a última execução leu, e se terminou lendo.
@@ -156,6 +163,8 @@ const INVENTORY_KEY: &str = "health.inventory";
 const INVENTORY_INTERVAL_MS: u64 = 10 * 60_000;
 /// Intervalo entre leituras de energia (relógio monotônico). Só variações relevantes viram evento.
 const POWER_INTERVAL_MS: u64 = 60_000;
+/// Intervalo entre amostras de telemetria (relógio monotônico): ~1 amostra a cada 30 s.
+const TELEMETRY_INTERVAL_MS: u64 = 30_000;
 
 /// Uma falha registrada pelo Windows só interessa se foi registrada DURANTE uma gravação.
 /// O que ocorreu numa pausa ou bloqueio nunca é reconstruído depois.
@@ -209,6 +218,10 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             power_tracker: bb_collector::power::PowerTracker::new(),
             power_next_mono: None,
             power_unavailable: false,
+            telemetry: None,
+            throttle: throttle::ThrottleDetector::new(),
+            telemetry_next_mono: None,
+            telemetry_unavailable: false,
         }
     }
 
@@ -250,6 +263,22 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
     /// Liga a leitura de energia e bateria (tomada e porcentagem de carga).
     pub fn set_power_source(&mut self, src: Box<dyn PowerSource + Send>) {
         self.power = Some(src);
+    }
+
+    /// Liga a telemetria contínua de desempenho do sistema (contadores PDH). Só amostra enquanto a configuração
+    /// `telemetry_enabled` estiver ligada (padrão) e a saúde puder ser lida.
+    pub fn set_telemetry_source(&mut self, src: Box<dyn TelemetrySource + Send>) {
+        self.telemetry = Some(src);
+    }
+
+    /// A fonte de contadores falhou ou não leu nenhum contador: mostrada como indisponível.
+    pub fn telemetry_unavailable(&self) -> bool {
+        self.telemetry_unavailable
+    }
+
+    /// Há throttling térmico prolongado (limite passivo abaixo de 100 % com carga alta por ~5 min)? Sinal para a #73.
+    pub fn throttling_sustained(&self) -> bool {
+        self.throttle.sustained()
     }
 
     /// Sem bateria ou leitura falha: a fonte de energia é mostrada como indisponível.
@@ -620,6 +649,42 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         }
     }
 
+    /// Amostra os contadores de desempenho (~30 s) e grava uma amostra de números agregados. Mesma porta e mesmas travas
+    /// da saúde, mais a chave `telemetry_enabled`: desligada, nada é lido nem gravado. Amostra sem nenhum número =
+    /// fonte indisponível, nada gravado.
+    fn telemetry_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
+        if self.telemetry.is_none() {
+            return Ok(0);
+        }
+        if !self.settings.telemetry_enabled || !self.guard.health_allowed(mono_ms) {
+            self.telemetry_next_mono = None; // ao voltar, amostra de novo na hora (referências de taxa recomeçam)
+            self.throttle.reset();
+            return Ok(0);
+        }
+        if self.telemetry_next_mono.is_some_and(|t| mono_ms < t) {
+            return Ok(0);
+        }
+        self.telemetry_next_mono = Some(mono_ms.saturating_add(TELEMETRY_INTERVAL_MS));
+        let Some(src) = self.telemetry.as_mut() else { return Ok(0) };
+        let sample = match src.sample() {
+            Ok(s) if !s.is_empty() => s,
+            Ok(_) | Err(_) => {
+                self.telemetry_unavailable = true;
+                self.throttle.reset();
+                return Ok(0);
+            }
+        };
+        self.telemetry_unavailable = false;
+        self.throttle.observe(&sample);
+        match self.guard.admit_health(mono_ms, utc_ms, EventKind::HealthSample(sample)) {
+            Some(ev) => {
+                self.recorder.append(&ev)?;
+                Ok(1)
+            }
+            None => Ok(0),
+        }
+    }
+
     /// Lê a energia (a cada minuto) e grava a primeira leitura, mudanças de tomada e variações de carga. Mesma porta e
     /// mesmas travas da saúde. Sem bateria, a fonte fica indisponível e nada é gravado.
     fn power_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
@@ -749,7 +814,8 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         // A saúde da máquina não depende do app em primeiro plano: segue mesmo com bloqueio de privacidade.
         // A pausa manual (e o modo restrito) a param no próprio Guard.
         let health_persisted = self.health_tick(mono_ms, utc_ms)? + self.inventory_tick(mono_ms, utc_ms)?
-            + self.power_tick(mono_ms, utc_ms)?;
+            + self.power_tick(mono_ms, utc_ms)?
+            + self.telemetry_tick(mono_ms, utc_ms)?;
         if !state.is_recording() {
             self.stop_recording();
             return Ok(TickReport { state, reason, persisted: health_persisted, dropped_by_guard: 0, incidents_opened: 0 });

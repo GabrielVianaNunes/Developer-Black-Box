@@ -73,6 +73,21 @@ pub enum Detail {
     InventoryChange { item: String, previous: Option<u64>, current: Option<u64> },
     /// Energia: tomada ("offline" ou "online"; ausente = desconhecida) e carga em porcentagem.
     PowerStatus { ac: Option<String>, charge_percent: Option<u64> },
+    /// Amostra de contadores de desempenho do sistema: só números; cada campo ausente = indisponível.
+    HealthSample {
+        thermal_kelvin: Option<u64>,
+        passive_limit_pct: Option<u64>,
+        cpu_load_pct: Option<u64>,
+        cpu_perf_pct: Option<u64>,
+        cpu_freq_mhz: Option<u64>,
+        mem_commit_pct: Option<u64>,
+        mem_available_mb: Option<u64>,
+        page_faults_per_sec: Option<u64>,
+        disk_latency_us: Option<u64>,
+        disk_busy_pct: Option<u64>,
+        net_errors: Option<u64>,
+        gpu_pct: Option<u64>,
+    },
     UserMarker { marker: u64 },
     RecorderStateChanged,
     Unknown,
@@ -134,6 +149,23 @@ fn row_of(e: &Ev, exes: &HashMap<(u64, i64), String>) -> ActivityRow {
             ac: e.body.get("ac").and_then(Value::as_str).map(|s| s.to_lowercase()),
             charge_percent: e.body.get("charge_percent").and_then(Value::as_u64),
         },
+        "HealthSample" => {
+            let o = |k: &str| e.body.get(k).and_then(Value::as_u64);
+            Detail::HealthSample {
+                thermal_kelvin: o("thermal_kelvin"),
+                passive_limit_pct: o("passive_limit_pct"),
+                cpu_load_pct: o("cpu_load_pct"),
+                cpu_perf_pct: o("cpu_perf_pct"),
+                cpu_freq_mhz: o("cpu_freq_mhz"),
+                mem_commit_pct: o("mem_commit_pct"),
+                mem_available_mb: o("mem_available_mb"),
+                page_faults_per_sec: o("page_faults_per_sec"),
+                disk_latency_us: o("disk_latency_us"),
+                disk_busy_pct: o("disk_busy_pct"),
+                net_errors: o("net_errors"),
+                gpu_pct: o("gpu_pct"),
+            }
+        }
         "UserMarker" => Detail::UserMarker { marker: n("code") },
         "RecorderStateChanged" => Detail::RecorderStateChanged,
         _ => Detail::Unknown,

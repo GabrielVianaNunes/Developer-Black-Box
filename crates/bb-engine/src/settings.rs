@@ -30,6 +30,9 @@ pub struct Settings {
     pub auto_start: bool,
     pub retention_max_mb: u64,
     pub retention_max_hours: u64,
+    /// Telemetria contínua de desempenho do sistema (contadores PDH, ~1 amostra a cada 30 s). Ligada por padrão; é
+    /// a chave para desligar na aba Privacidade.
+    pub telemetry_enabled: bool,
 }
 
 impl Default for Settings {
@@ -46,6 +49,7 @@ impl Default for Settings {
             auto_start: false,
             retention_max_mb: 256,
             retention_max_hours: 24,
+            telemetry_enabled: true,
         }
     }
 }
@@ -158,6 +162,12 @@ impl Settings {
             auto_start: store.get_setting("auto_start").ok().flatten().map_or(d.auto_start, |v| v == "true"),
             retention_max_mb: num("retention_max_mb", d.retention_max_mb),
             retention_max_hours: num("retention_max_hours", d.retention_max_hours),
+            // Ausente = padrão (ligada). Valor ilegível ou diferente de "true" = DESLIGADA: na dúvida, não coleta.
+            telemetry_enabled: match store.get_setting("telemetry_enabled") {
+                Ok(None) => d.telemetry_enabled,
+                Ok(Some(v)) => v == "true",
+                Err(_) => false,
+            },
         };
         // Valores fora do intervalo (banco editado à mão) voltam ao padrão: fail-closed para o Guard.
         let s = s.normalized();
@@ -172,6 +182,7 @@ impl Settings {
         store.set_setting("stability_window_ms", &self.stability_window_ms.to_string())?;
         store.set_setting("auto_start", if self.auto_start { "true" } else { "false" })?;
         store.set_setting("retention_max_mb", &self.retention_max_mb.to_string())?;
+        store.set_setting("telemetry_enabled", if self.telemetry_enabled { "true" } else { "false" })?;
         store.set_setting("retention_max_hours", &self.retention_max_hours.to_string())
     }
 
@@ -217,6 +228,9 @@ impl Settings {
         }
         if self.retention_max_hours != new.retention_max_hours {
             out.push(("retention_max_hours", "changed"));
+        }
+        if self.telemetry_enabled != new.telemetry_enabled {
+            out.push(("telemetry_enabled", "changed"));
         }
         out
     }
@@ -351,5 +365,53 @@ mod tests {
         let diff = before.diff(&after);
         assert!(diff.contains(&("excluded_trees", "added")), "{diff:?}");
         assert!(diff.iter().all(|(k, c)| !k.contains("synth") && !c.contains("synth")), "never values");
+    }
+
+    #[test]
+    fn telemetry_is_on_by_default_and_the_switch_round_trips() {
+        assert!(Settings::default().telemetry_enabled);
+        let store = Store::open_in_memory().unwrap();
+        assert!(Settings::load(&store).telemetry_enabled, "nothing saved yet = default (on)");
+        let mut off = Settings::default();
+        off.telemetry_enabled = false;
+        off.save(&store).unwrap();
+        assert!(!Settings::load(&store).telemetry_enabled, "an explicit off is respected");
+        let mut on = off.clone();
+        on.telemetry_enabled = true;
+        on.save(&store).unwrap();
+        assert!(Settings::load(&store).telemetry_enabled);
+    }
+
+    #[test]
+    fn an_unreadable_telemetry_value_means_off_not_on() {
+        let store = Store::open_in_memory().unwrap();
+        store.set_setting("telemetry_enabled", "maybe").unwrap();
+        assert!(!Settings::load(&store).telemetry_enabled, "when in doubt, do not collect");
+    }
+
+    #[test]
+    fn the_telemetry_switch_is_logged_as_a_key_change_without_a_value() {
+        let before = Settings::default();
+        let mut after = before.clone();
+        after.telemetry_enabled = false;
+        assert_eq!(before.diff(&after), vec![("telemetry_enabled", "changed")]);
+        assert!(before.diff(&before).is_empty());
+    }
+
+    #[test]
+    fn a_telemetry_value_that_cannot_be_decrypted_means_off() {
+        let dir = std::env::temp_dir().join(format!("bb-telemetry-key-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("meta.db");
+        {
+            let store = Store::open_encrypted(&db, &[1u8; 32]).unwrap();
+            store.set_setting("telemetry_enabled", "true").unwrap();
+            assert!(Settings::load(&store).telemetry_enabled, "positive control: readable with the right key");
+        }
+        let wrong = Store::open_encrypted(&db, &[2u8; 32]).unwrap();
+        assert!(wrong.get_setting("telemetry_enabled").is_err(), "setup: the value really cannot be read");
+        assert!(!Settings::load(&wrong).telemetry_enabled, "unreadable means do not collect");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

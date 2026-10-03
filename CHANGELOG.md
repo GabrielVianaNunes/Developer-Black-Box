@@ -7,6 +7,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- System performance telemetry (#70): about one sample every 30 seconds of **system-wide counters**, read through the Windows
+  performance counters (PDH) with the **English counter names** (`PdhAddEnglishCounter`, so it works the same on a Portuguese Windows),
+  without administrator rights. One sample is a single record of plain numbers: hottest thermal zone (kelvin) and the lowest passive
+  limit (%), total CPU load, CPU performance (%) and frequency (MHz), commit use (%), available memory (MB), page faults per second,
+  disk latency (microseconds) and busy time (%), network errors and 3D GPU use (%). Network errors are **one aggregated total** (the delta
+  of received plus outbound errors across all adapters since the previous sample); adapter names, SSIDs and IPs are never read into the
+  record, and for the GPU only the 3D engine total is kept (the per-process instance text is thrown away). Every value is validated for
+  range and unit (for example the temperature must be 200 to 450 K, so a value in tenths of a kelvin is rejected rather than "fixed"); a
+  counter that is missing or invalid is simply null ("unavailable"), and a sample with no counter at all is not stored. It is **on by
+  default**, with a switch in the Privacy tab ("Record system performance counters"); turning it off stops reading the counters at once,
+  and a value that cannot be read back from the settings means off. It follows the same gates as the other health records (recorded
+  during a privacy block; manual pause, shutdown, start and restricted test mode win). **Storage cost, measured** with the real
+  recorder and 2,880 pseudo-random synthetic samples (one day at 30 s): about **337 bytes per sample** while the journal is still open
+  (about 0.97 MB per day of samples before it is sealed) and about **40 bytes per sample once sealed** (about 0.115 MB per day). The
+  existing storage limit and retention apply as usual; a test fills the recorder with two days of samples and checks that the oldest are
+  dropped first and the budget holds. A simple **throttling detector** (passive limit below 100% while CPU load is 70% or more, for 10
+  samples in a row, about 5 minutes; any sample missing either number restarts the count) is exposed for the automatic incidents of #73.
+  The Windows side was only compiled for Windows and tested with synthetic readings: whether the wildcard counters (thermal zones,
+  network, GPU) return what is expected on a real machine is **not checked yet**.
 - Power and battery (#72), without administrator rights. `GetSystemPowerStatus` gives the power source (plugged in or on battery) and the
   charge percentage; the raw bytes are converted by a pure function, and any value outside the documented ranges becomes "unknown",
   never an invented number. A reading is recorded the first time, whenever the power source changes, and when the charge moved 5

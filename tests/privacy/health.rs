@@ -640,3 +640,295 @@ fn power_is_read_once_per_interval_not_on_every_cycle() {
     power_interval(&mut r);
     assert_eq!(p.lock().unwrap().reads, before + 1, "one more reading after 70 s");
 }
+
+// ---- telemetria de desempenho (PDH) ----
+
+use bb_collector::TelemetrySource;
+use bb_core::HealthSample;
+
+#[derive(Default)]
+struct Tel {
+    sample: HealthSample,
+    fail: bool,
+    reads: usize,
+}
+type SharedTel = Arc<Mutex<Tel>>;
+
+struct FakeTel(SharedTel);
+impl TelemetrySource for FakeTel {
+    fn sample(&mut self) -> Result<HealthSample, CollectError> {
+        let mut t = self.0.lock().unwrap();
+        t.reads += 1;
+        if t.fail {
+            return Err(CollectError("synthetic counter failure".into()));
+        }
+        Ok(t.sample)
+    }
+}
+
+fn good_sample() -> HealthSample {
+    HealthSample {
+        thermal_kelvin: Some(318),
+        passive_limit_pct: Some(100),
+        cpu_load_pct: Some(20),
+        cpu_perf_pct: Some(110),
+        cpu_freq_mhz: Some(3600),
+        mem_commit_pct: Some(55),
+        mem_available_mb: Some(9000),
+        page_faults_per_sec: Some(700),
+        disk_latency_us: Some(900),
+        disk_busy_pct: Some(4),
+        net_errors: Some(0),
+        gpu_pct: Some(6),
+    }
+}
+
+fn tel_rig() -> (Rig, SharedTel) {
+    let mut r = rig();
+    let t: SharedTel = Arc::new(Mutex::new(Tel { sample: good_sample(), ..Tel::default() }));
+    r.engine.set_telemetry_source(Box::new(FakeTel(t.clone())));
+    (r, t)
+}
+
+/// 35 s de relógio: passa do intervalo de amostragem (30 s).
+fn tel_interval(r: &mut Rig) {
+    for _ in 0..7 {
+        r.tick();
+    }
+}
+
+fn sample_lines(r: &mut Rig) -> Vec<String> {
+    r.lines().into_iter().filter(|l| l.contains("HealthSample")).collect()
+}
+
+fn set_telemetry(r: &mut Rig, on: bool) {
+    let mut s = r.engine.settings().clone();
+    s.telemetry_enabled = on;
+    r.engine.apply_settings(s, r.utc()).unwrap();
+}
+
+#[test]
+fn a_sample_is_recorded_with_only_the_closed_numeric_fields() {
+    let (mut r, t) = tel_rig();
+    r.until_recording();
+    assert_eq!(t.lock().unwrap().reads, 1, "positive control: one reading, not one per cycle");
+    let lines = sample_lines(&mut r);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    let v: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+    let body = v["kind"]["HealthSample"].as_object().expect("HealthSample body");
+    let mut keys: Vec<&str> = body.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        vec![
+            "cpu_freq_mhz", "cpu_load_pct", "cpu_perf_pct", "disk_busy_pct", "disk_latency_us", "gpu_pct", "mem_available_mb",
+            "mem_commit_pct", "net_errors", "page_faults_per_sec", "passive_limit_pct", "thermal_kelvin"
+        ]
+    );
+    assert!(body.values().all(|x| x.is_u64()), "every value is a plain number: {body:?}");
+}
+
+#[test]
+fn it_samples_about_every_30_seconds_and_not_every_cycle() {
+    let (mut r, t) = tel_rig();
+    r.until_recording();
+    let before = t.lock().unwrap().reads;
+    tel_interval(&mut r);
+    assert_eq!(t.lock().unwrap().reads, before + 1);
+    assert_eq!(sample_lines(&mut r).len(), 2);
+}
+
+#[test]
+fn the_switch_turns_it_off_at_once_and_back_on() {
+    let (mut r, t) = tel_rig();
+    r.until_recording();
+    set_telemetry(&mut r, false);
+    let reads = t.lock().unwrap().reads;
+    tel_interval(&mut r);
+    tel_interval(&mut r);
+    assert_eq!(t.lock().unwrap().reads, reads, "off means the counters are not even read");
+    assert_eq!(sample_lines(&mut r).len(), 1, "nothing new while off");
+    set_telemetry(&mut r, true);
+    r.tick();
+    assert_eq!(sample_lines(&mut r).len(), 2, "back on, it samples again right away");
+}
+
+#[test]
+fn telemetry_is_on_by_default() {
+    assert!(bb_engine::Settings::default().telemetry_enabled);
+}
+
+#[test]
+fn manual_pause_beats_telemetry_and_a_privacy_block_does_not() {
+    let (mut r, t) = tel_rig();
+    r.until_recording();
+    r.engine.pause();
+    let reads = t.lock().unwrap().reads;
+    tel_interval(&mut r);
+    assert_eq!(t.lock().unwrap().reads, reads, "no reading while paused");
+    assert_eq!(sample_lines(&mut r).len(), 1);
+
+    r.world.lock().unwrap().foreground = Some("chrome.exe");
+    r.engine.resume(r.mono);
+    let (state, _) = r.cycle();
+    assert_eq!(state, RecorderState::PrivacyBlocked, "setup: really blocked");
+    assert!(t.lock().unwrap().reads > reads, "positive control: it samples again");
+    assert!(sample_lines(&mut r).len() >= 2, "recorded despite the block (right after the resume, then every 30 s)");
+}
+
+#[test]
+fn a_missing_counter_source_degrades_without_error() {
+    let (mut r, t) = tel_rig();
+    r.until_recording();
+    t.lock().unwrap().fail = true;
+    let (state, _) = r.cycle();
+    assert_eq!(state, RecorderState::Recording, "no SafetyFault");
+    assert!(r.engine.telemetry_unavailable());
+    t.lock().unwrap().fail = false;
+    tel_interval(&mut r);
+    assert!(!r.engine.telemetry_unavailable());
+}
+
+#[test]
+fn a_sample_with_no_counter_at_all_is_unavailable_and_not_stored() {
+    let (mut r, t) = tel_rig();
+    r.until_recording();
+    t.lock().unwrap().sample = HealthSample::default();
+    tel_interval(&mut r);
+    assert!(r.engine.telemetry_unavailable());
+    assert_eq!(sample_lines(&mut r).len(), 1, "only the first (good) sample is there");
+}
+
+#[test]
+fn a_partly_available_sample_keeps_the_missing_ones_as_null() {
+    let (mut r, t) = tel_rig();
+    t.lock().unwrap().sample = HealthSample { cpu_load_pct: Some(40), ..HealthSample::default() };
+    r.until_recording();
+    let lines = sample_lines(&mut r);
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].contains("\"cpu_load_pct\":40") && lines[0].contains("\"gpu_pct\":null"), "{}", lines[0]);
+}
+
+#[test]
+fn sustained_throttling_is_flagged_for_the_incident_logic_and_clears() {
+    let (mut r, t) = tel_rig();
+    t.lock().unwrap().sample = HealthSample { passive_limit_pct: Some(70), cpu_load_pct: Some(95), ..good_sample() };
+    r.until_recording();
+    assert!(!r.engine.throttling_sustained(), "one sample is not sustained");
+    for _ in 0..12 {
+        tel_interval(&mut r);
+    }
+    assert!(r.engine.throttling_sustained(), "positive control: ~10 samples in a row");
+    t.lock().unwrap().sample = good_sample();
+    tel_interval(&mut r);
+    assert!(!r.engine.throttling_sustained(), "cleared by a normal sample");
+}
+
+#[test]
+fn turning_telemetry_off_clears_the_throttling_signal() {
+    let (mut r, t) = tel_rig();
+    t.lock().unwrap().sample = HealthSample { passive_limit_pct: Some(70), cpu_load_pct: Some(95), ..good_sample() };
+    r.until_recording();
+    for _ in 0..12 {
+        tel_interval(&mut r);
+    }
+    assert!(r.engine.throttling_sustained());
+    set_telemetry(&mut r, false);
+    r.tick();
+    assert!(!r.engine.throttling_sustained());
+}
+
+// ---- custo de armazenamento e retenção com amostras sintéticas ----
+
+/// Gerador determinístico simples (xorshift): valores sem padrão, como contadores reais. Valores periódicos comprimem
+/// demais e dariam um custo de armazenamento otimista.
+struct Rng(u64);
+impl Rng {
+    fn next(&mut self, max: u64) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0 % (max + 1)
+    }
+}
+
+fn sample_events(n: usize) -> Vec<bb_core::ValidatedEvent> {
+    let mut g = bb_core::PrivacyGuard::new(GuardConfig::default());
+    g.observe(0, Observation { detector_ok: true, session_locked: false, foreground: Some(ExeName::new("synth-editor.exe").unwrap()) });
+    let mut r = Rng(0x9E37_79B9_7F4A_7C15);
+    (0..n)
+        .map(|i| {
+            let s = HealthSample {
+                thermal_kelvin: Some(295 + r.next(60) as u16),
+                passive_limit_pct: Some(if r.next(20) == 0 { 60 + r.next(39) as u8 } else { 100 }),
+                cpu_load_pct: Some(r.next(100) as u8),
+                cpu_perf_pct: Some(40 + r.next(120) as u16),
+                cpu_freq_mhz: Some(800 + r.next(4200) as u16),
+                mem_commit_pct: Some(20 + r.next(75) as u8),
+                mem_available_mb: Some(500 + r.next(30_000) as u32),
+                page_faults_per_sec: Some(r.next(200_000) as u32),
+                disk_latency_us: Some(r.next(50_000) as u32),
+                disk_busy_pct: Some(r.next(100) as u8),
+                net_errors: Some(r.next(5) as u32),
+                gpu_pct: Some(r.next(100) as u8),
+            };
+            g.admit_health(1, ORIGIN + i as i64 * 30_000, EventKind::HealthSample(s)).expect("health door admits it")
+        })
+        .collect()
+}
+
+use bb_core::EventKind;
+
+#[test]
+fn storage_cost_of_a_day_of_samples_is_measured_and_small() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = RecorderConfig { max_events_per_segment: 100_000, max_age: None, ..RecorderConfig::default() };
+    let mut rec = Recorder::open(dir.path(), &StaticKey([3u8; 32]), cfg).unwrap();
+    const PER_DAY: usize = 2 * 60 * 24; // uma amostra a cada 30 s
+    for ev in sample_events(PER_DAY) {
+        rec.append(&ev).unwrap();
+    }
+    // Antes de selar: o journal ativo ainda não está comprimido (pior caso até o segmento ser selado).
+    let unsealed = rec.storage_bytes();
+    rec.seal().unwrap();
+    let bytes = rec.storage_bytes();
+    println!(
+        "MEASURED: {PER_DAY} samples/day: journal not yet sealed = {unsealed} bytes ({} bytes/sample); sealed = {bytes} bytes/day = {:.3} MB/day ({} bytes/sample)",
+        unsealed / PER_DAY as u64,
+        bytes as f64 / 1e6,
+        bytes / PER_DAY as u64
+    );
+    assert!(bytes > 0);
+    assert!(bytes < 2_000_000, "a day of 30 s samples must stay under 2 MB: {bytes}");
+}
+
+#[test]
+fn retention_keeps_the_samples_within_the_budget_and_drops_the_oldest_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let events = sample_events(6_000); // ~2 dias de amostras
+    // mede quanto as 6000 amostras ocupam sem limite e usa um terço como orçamento
+    let probe_dir = tempfile::tempdir().unwrap();
+    let probe_cfg = RecorderConfig { max_events_per_segment: 200, max_age: None, ..RecorderConfig::default() };
+    let mut probe = Recorder::open(probe_dir.path(), &StaticKey([3u8; 32]), probe_cfg).unwrap();
+    for ev in &events {
+        probe.append(ev).unwrap();
+    }
+    probe.seal().unwrap();
+    let budget = probe.storage_bytes() / 3;
+    assert!(budget > 10_000, "setup: a meaningful budget ({budget})");
+    let cfg = RecorderConfig { max_events_per_segment: 200, max_total_bytes: budget, max_age: None, ..RecorderConfig::default() };
+    let mut rec = Recorder::open(dir.path(), &StaticKey([3u8; 32]), cfg).unwrap();
+    for ev in &events {
+        rec.append(ev).unwrap();
+    }
+    rec.seal().unwrap();
+    rec.enforce_retention().unwrap();
+    assert!(rec.storage_bytes() <= budget, "over budget: {} > {budget}", rec.storage_bytes());
+    let lines: Vec<String> = rec.list_segments().unwrap().iter().flat_map(|s| rec.read_segment(s.index).unwrap()).collect();
+    assert!(!lines.is_empty(), "something must remain");
+    assert!(lines.len() < 6_000, "positive control: the oldest samples were actually removed");
+    let ts: Vec<i64> = lines.iter().map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap()["ts_utc_ms"].as_i64().unwrap()).collect();
+    assert!(ts.windows(2).all(|w| w[0] <= w[1]));
+    assert_eq!(*ts.last().unwrap(), ORIGIN + 5_999 * 30_000, "the newest sample is always kept");
+    assert!(ts[0] > ORIGIN, "the oldest are gone");
+}

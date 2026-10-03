@@ -21,6 +21,7 @@ const SAME_IN_BOTH = new Set([
   "incidents.colDelta", "detail.processMetrics", "detail.unknown", "privacy.guardTitle",
   "privacy.historyEntry", "auth.activeEntry_", "configKey.launch_at_login_", "guide.demo.box",
   "detail.inventoryChange", "inventory.item.SecureBoot", "inventory.value.uefi",
+  "sample.temp", "sample.cpu", "sample.freq", "sample.commit", "sample.gpu",
 ]);
 
 test("both dictionaries have exactly the same keys", () => {
