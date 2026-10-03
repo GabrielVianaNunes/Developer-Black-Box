@@ -202,12 +202,20 @@ These need administrator rights, a separate elevated component or a vendor drive
 Libraries that read sensors by **loading a kernel driver** will not be used: they require administrator rights, have a history of
 vulnerabilities and are often flagged by antivirus.
 
-### What is not checked yet on a real Windows
+### What has and has not been checked on a real Windows
 
-The portable logic (rules, validation, privacy, tests with synthetic data) is tested on every change, and the Windows code compiles, but the
-event IDs and field names, the performance counters (thermal zones, network, GPU) and the registry values were written from Microsoft's
-documentation and **have not been verified on a real machine yet**. A source that does not behave as expected shows as unavailable instead of
-inventing a value.
+The portable logic (rules, validation, privacy, tests with synthetic data) is tested on every change. On one real Windows 11 laptop
+(2026-10-03) this was **also checked**: the Event Log source returned the events of the fixed list that had happened there and the counts
+matched Windows' own tools for disk 11 and Windows Update 20, and the sleep state code matched the event's own field; the inventory (BIOS
+version and date, firmware type, Secure Boot, Windows build, drivers with problems), the power reading and the performance counters
+(temperature, thermal limit, CPU, memory, disk, GPU) returned plausible numbers; and in the running app the health data kept being recorded
+during a privacy block, stopped with the manual pause, stopped when the telemetry switch was turned off, the System health tab showed the four
+sources, and an incident export carried the health numbers.
+
+**Not checked**, because it did not happen on that machine: the IDs for unexpected shutdown, blue screen, WHEA hardware errors, display driver
+reset, NTFS and service crashes (they are tested only with synthetic XML written from Microsoft's documentation), the network error counter
+(it only read 0), and other hardware (a desktop without a battery, other GPUs, other BIOS formats). A source that does not behave as expected
+shows as unavailable instead of inventing a value.
 
 ### Storage cost
 
@@ -264,8 +272,8 @@ JSON and **not encrypted**: the app says so before you export.
 - Protection depends on your Windows account: whoever uses your signed-in account can use the key.
 - The export file is **not encrypted** (the interface warns about it).
 - The system health data does not include what needs administrator rights (disk SMART/NVMe, TPM, the WHEA Operational channel, per-core
-  temperature, fans, voltages, battery wear); see [System health](#system-health). Its Windows event IDs and counters have not been verified
-  on a real machine yet.
+  temperature, fans, voltages, battery wear); see [System health](#system-health). Only some of its Windows event IDs have been seen on a real
+  machine; see [System health](#system-health).
 - Metadata such as the number of incidents and their times sit in the database unencrypted (only app
   names, notes and settings are encrypted).
 - Sensitive-context detection is per foreground application, not per password field.
@@ -508,12 +516,20 @@ Isto exige administrador, um componente separado com privilégios ou um driver d
 Bibliotecas que leem sensores **carregando um driver de kernel** não serão usadas: exigem administrador, têm histórico de vulnerabilidades e
 muitas vezes são sinalizadas por antivírus.
 
-### O que ainda não foi conferido num Windows real
+### O que foi e o que ainda não foi conferido num Windows real
 
-A lógica portátil (regras, validação, privacidade, testes com dados sintéticos) é testada a cada mudança, e o código do Windows compila, mas
-os IDs e nomes de campo dos eventos, os contadores de desempenho (zonas térmicas, rede, GPU) e os valores do registro foram escritos a partir
-da documentação da Microsoft e **ainda não foram verificados numa máquina real**. Uma fonte que não se comportar como esperado aparece como
-indisponível, em vez de inventar um valor.
+A lógica portátil (regras, validação, privacidade, testes com dados sintéticos) é testada a cada mudança. Num notebook real com Windows 11
+(2026-10-03) também foi **conferido**: a fonte do Event Log devolveu os eventos da lista fixa que tinham acontecido ali e as contagens bateram
+com as ferramentas do próprio Windows para disco 11 e Windows Update 20, e o código do estado de suspensão bateu com o campo do evento; o
+inventário (versão e data da BIOS, tipo de firmware, Secure Boot, build do Windows, dispositivos com problema), a leitura de energia e os
+contadores de desempenho (temperatura, limite térmico, CPU, memória, disco, GPU) devolveram números plausíveis; e, no app em execução, os dados
+de saúde continuaram sendo gravados com um bloqueio de privacidade, pararam com a pausa manual, pararam ao desligar a chave da telemetria, a
+aba Saúde do sistema mostrou as quatro fontes e a exportação de um incidente levou os números de saúde.
+
+**Não foi conferido**, porque não aconteceu naquela máquina: os IDs de desligamento inesperado, tela azul, erros de hardware WHEA, reinício do
+driver de vídeo, falhas de NTFS e de serviços (só testados com XML sintético escrito a partir da documentação da Microsoft), o contador de
+erros de rede (só leu 0) e outros equipamentos (um desktop sem bateria, outras GPUs, outros formatos de BIOS). Uma fonte que não se comportar
+como esperado aparece como indisponível, em vez de inventar um valor.
 
 ### Custo de armazenamento
 
@@ -571,8 +587,8 @@ exportação**. O arquivo é JSON puro e **não é cifrado**: o app avisa antes 
 - A proteção depende da conta do Windows: quem usa a sua conta aberta consegue usar a chave.
 - O arquivo de exportação **não é cifrado** (a interface avisa).
 - Os dados de saúde do sistema não incluem o que exige administrador (SMART/NVMe do disco, TPM, o canal WHEA Operational, temperatura por núcleo,
-  ventoinhas, tensões, desgaste da bateria); veja [Saúde do sistema](#saúde-do-sistema). Os IDs de eventos e os contadores do Windows ainda não
-  foram verificados numa máquina real.
+  ventoinhas, tensões, desgaste da bateria); veja [Saúde do sistema](#saúde-do-sistema). Só alguns dos IDs de eventos do Windows foram vistos numa
+  máquina real; veja [Saúde do sistema](#saúde-do-sistema).
 - Metadados como o número de incidentes e horários ficam no banco sem cifra (só nomes de app,
   anotações e configurações são cifrados).
 - A detecção de contexto sensível é por aplicativo em primeiro plano, não por campo de senha.
