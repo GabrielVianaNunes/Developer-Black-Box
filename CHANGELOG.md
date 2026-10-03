@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- System health, checked on a real Windows 11 laptop: the Event Log, inventory, power and performance counter sources returned real values
+  (counts matched Windows' own tools for disk 11 and Windows Update 20), and in the running app health data kept being recorded during a
+  privacy block, stopped with the manual pause and with the telemetry switch off, the System health tab listed the four sources, and an incident
+  export carried the health numbers. The README now says exactly what was and was not checked: the IDs for shutdowns, blue screens, WHEA,
+  display driver resets, NTFS and services did not occur on that machine and are covered only by synthetic XML.
+
 ### Added
 - Documentation of the system health feature (#76). The README (English and Portuguese) has a new **System health** section: what each
   source reads and how, the full fixed list of Event Log IDs with the number kept for each, what is **never** recorded, when it records

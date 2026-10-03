@@ -69,8 +69,8 @@ test("the README documents every Event Log rule of the fixed list, in both langu
 
 test("both languages have the System health section with what is read, never recorded, how to turn off and the limits", () => {
   for (const [lang, text, heads] of [
-    ["EN", en, ["## System health", "### What is read", "### What is never recorded", "### When it records, and how to turn it off", "### What it cannot see without administrator rights", "### What is not checked yet on a real Windows", "### Storage cost"]],
-    ["PT", pt, ["## Saúde do sistema", "### O que é lido", "### O que nunca é gravado", "### Quando grava e como desligar", "### O que ela não enxerga sem administrador", "### O que ainda não foi conferido num Windows real", "### Custo de armazenamento"]],
+    ["EN", en, ["## System health", "### What is read", "### What is never recorded", "### When it records, and how to turn it off", "### What it cannot see without administrator rights", "### What has and has not been checked on a real Windows", "### Storage cost"]],
+    ["PT", pt, ["## Saúde do sistema", "### O que é lido", "### O que nunca é gravado", "### Quando grava e como desligar", "### O que ela não enxerga sem administrador", "### O que foi e o que ainda não foi conferido num Windows real", "### Custo de armazenamento"]],
   ]) {
     for (const h of heads) assert.ok(text.includes(h), `${lang}: missing "${h}"`);
   }
@@ -99,7 +99,10 @@ test("the README says health data is recorded during a privacy block and that th
   assert.match(pt, /pausa manual sempre vence/);
 });
 
-test("the README never claims what was not verified: it states what has not been checked on a real Windows", () => {
-  assert.match(en, /have not been verified on a real machine yet/);
-  assert.match(pt, /ainda não foram verificados numa máquina real/);
+test("the README states both what was checked on a real Windows and what was not", () => {
+  assert.match(en, /\*\*Not checked\*\*, because it did not happen on that machine/);
+  assert.match(pt, /\*\*Não foi conferido\*\*, porque não aconteceu naquela máquina/);
+  assert.match(en, /only with synthetic XML/);
+  assert.match(pt, /só testados com XML sintético/);
+  assert.ok(!/have not been verified on a real machine yet/.test(en) && !/ainda não foram verificados numa máquina real/.test(pt), "the old blanket claim is gone");
 });
