@@ -1,0 +1,11 @@
+# hot and slowed down by the system
+temperatures_k=361,340
+passive_limits_pct=100,70
+cpu_load_pct=96
+cpu_perf_pct=48
+cpu_freq_mhz=1200
+expect.thermal_kelvin=361
+expect.passive_limit_pct=70
+expect.cpu_load_pct=96
+expect.cpu_perf_pct=48
+expect.cpu_freq_mhz=1200

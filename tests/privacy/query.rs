@@ -191,3 +191,55 @@ fn an_unreadable_segment_is_skipped_without_failing_the_dashboard() {
     assert_eq!(rows.len(), 2, "only the journal events remain readable");
     assert!(rec.verify().is_err(), "the integrity check is what reports the corruption");
 }
+
+#[test]
+fn a_health_event_row_exposes_only_category_id_and_number() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut rec = Recorder::open(dir.path(), &StaticKey([1u8; 32]), RecorderConfig::default()).unwrap();
+    let mut g = PrivacyGuard::new(GuardConfig::default());
+    g.observe(0, Observation { detector_ok: true, session_locked: false, foreground: Some(exe("synth-editor.exe")) });
+    let kind = EventKind::HealthEvent { category: bb_core::HealthCategory::BugCheck, event_id: 1001, code: Some(0xd1) };
+    let ev = g.admit_health(1, 7_000, kind).expect("health door admits it");
+    rec.append(&ev).unwrap();
+
+    let rows = activity(&rec, &f(10));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].kind, "HealthEvent");
+    assert_eq!(rows[0].exe_name, None);
+    assert_eq!(rows[0].detail, Detail::HealthEvent { category: "BugCheck".into(), event_id: 1001, value: Some(0xd1) });
+    let json = serde_json::to_string(&rows[0]).unwrap();
+    assert!(json.contains("\"code\":\"healthEvent\"") && json.contains("\"eventId\":1001"), "{json}");
+}
+
+#[test]
+fn a_power_row_exposes_only_ac_and_percent() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut rec = Recorder::open(dir.path(), &StaticKey([1u8; 32]), RecorderConfig::default()).unwrap();
+    let mut g = PrivacyGuard::new(GuardConfig::default());
+    g.observe(0, Observation { detector_ok: true, session_locked: false, foreground: Some(exe("synth-editor.exe")) });
+    let kind = EventKind::PowerStatus { ac: Some(bb_core::AcLine::Offline), charge_percent: Some(42) };
+    rec.append(&g.admit_health(1, 7_000, kind).unwrap()).unwrap();
+    let rows = activity(&rec, &f(10));
+    assert_eq!(rows[0].detail, Detail::PowerStatus { ac: Some("offline".into()), charge_percent: Some(42) });
+    let json = serde_json::to_string(&rows[0]).unwrap();
+    assert!(json.contains("\"code\":\"powerStatus\"") && json.contains("\"chargePercent\":42"), "{json}");
+}
+
+#[test]
+fn a_sample_row_exposes_only_numbers_and_keeps_missing_counters_as_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut rec = Recorder::open(dir.path(), &StaticKey([1u8; 32]), RecorderConfig::default()).unwrap();
+    let mut g = PrivacyGuard::new(GuardConfig::default());
+    g.observe(0, Observation { detector_ok: true, session_locked: false, foreground: Some(exe("synth-editor.exe")) });
+    let sample = bb_core::HealthSample { thermal_kelvin: Some(318), cpu_load_pct: Some(23), ..Default::default() };
+    rec.append(&g.admit_health(1, 7_000, EventKind::HealthSample(sample)).unwrap()).unwrap();
+    let rows = activity(&rec, &f(10));
+    match &rows[0].detail {
+        Detail::HealthSample { thermal_kelvin, cpu_load_pct, gpu_pct, net_errors, .. } => {
+            assert_eq!((*thermal_kelvin, *cpu_load_pct, *gpu_pct, *net_errors), (Some(318), Some(23), None, None));
+        }
+        other => panic!("unexpected detail: {other:?}"),
+    }
+    let json = serde_json::to_string(&rows[0]).unwrap();
+    assert!(json.contains("\"code\":\"healthSample\"") && json.contains("\"thermalKelvin\":318"), "{json}");
+}

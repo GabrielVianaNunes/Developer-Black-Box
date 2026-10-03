@@ -6,14 +6,17 @@
 //! - Ao parar de gravar, o estado do `Differ` é esquecido; o que ocorrer no
 //!   intervalo nunca é reconstruído ao retomar.
 
+pub mod health;
+pub mod inventory;
 pub mod incidents;
 pub mod settings;
+pub mod throttle;
 
 use std::fmt;
 use std::time::Duration;
 
 use bb_collector::{
-    CollectError, ContextSource, CrashKind, CrashSource, Differ, MetricsConfig, ProcessSource,
+    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, PowerSource, ProcessSource, TelemetrySource,
 };
 use bb_core::{AuthError, EventKind, ExeName, GuardConfig, PrivacyGuard, ProcessRef, ReasonCode, RecorderState};
 use bb_recorder::{Recorder, RecorderError};
@@ -61,6 +64,37 @@ impl From<StoreError> for EngineError {
     fn from(e: StoreError) -> Self {
         EngineError::Store(e)
     }
+}
+
+/// De onde vêm os dados de saúde da máquina (uma linha da aba "Saúde do sistema").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HealthSourceId {
+    /// Eventos do Event Log (desligamento inesperado, tela azul, hardware, disco, suspensão...).
+    EventLog,
+    /// BIOS, firmware, Secure Boot, build do Windows e drivers com problema.
+    Inventory,
+    /// Tomada e bateria.
+    Power,
+    /// Contadores de desempenho (temperatura, CPU, memória, disco, rede, GPU).
+    Telemetry,
+}
+
+/// Estado de uma fonte. `Unavailable` (não existe nesta máquina ou não pôde ser lida) NUNCA é `Attention`: indisponível
+/// não é alarme.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceState {
+    /// Lendo e sem nada a destacar.
+    Ok,
+    /// Lendo, e há algo que merece olhar (dispositivo com problema, bateria baixa, throttling prolongado).
+    Attention,
+    /// Não existe nesta máquina ou a última leitura falhou.
+    Unavailable,
+    /// Ainda não houve uma leitura com sucesso (por exemplo, o app acabou de abrir ou está em modo de teste restrito).
+    Waiting,
+    /// A pausa manual está impedindo a leitura agora.
+    Paused,
+    /// Desligada pela pessoa (só a telemetria tem chave).
+    Off,
 }
 
 /// Resultado de uma exportação.
@@ -125,7 +159,52 @@ pub struct Engine<P: ProcessSource, C: ContextSource> {
     settings: Settings,
     crashes: Option<Box<dyn CrashSource + Send>>,
     crash_state: CrashState,
+    health: Option<Box<dyn HealthSource + Send>>,
+    health_win: health::HealthWindow,
+    /// Última consulta de saúde (relógio monotônico). `None` = consultar assim que puder.
+    health_last_poll_mono: Option<u64>,
+    /// A última consulta falhou: a fonte aparece como indisponível, sem erro nem alarme.
+    health_unavailable: bool,
+    shutting_down: bool,
+    inventory: Option<Box<dyn InventorySource + Send>>,
+    inventory_base: inventory::Baseline,
+    /// Próxima leitura do inventário (relógio monotônico). `None` = ler assim que a saúde puder ser lida.
+    inventory_next_mono: Option<u64>,
+    inventory_unavailable: bool,
+    power: Option<Box<dyn PowerSource + Send>>,
+    power_tracker: bb_collector::power::PowerTracker,
+    /// Próxima leitura de energia (relógio monotônico). `None` = ler assim que a saúde puder ser lida.
+    power_next_mono: Option<u64>,
+    /// Sem bateria ou leitura falha: a fonte aparece como indisponível, sem erro nem alarme.
+    power_unavailable: bool,
+    telemetry: Option<Box<dyn TelemetrySource + Send>>,
+    throttle: throttle::ThrottleDetector,
+    /// Próxima amostra de telemetria (relógio monotônico). `None` = amostrar assim que puder.
+    telemetry_next_mono: Option<u64>,
+    /// A fonte de contadores falhou ou não leu nada: aparece como indisponível, sem erro nem alarme.
+    telemetry_unavailable: bool,
+    /// Cada fonte já teve ao menos uma leitura com sucesso? (antes disso o estado é "aguardando", não "ok")
+    health_read_ok: bool,
+    inventory_read_ok: bool,
+    power_read_ok: bool,
+    telemetry_read_ok: bool,
+    /// Última leitura de energia (mesmo as não gravadas), para destacar bateria baixa.
+    power_last: Option<bb_collector::PowerReading>,
 }
+
+/// Chaves (cifradas) da marca d'água de saúde: até onde a última execução leu, e se terminou lendo.
+const HEALTH_CURSOR_KEY: &str = "health.cursor";
+const HEALTH_ACTIVE_KEY: &str = "health.active";
+/// Referência do inventário (números por item, cifrada no armazenamento).
+const INVENTORY_KEY: &str = "health.inventory";
+/// Intervalo entre leituras do inventário (relógio monotônico): detecta, por exemplo, um dispositivo que passou a falhar.
+const INVENTORY_INTERVAL_MS: u64 = 10 * 60_000;
+/// Intervalo entre leituras de energia (relógio monotônico). Só variações relevantes viram evento.
+const POWER_INTERVAL_MS: u64 = 60_000;
+/// Intervalo entre amostras de telemetria (relógio monotônico): ~1 amostra a cada 30 s.
+const TELEMETRY_INTERVAL_MS: u64 = 30_000;
+/// Bateria na bateria (fora da tomada) até esta carga é destacada como "atenção".
+const LOW_BATTERY_PCT: u8 = 10;
 
 /// Uma falha registrada pelo Windows só interessa se foi registrada DURANTE uma gravação.
 /// O que ocorreu numa pausa ou bloqueio nunca é reconstruído depois.
@@ -166,12 +245,135 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             settings: Settings::default(),
             crashes: None,
             crash_state: CrashState::default(),
+            health: None,
+            health_win: health::HealthWindow::new(),
+            health_last_poll_mono: None,
+            health_unavailable: false,
+            shutting_down: false,
+            inventory: None,
+            inventory_base: inventory::Baseline::default(),
+            inventory_next_mono: None,
+            inventory_unavailable: false,
+            power: None,
+            power_tracker: bb_collector::power::PowerTracker::new(),
+            power_next_mono: None,
+            power_unavailable: false,
+            telemetry: None,
+            throttle: throttle::ThrottleDetector::new(),
+            telemetry_next_mono: None,
+            telemetry_unavailable: false,
+            health_read_ok: false,
+            inventory_read_ok: false,
+            power_read_ok: false,
+            telemetry_read_ok: false,
+            power_last: None,
         }
     }
 
     /// Liga a leitura de falhas e travamentos (Windows Event Log).
     pub fn set_crash_source(&mut self, src: Box<dyn CrashSource + Send>) {
         self.crashes = Some(src);
+    }
+
+    /// Liga a leitura de eventos de saúde da máquina (Windows Event Log `System`). Chame DEPOIS de `enable_incidents`: a
+    /// marca d'água da execução anterior vem do armazenamento cifrado. Se a execução anterior terminou lendo, o intervalo
+    /// em que o app esteve fechado (até 7 dias) entra na primeira leitura; senão (pausa manual, primeira vez) começa de agora.
+    pub fn set_health_source(&mut self, src: Box<dyn HealthSource + Send>, utc_ms: i64) {
+        self.health_win = match self.incidents.as_ref().map(|i| &i.store) {
+            Some(store) => {
+                let active = store.get_setting(HEALTH_ACTIVE_KEY).ok().flatten().as_deref() == Some("1");
+                let cursor = store.get_setting(HEALTH_CURSOR_KEY).ok().flatten().and_then(|v| v.parse::<i64>().ok());
+                match (active, cursor) {
+                    (true, Some(c)) => health::HealthWindow::with_backlog(c, utc_ms),
+                    _ => health::HealthWindow::new(),
+                }
+            }
+            None => health::HealthWindow::new(),
+        };
+        self.health = Some(src);
+    }
+
+    /// Liga a leitura do inventário da máquina (BIOS, firmware, Secure Boot, build, drivers com problema). Chame DEPOIS de
+    /// `enable_incidents`: a referência da execução anterior vem do armazenamento cifrado. Só MUDANÇAS viram evento.
+    pub fn set_inventory_source(&mut self, src: Box<dyn InventorySource + Send>) {
+        self.inventory_base = self
+            .incidents
+            .as_ref()
+            .and_then(|i| i.store.get_setting(INVENTORY_KEY).ok().flatten())
+            .map(|s| inventory::Baseline::parse(&s))
+            .unwrap_or_default();
+        self.inventory = Some(src);
+    }
+
+    /// Liga a leitura de energia e bateria (tomada e porcentagem de carga).
+    pub fn set_power_source(&mut self, src: Box<dyn PowerSource + Send>) {
+        self.power = Some(src);
+    }
+
+    /// Liga a telemetria contínua de desempenho do sistema (contadores PDH). Só amostra enquanto a configuração
+    /// `telemetry_enabled` estiver ligada (padrão) e a saúde puder ser lida.
+    pub fn set_telemetry_source(&mut self, src: Box<dyn TelemetrySource + Send>) {
+        self.telemetry = Some(src);
+    }
+
+    /// A fonte de contadores falhou ou não leu nenhum contador: mostrada como indisponível.
+    pub fn telemetry_unavailable(&self) -> bool {
+        self.telemetry_unavailable
+    }
+
+    /// Estado de cada fonte de saúde agora. Só mostra o que já foi lido; nada aqui lê nada novo.
+    pub fn health_sources(&self, mono_ms: u64) -> Vec<(HealthSourceId, SourceState)> {
+        let allowed = self.guard.health_allowed(mono_ms);
+        let state = |present: bool, enabled: bool, unavailable: bool, read_ok: bool, attention: bool| -> SourceState {
+            if !present {
+                SourceState::Unavailable
+            } else if !enabled {
+                SourceState::Off
+            } else if !allowed {
+                if self.guard.is_manually_paused() { SourceState::Paused } else { SourceState::Waiting }
+            } else if unavailable {
+                SourceState::Unavailable
+            } else if !read_ok {
+                SourceState::Waiting
+            } else if attention {
+                SourceState::Attention
+            } else {
+                SourceState::Ok
+            }
+        };
+        let devices_with_problem = self.inventory_base.get(bb_core::InventoryItem::DeviceProblemCount).is_some_and(|n| n > 0);
+        let battery_low = self
+            .power_last
+            .is_some_and(|p| p.ac == Some(bb_core::AcLine::Offline) && p.charge_percent.is_some_and(|c| c <= LOW_BATTERY_PCT));
+        vec![
+            (HealthSourceId::EventLog, state(self.health.is_some(), true, self.health_unavailable, self.health_read_ok, false)),
+            (HealthSourceId::Inventory, state(self.inventory.is_some(), true, self.inventory_unavailable, self.inventory_read_ok, devices_with_problem)),
+            (HealthSourceId::Power, state(self.power.is_some(), true, self.power_unavailable, self.power_read_ok, battery_low)),
+            (
+                HealthSourceId::Telemetry,
+                state(self.telemetry.is_some(), self.settings.telemetry_enabled, self.telemetry_unavailable, self.telemetry_read_ok, self.throttle.sustained()),
+            ),
+        ]
+    }
+
+    /// Há throttling térmico prolongado (limite passivo abaixo de 100 % com carga alta por ~5 min)? Sinal para a #73.
+    pub fn throttling_sustained(&self) -> bool {
+        self.throttle.sustained()
+    }
+
+    /// Sem bateria ou leitura falha: a fonte de energia é mostrada como indisponível.
+    pub fn power_unavailable(&self) -> bool {
+        self.power_unavailable
+    }
+
+    /// A última leitura do inventário falhou: a fonte aparece como indisponível, sem erro.
+    pub fn inventory_unavailable(&self) -> bool {
+        self.inventory_unavailable
+    }
+
+    /// A leitura de saúde falhou na última tentativa (canal indisponível): a fonte é mostrada como indisponível.
+    pub fn health_unavailable(&self) -> bool {
+        self.health_unavailable
     }
 
     pub fn settings(&self) -> &Settings {
@@ -293,6 +495,9 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             authorized_now: self.guard.authorizations(mono_ms).into_iter().map(|a| a.exe.as_str().to_owned()).collect(),
             partial: cfg.partial_exclusions.iter().map(|(n, set)| (n.as_str().to_owned(), *set)).collect(),
             trees: cfg.excluded_trees.iter().filter(|n| cfg.excluded_apps.contains(*n)).map(|n| n.as_str().to_owned()).collect(),
+            pre_window_ms: inc.detector.config().pre_window_ms,
+            // As amostras de contadores só saem se a telemetria está LIGADA agora: desligou depois de gravar, não saem.
+            include_samples: self.settings.telemetry_enabled,
         };
         let doc = bb_query::export_incident(&self.recorder, &inc.store, id, &rules, utc_ms)
             .ok_or_else(|| EngineError::Invalid("export.not_found".into()))?;
@@ -442,6 +647,8 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
 
     /// Sela o journal e encerra. Depois disto nada mais é gravado.
     pub fn shutdown(&mut self) -> Result<(), EngineError> {
+        // Encerrar normalmente NÃO conta como pausa: a marca d'água segue "lendo", e o próximo início cobre o intervalo fechado.
+        self.shutting_down = true;
         self.guard.begin_shutdown();
         self.stop_recording();
         self.recorder.seal()?;
@@ -515,6 +722,201 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         Ok(out)
     }
 
+    fn save_health_marks(&self, active: bool, cursor: Option<i64>) {
+        // Melhor esforço: falhar em salvar a marca d'água nunca derruba o ciclo.
+        if let Some(i) = self.incidents.as_ref() {
+            let _ = i.store.set_setting(HEALTH_ACTIVE_KEY, if active { "1" } else { "0" });
+            if let Some(c) = cursor {
+                let _ = i.store.set_setting(HEALTH_CURSOR_KEY, &c.to_string());
+            }
+        }
+    }
+
+    /// Grava um evento de saúde já admitido pelo Guard e o entrega ao detector (que só enxerga o que foi admitido): tela azul,
+    /// desligamento inesperado e erro de hardware abrem um incidente, com a janela de evidências antes e depois como os demais.
+    fn commit_health(&mut self, ev: bb_core::ValidatedEvent, utc_ms: i64) -> Result<(), EngineError> {
+        self.recorder.append(&ev)?;
+        let findings = match self.incidents.as_mut() {
+            Some(inc) => inc.detector.observe(ev.kind(), ev.ts_utc_ms()).into_iter().collect::<Vec<_>>(),
+            None => Vec::new(),
+        };
+        for f in findings {
+            self.open_incident(f.kind, f.severity, f.exe_name.map(|e| e.as_str().to_owned()), f.summary, utc_ms)?;
+        }
+        Ok(())
+    }
+
+    /// Amostra os contadores de desempenho (~30 s) e grava uma amostra de números agregados. Mesma porta e mesmas travas
+    /// da saúde, mais a chave `telemetry_enabled`: desligada, nada é lido nem gravado. Amostra sem nenhum número =
+    /// fonte indisponível, nada gravado.
+    fn telemetry_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
+        if self.telemetry.is_none() {
+            return Ok(0);
+        }
+        if !self.settings.telemetry_enabled || !self.guard.health_allowed(mono_ms) {
+            self.telemetry_next_mono = None; // ao voltar, amostra de novo na hora (referências de taxa recomeçam)
+            self.throttle.reset();
+            return Ok(0);
+        }
+        if self.telemetry_next_mono.is_some_and(|t| mono_ms < t) {
+            return Ok(0);
+        }
+        self.telemetry_next_mono = Some(mono_ms.saturating_add(TELEMETRY_INTERVAL_MS));
+        let Some(src) = self.telemetry.as_mut() else { return Ok(0) };
+        let sample = match src.sample() {
+            Ok(s) if !s.is_empty() => s,
+            Ok(_) | Err(_) => {
+                self.telemetry_unavailable = true;
+                self.throttle.reset();
+                return Ok(0);
+            }
+        };
+        self.telemetry_unavailable = false;
+        self.telemetry_read_ok = true;
+        let was_sustained = self.throttle.sustained();
+        let now_sustained = self.throttle.observe(&sample);
+        let admitted = self.guard.admit_health(mono_ms, utc_ms, EventKind::HealthSample(sample));
+        let persisted = match admitted {
+            Some(ev) => {
+                self.commit_health(ev, utc_ms)?;
+                1
+            }
+            None => 0,
+        };
+        // Throttling que passa a ser prolongado: um incidente de aviso (a borda, não cada amostra).
+        if now_sustained && !was_sustained {
+            let finding = match self.incidents.as_mut() {
+                Some(inc) => inc.detector.throttling_finding(sample.passive_limit_pct, sample.cpu_load_pct, utc_ms),
+                None => None,
+            };
+            if let Some(f) = finding {
+                self.open_incident(f.kind, f.severity, None, f.summary, utc_ms)?;
+            }
+        }
+        Ok(persisted)
+    }
+
+    /// Lê a energia (a cada minuto) e grava a primeira leitura, mudanças de tomada e variações de carga. Mesma porta e
+    /// mesmas travas da saúde. Sem bateria, a fonte fica indisponível e nada é gravado.
+    fn power_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
+        if self.power.is_none() {
+            return Ok(0);
+        }
+        if !self.guard.health_allowed(mono_ms) {
+            self.power_next_mono = None; // depois de uma pausa, a primeira leitura volta a ser gravada
+            self.power_tracker.reset();
+            return Ok(0);
+        }
+        if self.power_next_mono.is_some_and(|t| mono_ms < t) {
+            return Ok(0);
+        }
+        self.power_next_mono = Some(mono_ms.saturating_add(POWER_INTERVAL_MS));
+        let Some(src) = self.power.as_mut() else { return Ok(0) };
+        let reading = match src.read() {
+            Ok(Some(r)) => r,
+            Ok(None) | Err(_) => {
+                self.power_unavailable = true;
+                return Ok(0);
+            }
+        };
+        self.power_unavailable = false;
+        self.power_read_ok = true;
+        self.power_last = Some(reading);
+        let Some(r) = self.power_tracker.decide(reading) else { return Ok(0) };
+        let kind = EventKind::PowerStatus { ac: r.ac, charge_percent: r.charge_percent };
+        match self.guard.admit_health(mono_ms, utc_ms, kind) {
+            Some(ev) => {
+                self.commit_health(ev, utc_ms)?;
+                Ok(1)
+            }
+            None => Ok(0),
+        }
+    }
+
+    /// Lê o inventário (no início e a cada 10 min) e grava só as mudanças. Mesma porta e mesmas travas da saúde: pausa
+    /// manual, encerramento e modo restrito param a leitura. Devolve quantos eventos foram gravados.
+    fn inventory_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
+        if self.inventory.is_none() {
+            return Ok(0);
+        }
+        if !self.guard.health_allowed(mono_ms) {
+            self.inventory_next_mono = None; // ao poder ler de novo, lê o estado de AGORA
+            return Ok(0);
+        }
+        if self.inventory_next_mono.is_some_and(|t| mono_ms < t) {
+            return Ok(0);
+        }
+        self.inventory_next_mono = Some(mono_ms.saturating_add(INVENTORY_INTERVAL_MS));
+        let Some(src) = self.inventory.as_mut() else { return Ok(0) };
+        let snap = match src.read() {
+            Ok(s) => s,
+            Err(_) => {
+                self.inventory_unavailable = true;
+                return Ok(0);
+            }
+        };
+        self.inventory_unavailable = false;
+        self.inventory_read_ok = true;
+        let (changes, next) = inventory::compare(&self.inventory_base, &snap);
+        let mut persisted = 0;
+        for c in changes {
+            let kind = EventKind::InventoryChange { item: c.item, previous: c.previous, current: c.current };
+            if let Some(ev) = self.guard.admit_health(mono_ms, utc_ms, kind) {
+                self.commit_health(ev, utc_ms)?;
+                persisted += 1;
+            }
+        }
+        if next != self.inventory_base {
+            if let Some(i) = self.incidents.as_ref() {
+                let _ = i.store.set_setting(INVENTORY_KEY, &next.serialize()); // melhor esforço
+            }
+            self.inventory_base = next;
+        }
+        Ok(persisted)
+    }
+
+    /// Lê e grava os eventos de saúde do ciclo. Devolve quantos foram gravados.
+    fn health_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
+        if self.health.is_none() {
+            return Ok(0);
+        }
+        if !self.guard.health_allowed(mono_ms) {
+            if self.health_win.deactivate() && !self.shutting_down {
+                self.save_health_marks(false, None);
+            }
+            self.health_last_poll_mono = None;
+            return Ok(0);
+        }
+        if self.health_last_poll_mono.is_some_and(|t| mono_ms.saturating_sub(t) < health::POLL_INTERVAL_MS) {
+            return Ok(0);
+        }
+        self.health_last_poll_mono = Some(mono_ms);
+        self.health_win.activate(utc_ms);
+        let Some(since) = self.health_win.since() else { return Ok(0) };
+        let Some(src) = self.health.as_mut() else { return Ok(0) };
+        let records = match src.poll(since) {
+            Ok(r) => r,
+            Err(_) => {
+                // Fonte indisponível: segue sem ela, sem erro; a janela fica como está para a próxima tentativa.
+                self.health_unavailable = true;
+                return Ok(0);
+            }
+        };
+        self.health_unavailable = false;
+        self.health_read_ok = true;
+        let mut persisted = 0;
+        for r in self.health_win.accept(records) {
+            let kind = EventKind::HealthEvent { category: r.category, event_id: r.event_id, code: r.code };
+            if let Some(ev) = self.guard.admit_health(mono_ms, r.ts_utc_ms, kind) {
+                self.commit_health(ev, utc_ms)?;
+                persisted += 1;
+            }
+        }
+        self.health_win.finish_poll(utc_ms);
+        self.save_health_marks(true, Some(utc_ms));
+        Ok(persisted)
+    }
+
     fn tick_inner(&mut self, mono_ms: u64, utc_ms: i64) -> Result<TickReport, EngineError> {
         self.first_seen_utc.get_or_insert(utc_ms);
         // 1. O contexto é sempre observado, com ou sem pausa manual.
@@ -524,9 +926,14 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         let (state, reason) = self.guard.state(mono_ms);
         // Janelas posteriores vencem mesmo com a gravação bloqueada.
         self.finalize_captures(utc_ms, false)?;
+        // A saúde da máquina não depende do app em primeiro plano: segue mesmo com bloqueio de privacidade.
+        // A pausa manual (e o modo restrito) a param no próprio Guard.
+        let health_persisted = self.health_tick(mono_ms, utc_ms)? + self.inventory_tick(mono_ms, utc_ms)?
+            + self.power_tick(mono_ms, utc_ms)?
+            + self.telemetry_tick(mono_ms, utc_ms)?;
         if !state.is_recording() {
             self.stop_recording();
-            return Ok(TickReport { state, reason, persisted: 0, dropped_by_guard: 0, incidents_opened: 0 });
+            return Ok(TickReport { state, reason, persisted: health_persisted, dropped_by_guard: 0, incidents_opened: 0 });
         }
 
         // 2. Só agora as fontes de atividade são consultadas.
@@ -556,7 +963,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         timed.extend(self.poll_crashes(utc_ms)?);
 
         // 3. Todo evento passa pelo Guard antes de chegar ao recorder.
-        let (mut persisted, mut dropped) = (0, 0);
+        let (mut persisted, mut dropped) = (health_persisted, 0);
         let mut findings = Vec::new();
         for (ts, kind) in timed {
             match self.guard.admit(mono_ms, ts, kind) {
@@ -573,7 +980,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         }
         let incidents_opened = findings.len();
         for f in findings {
-            self.open_incident(f.kind, f.severity, Some(f.exe_name.as_str().to_owned()), f.summary, utc_ms)?;
+            self.open_incident(f.kind, f.severity, f.exe_name.map(|e| e.as_str().to_owned()), f.summary, utc_ms)?;
         }
         Ok(TickReport { state, reason, persisted, dropped_by_guard: dropped, incidents_opened })
     }

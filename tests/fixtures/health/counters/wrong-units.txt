@@ -1,0 +1,12 @@
+# values in the wrong unit are rejected, never converted
+temperatures_k=3050,45,0
+passive_limits_pct=250
+cpu_load_pct=480
+disk_latency_sec=75
+cpu_freq_mhz=0
+expect.thermal_kelvin=none
+expect.passive_limit_pct=none
+expect.cpu_load_pct=none
+expect.disk_latency_us=none
+expect.cpu_freq_mhz=none
+expect.empty=true

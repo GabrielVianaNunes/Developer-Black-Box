@@ -295,3 +295,221 @@ fn admitted_events_get_increasing_sequence_numbers() {
     let b = g.admit(t, 2, started(51, "synth-editor.exe")).unwrap();
     assert!(b.seq() > a.seq());
 }
+
+// ---- eventos de saúde da máquina: porta própria, mesmas travas essenciais ----
+
+fn health_event() -> EventKind {
+    EventKind::HealthEvent { category: bb_core::HealthCategory::BugCheck, event_id: 1001, code: Some(0xd1) }
+}
+
+#[test]
+fn the_regular_door_never_admits_a_health_event() {
+    let (mut g, t) = recording_guard();
+    assert!(g.admit(t, 0, health_event()).is_none(), "health has its own door");
+    assert!(g.admit_health(t, 0, health_event()).is_some(), "positive control: the health door works while recording");
+}
+
+#[test]
+fn the_health_door_only_admits_health_events() {
+    let (mut g, t) = recording_guard();
+    assert!(g.admit_health(t, 0, started(1, "synth-editor.exe")).is_none());
+    assert!(g.admit_health(t, 0, EventKind::UserMarker { code: 1 }).is_none());
+    assert!(g.admit_health(t, 0, EventKind::SystemMetrics { cpu_permille: 1, mem_used_kb: 1, mem_total_kb: 2 }).is_none());
+}
+
+#[test]
+fn health_is_admitted_during_a_privacy_block() {
+    let (mut g, t) = recording_guard();
+    g.observe(t + 1, protected_obs());
+    assert_eq!(g.state(t + 1).0, RecorderState::PrivacyBlocked);
+    assert!(g.admit(t + 1, 0, started(1, "synth-editor.exe")).is_none(), "control: activity is blocked");
+    assert!(g.admit_health(t + 1, 0, health_event()).is_some(), "health does not depend on the foreground app");
+}
+
+#[test]
+fn manual_pause_always_beats_health() {
+    let (mut g, t) = recording_guard();
+    g.pause_manual();
+    assert!(!g.health_allowed(t));
+    assert!(g.admit_health(t, 0, health_event()).is_none());
+    g.resume_manual(t);
+    assert!(g.admit_health(t, 0, health_event()).is_some(), "control: back after the resume");
+}
+
+#[test]
+fn health_is_refused_before_the_first_observation_and_during_shutdown() {
+    let mut g = PrivacyGuard::new(cfg());
+    assert!(g.admit_health(0, 0, health_event()).is_none(), "fail closed before any observation");
+    g.observe(0, safe_obs());
+    assert!(g.admit_health(0, 0, health_event()).is_some());
+    g.begin_shutdown();
+    assert!(g.admit_health(0, 0, health_event()).is_none());
+}
+
+#[test]
+fn health_is_not_collected_in_restricted_test_mode() {
+    let mut g = PrivacyGuard::new(cfg());
+    g.observe(0, protected_obs());
+    assert!(g.admit_health(0, 0, health_event()).is_some(), "control: blocked but not restricted");
+    g.authorize(0, exe("chrome.exe"), 60_000, true, false).unwrap();
+    g.observe(1, protected_obs());
+    assert!(g.admit_health(1, 0, health_event()).is_none(), "only the authorized app may be collected in this mode");
+}
+
+fn inventory_change() -> EventKind {
+    EventKind::InventoryChange { item: bb_core::InventoryItem::OsBuild, previous: Some(1), current: Some(2) }
+}
+
+#[test]
+fn inventory_changes_use_the_health_door_only() {
+    let (mut g, t) = recording_guard();
+    assert!(g.admit(t, 0, inventory_change()).is_none(), "the regular door never admits it");
+    assert!(g.admit_health(t, 0, inventory_change()).is_some(), "positive control");
+}
+
+#[test]
+fn inventory_changes_obey_pause_and_survive_a_privacy_block() {
+    let (mut g, t) = recording_guard();
+    g.observe(t + 1, protected_obs());
+    assert!(g.admit_health(t + 1, 0, inventory_change()).is_some(), "a block does not stop it");
+    g.pause_manual();
+    assert!(g.admit_health(t + 1, 0, inventory_change()).is_none(), "manual pause always wins");
+}
+
+fn power_status() -> EventKind {
+    EventKind::PowerStatus { ac: Some(bb_core::AcLine::Online), charge_percent: Some(80) }
+}
+
+#[test]
+fn power_status_uses_the_health_door_only_and_obeys_pause_and_block() {
+    let (mut g, t) = recording_guard();
+    assert!(g.admit(t, 0, power_status()).is_none(), "the regular door never admits it");
+    assert!(g.admit_health(t, 0, power_status()).is_some(), "positive control");
+    g.observe(t + 1, protected_obs());
+    assert!(g.admit_health(t + 1, 0, power_status()).is_some(), "a block does not stop it");
+    g.pause_manual();
+    assert!(g.admit_health(t + 1, 0, power_status()).is_none(), "manual pause always wins");
+}
+
+#[test]
+fn a_telemetry_sample_uses_the_health_door_only_and_obeys_pause_and_block() {
+    let sample = || EventKind::HealthSample(bb_core::HealthSample { cpu_load_pct: Some(10), ..Default::default() });
+    let (mut g, t) = recording_guard();
+    assert!(g.admit(t, 0, sample()).is_none(), "the regular door never admits it");
+    assert!(g.admit_health(t, 0, sample()).is_some(), "positive control");
+    g.observe(t + 1, protected_obs());
+    assert!(g.admit_health(t + 1, 0, sample()).is_some(), "a block does not stop it");
+    g.pause_manual();
+    assert!(g.admit_health(t + 1, 0, sample()).is_none(), "manual pause always wins");
+}
+
+// ---- matriz: cada tipo de saúde × cada estado do Guard ----
+
+fn every_health_kind() -> Vec<(&'static str, EventKind)> {
+    vec![
+        ("HealthEvent", health_event()),
+        ("InventoryChange", inventory_change()),
+        ("PowerStatus", power_status()),
+        ("HealthSample", EventKind::HealthSample(bb_core::HealthSample { cpu_load_pct: Some(1), ..Default::default() })),
+    ]
+}
+
+/// Cada estado em que o Guard pode estar, e se a saúde da máquina pode ser gravada nele.
+/// Pausa manual, encerramento, início (sem observação ainda) e modo restrito de teste vencem; todo o resto (inclusive
+/// bloqueio por app protegido, sessão bloqueada e falha do detector) NÃO impede, porque a saúde não depende do primeiro plano.
+fn guard_in(state: &str) -> (PrivacyGuard, u64, bool) {
+    let obs = |fg: Option<&str>, locked: bool, ok: bool| Observation { detector_ok: ok, session_locked: locked, foreground: fg.map(exe) };
+    match state {
+        "recording" => {
+            let (g, t) = recording_guard();
+            (g, t, true)
+        }
+        "privacy-blocked (protected app)" => {
+            let (mut g, t) = recording_guard();
+            g.observe(t + 1, protected_obs());
+            (g, t + 1, true)
+        }
+        "privacy-blocked (session locked)" => {
+            let (mut g, t) = recording_guard();
+            g.observe(t + 1, obs(None, true, true));
+            (g, t + 1, true)
+        }
+        "detector failure (safety fault)" => {
+            let (mut g, t) = recording_guard();
+            g.observe(t + 1, obs(None, false, false));
+            (g, t + 1, true)
+        }
+        "manual pause" => {
+            let (mut g, t) = recording_guard();
+            g.pause_manual();
+            (g, t, false)
+        }
+        "shutting down" => {
+            let (mut g, t) = recording_guard();
+            g.begin_shutdown();
+            (g, t, false)
+        }
+        "starting (no observation yet)" => (PrivacyGuard::new(cfg()), 0, false),
+        "restricted test mode" => {
+            let mut g = PrivacyGuard::new(cfg());
+            g.observe(0, protected_obs());
+            g.authorize(0, exe("chrome.exe"), 60_000, true, false).unwrap();
+            g.observe(1, protected_obs());
+            (g, 1, false)
+        }
+        other => panic!("unknown state {other}"),
+    }
+}
+
+const GUARD_STATES: [&str; 8] = [
+    "recording",
+    "privacy-blocked (protected app)",
+    "privacy-blocked (session locked)",
+    "detector failure (safety fault)",
+    "manual pause",
+    "shutting down",
+    "starting (no observation yet)",
+    "restricted test mode",
+];
+
+#[test]
+fn the_health_door_matrix_every_kind_in_every_guard_state() {
+    let mut allowed_cells = 0;
+    for state in GUARD_STATES {
+        for (name, kind) in every_health_kind() {
+            let (mut g, t, expect) = guard_in(state);
+            let got = g.admit_health(t, 0, kind).is_some();
+            assert_eq!(got, expect, "{name} in state '{state}': expected admitted={expect}");
+            allowed_cells += usize::from(got);
+        }
+    }
+    assert_eq!(allowed_cells, 4 * 4, "positive control: exactly the four 'does not depend on the foreground app' states admit");
+}
+
+#[test]
+fn the_regular_door_never_admits_any_health_kind_in_any_state() {
+    for state in GUARD_STATES {
+        for (name, kind) in every_health_kind() {
+            let (mut g, t, _) = guard_in(state);
+            assert!(g.admit(t, 0, kind).is_none(), "{name} must not pass the regular door in '{state}'");
+        }
+    }
+}
+
+#[test]
+fn the_health_door_refuses_every_non_health_kind_in_every_state() {
+    let others = || {
+        vec![
+            started(1, "synth-editor.exe"),
+            EventKind::UserMarker { code: 1 },
+            EventKind::SystemMetrics { cpu_permille: 1, mem_used_kb: 1, mem_total_kb: 2 },
+            EventKind::AppHang { exe_name: exe("synth-editor.exe") },
+        ]
+    };
+    for state in GUARD_STATES {
+        for kind in others() {
+            let (mut g, t, _) = guard_in(state);
+            assert!(g.admit_health(t, 0, kind.clone()).is_none(), "{kind:?} must not pass the health door in '{state}'");
+        }
+    }
+}

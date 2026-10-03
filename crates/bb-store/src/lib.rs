@@ -32,6 +32,10 @@ text_enum!(IncidentKind {
     MemoryHigh => "memory_high",
     UnexpectedExit => "unexpected_exit",
     AppHang => "app_hang",
+    UnexpectedShutdown => "unexpected_shutdown",
+    BlueScreen => "blue_screen",
+    HardwareError => "hardware_error",
+    Throttling => "throttling",
 });
 text_enum!(Severity { Info => "info", Warning => "warning", Critical => "critical" });
 text_enum!(InvestigationState {

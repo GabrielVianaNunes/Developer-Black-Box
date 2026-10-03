@@ -485,6 +485,34 @@ impl PrivacyGuard {
             EventKind::UserMarker { .. } => {}
             // Somente o recorder/Guard produz mudanças de estado.
             EventKind::RecorderStateChanged { .. } => return None,
+            // Saúde da máquina tem porta própria (`admit_health`): aqui nunca entra, para que as duas regras não se misturem.
+            EventKind::HealthEvent { .. }
+            | EventKind::InventoryChange { .. }
+            | EventKind::PowerStatus { .. }
+            | EventKind::HealthSample(_) => return None,
+        }
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        Some(ValidatedEvent::new(seq, ts_utc_ms, kind))
+    }
+
+    /// A saúde da máquina pode ser lida e gravada agora? Não depende do app em primeiro plano, então um bloqueio de
+    /// privacidade (app protegido, sessão bloqueada, contexto desconhecido) NÃO impede. Impedem: a pausa manual (que sempre
+    /// vence), o encerramento, o início (nenhuma observação ainda: falha fechada) e o modo restrito de teste (em que nada
+    /// além do app autorizado deve ser coletado).
+    pub fn health_allowed(&self, now_ms: u64) -> bool {
+        !self.manual_paused && !self.shutting_down && self.last_obs.is_some() && self.restricted_to(now_ms).is_none()
+    }
+
+    /// Porta dos eventos de saúde da máquina (Event Log `System`, inventário, energia, contadores). Só aceita tipos de
+    /// saúde; qualquer outro devolve `None`.
+    pub fn admit_health(&mut self, now_ms: u64, ts_utc_ms: i64, kind: EventKind) -> Option<ValidatedEvent> {
+        if !matches!(kind, EventKind::HealthEvent { .. }
+                | EventKind::InventoryChange { .. }
+                | EventKind::PowerStatus { .. }
+                | EventKind::HealthSample(_)
+        ) || !self.health_allowed(now_ms) {
+            return None;
         }
         let seq = self.next_seq;
         self.next_seq += 1;

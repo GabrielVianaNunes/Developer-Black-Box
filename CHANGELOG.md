@@ -6,6 +6,134 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-03
+
+### Changed
+- System health, checked on a real Windows 11 laptop: the Event Log, inventory, power and performance counter sources returned real values
+  (counts matched Windows' own tools for disk 11 and Windows Update 20), and in the running app health data kept being recorded during a
+  privacy block, stopped with the manual pause and with the telemetry switch off, the System health tab listed the four sources, and an incident
+  export carried the health numbers. The README now says exactly what was and was not checked: the IDs for shutdowns, blue screens, WHEA,
+  display driver resets, NTFS and services did not occur on that machine and are covered only by synthetic XML.
+
+### Added
+- Documentation of the system health feature (#76). The README (English and Portuguese) has a new **System health** section: what each
+  source reads and how, the full fixed list of Event Log IDs with the number kept for each, what is **never** recorded, when it records
+  (also during a privacy block; a manual pause always wins, with the one explicit exception for the interval in which the app was closed),
+  how to turn it off (the performance counters have a switch in the Privacy tab; the other sources are controlled by the pause and by
+  deleting the activity, and have no switch of their own), what it cannot see **without administrator rights** (disk SMART/NVMe, TPM, the
+  WHEA Operational channel, per-core temperature, fans and voltages, battery wear) and why libraries that load a kernel driver will not be
+  used, what has **not** been verified on a real Windows yet, and the measured storage cost. The "What it does" list now points to it, and
+  the Limitations section mentions the same limits. New README tests keep the documentation in step with the code: every rule of the fixed
+  Event Log list must appear in the tables in both languages (adding a rule without documenting it fails), the telemetry switch must be named
+  exactly as in the Privacy tab, and the limits and the "not verified yet" notice must stay.
+- Tests and synthetic fixtures for the machine health data (#75). `tests/fixtures/health/` holds, all invented, one Windows event XML for
+  each rule of the fixed Event Log list (plus events that must be ignored), performance counter readings (healthy, throttled, values in the
+  wrong unit, nothing available, several GPU engines, not-a-number) and inventory readings, each with the numbers it must become; the tests
+  require exactly one fixture per rule, so removing or adding a rule without its fixture fails. A schema test walks **every** variant of
+  the health events (categories, inventory items, power sources, the four event types) and checks that only numbers, nulls and the closed
+  names are stored, with no path, name, address or GUID in any text, and it stops compiling when a variant is added without updating it.
+  A matrix test checks each health event type in each of 8 Guard states (recording, privacy block by protected app, locked session,
+  detector failure, manual pause, shutdown, start, restricted test mode) and that the regular door never admits them. Engine tests check
+  that with every source unavailable nothing breaks, nothing is recorded and no incident is raised, and that with the manual pause on no
+  source is even read. `npm run check:repo` now also runs a fixture hygiene check that rejects values that look real (computer or user
+  names without a synthetic marker, emails, MAC addresses, non-zero GUIDs and SIDs, private IP addresses, serial numbers). Mutation testing
+  of these rules (breaking each on purpose and confirming a test fails) was done and reported in the pull requests.
+- The incident export now carries the **machine health around the incident** (#74), in a new `health` section; the export format is now
+  `developer-blackbox-export/2` (documented in the README, "Export format"). It holds the Windows health events, inventory changes,
+  power records and performance samples whose timestamp falls inside the incident window: from the start of the evidence window to its
+  end and, for blue screens, unexpected shutdowns, hardware errors and throttling, from where the condition began (the incident summary
+  now ends with that time, up to 8 days back), so the event that caused an incident is in its own export even when the app only read it
+  after a long gap. Nothing outside the window is exported. **Every health row is checked again at export time** against closed sets
+  (exact keys, fixed category and item lists, numbers within range; anything else is dropped and counted, never quoted), so no free-text
+  field can reach the file. **Today's rules apply**: performance samples are left out if the counters are turned off now. Notes are still
+  never exported, application events keep the same exclusion and protection rules as before (health rows do not count in
+  `droppedEvents`), at most 5,000 health rows are exported (the closest to the incident, with `truncated: true` otherwise), and the
+  interface still warns that the file is **not encrypted**, now also mentioning the health data.
+- Automatic health incidents and the "System health" tab (#73). **Incidents** now open on their own for a **blue screen** (Kernel-Power 41
+  with a non-zero stop code, or the stop code event), an **unexpected shutdown** (power loss or freeze, with no stop code), a **hardware error**
+  (WHEA) and **sustained thermal throttling** (see #70: about 5 minutes of passive limit below 100% with the CPU at 70% or more). They are
+  created only from events the Privacy Guard already admitted, state only a code and numbers (no app name, no message text), and carry the
+  same evidence as the other incidents: the window before is preserved at once and the window after when it ends. The events of one bad
+  shutdown (for example Kernel-Power 41 and the blue screen event, logged together on the next boot) open **one** incident, hardware errors
+  are condensed to one per 5 minutes and throttling to one per half hour. An incident about an event read when the app starts again is
+  anchored at the detection time, so its evidence is whatever the app recorded around that moment. **The tab** shows, for each source (Windows
+  event log, inventory and changes, power and battery, performance counters), its state: OK, Attention (devices with a driver problem, battery
+  at 10% or less while unplugged, sustained throttling), Unavailable (this machine does not offer it or the last reading failed: **never** an
+  alarm), Waiting (not read yet), Paused (manual pause) or Off (counters turned off). It also lists the latest performance sample, a 7-day
+  timeline of health events, power changes and sleep, the inventory changes, and what is **not** monitored and what is **never** recorded.
+  Texts in both languages, a "what is new" step for 0.5.0 and a synthetic screenshot in the README (made with an invented backend, no data from a
+  real machine). It only shows what was already recorded under the closed schema. Not checked on a real Windows machine: only the portable logic
+  (incident rules, source states) is tested here and by the CI.
+- System performance telemetry (#70): about one sample every 30 seconds of **system-wide counters**, read through the Windows
+  performance counters (PDH) with the **English counter names** (`PdhAddEnglishCounter`, so it works the same on a Portuguese Windows),
+  without administrator rights. One sample is a single record of plain numbers: hottest thermal zone (kelvin) and the lowest passive
+  limit (%), total CPU load, CPU performance (%) and frequency (MHz), commit use (%), available memory (MB), page faults per second,
+  disk latency (microseconds) and busy time (%), network errors and 3D GPU use (%). Network errors are **one aggregated total** (the delta
+  of received plus outbound errors across all adapters since the previous sample); adapter names, SSIDs and IPs are never read into the
+  record, and for the GPU only the 3D engine total is kept (the per-process instance text is thrown away). Every value is validated for
+  range and unit (for example the temperature must be 200 to 450 K, so a value in tenths of a kelvin is rejected rather than "fixed"); a
+  counter that is missing or invalid is simply null ("unavailable"), and a sample with no counter at all is not stored. It is **on by
+  default**, with a switch in the Privacy tab ("Record system performance counters"); turning it off stops reading the counters at once,
+  and a value that cannot be read back from the settings means off. It follows the same gates as the other health records (recorded
+  during a privacy block; manual pause, shutdown, start and restricted test mode win). **Storage cost, measured** with the real
+  recorder and 2,880 pseudo-random synthetic samples (one day at 30 s): about **337 bytes per sample** while the journal is still open
+  (about 0.97 MB per day of samples before it is sealed) and about **40 bytes per sample once sealed** (about 0.115 MB per day). The
+  existing storage limit and retention apply as usual; a test fills the recorder with two days of samples and checks that the oldest are
+  dropped first and the budget holds. A simple **throttling detector** (passive limit below 100% while CPU load is 70% or more, for 10
+  samples in a row, about 5 minutes; any sample missing either number restarts the count) is exposed for the automatic incidents of #73.
+  The Windows side was only compiled for Windows and tested with synthetic readings: whether the wildcard counters (thermal zones,
+  network, GPU) return what is expected on a real machine is **not checked yet**.
+- Power and battery (#72), without administrator rights. `GetSystemPowerStatus` gives the power source (plugged in or on battery) and the
+  charge percentage; the raw bytes are converted by a pure function, and any value outside the documented ranges becomes "unknown",
+  never an invented number. A reading is recorded the first time, whenever the power source changes, and when the charge moved 5
+  percentage points or more since the last recorded one (read every minute), so a day on battery stays a handful of records. A computer
+  **without a battery** (or whose battery cannot be identified) has this source marked "unavailable" and records nothing. Only two states
+  and a percentage are stored: no location, network, battery name, manufacturer or serial number. Same gates as the other health events
+  (recorded during a privacy block; manual pause, shutdown, start and restricted test mode win); after a pause the current state is
+  recorded again. **Sleep and resume** come from the Windows Event Log (`Kernel-Power` 42 "entering sleep", with the target state 3 or 4,
+  and 107 "resumed"), through the same fixed list, watermark and "no reconstruction" rules as the other Event Log health events. These two
+  IDs and the meaning of the state number follow Microsoft's public documentation and were **not checked on a real Windows machine**.
+  **Battery wear (design capacity x full charge) was not implemented**: this environment cannot prove that Windows exposes it without
+  administrator rights, and the issue says not to implement it in that case. The
+  Activity tab shows the new records in both languages.
+- System inventory and changes (#71): the app reads, without administrator rights, the BIOS version and date, the firmware type
+  (UEFI or legacy), Secure Boot, the Windows build (with revision) and the **count and codes** of present devices with a driver problem
+  code (a device you disabled yourself, code 22, is not a failure and is not counted). It records **only changes** between two readings,
+  as `previous -> new`, never the readings themselves. Everything is a number: dotted versions are packed into one number, and a version
+  that is not numeric (for example `F.12`) is stored only as a 52-bit hash, enough to say "it changed" but not what it was. The reference
+  (last known value of each item, numbers only) is kept encrypted in the settings. The first reading of an item is only a reference, an
+  item that cannot be read is never a change, and a reference that cannot be parsed is treated as a first reading. Read at start and every
+  10 minutes, with the same gates as the health events (recorded during a privacy block; manual pause, shutdown, start and restricted test
+  mode win). What the source reads: BIOS and Windows version values from the registry (HKLM, readable by regular users), `GetFirmwareType`,
+  the Secure Boot state value, and only the problem code of each present device through Windows' device configuration API. Serial numbers,
+  UUIDs, computer name, manufacturer, machine model and device names or instance IDs are never read. The optional machine model was **not**
+  implemented (it would identify the machine and was not asked for). Not yet checked on a real Windows machine: only compiled for Windows and
+  tested with synthetic readings. The Activity tab shows the changes in both languages. If a change happens while the app is closed, it is
+  recorded when the app reads again (the time shown is the detection time).
+- System health events from the Windows Event Log `System` channel (#69), read without administrator rights from a **fixed list** of
+  provider + ID pairs. Only the category, the event ID and one optional number are stored; the message text, service names, paths, user
+  and computer names are discarded on the spot (the closed schema has nowhere to keep them). Each event is created only by the Privacy
+  Guard, through a dedicated door (`admit_health`) that the regular activity door cannot reach. The list (the IDs follow Microsoft's public
+  documentation; **they were not yet checked on a real Windows machine**, only against synthetic XML):
+
+  | Category | Provider and ID | Stored number |
+  |---|---|---|
+  | Unexpected shutdown | Kernel-Power 41; EventLog 6008 | bug check code (41 only) |
+  | Blue screen | WER-SystemErrorReporting 1001 | stop code |
+  | Hardware error | WHEA-Logger 1, 17, 18, 19, 20, 47 | none |
+  | Display driver reset | Display 4101 | none |
+  | Disk error | disk 7, 11, 51, 153 | none |
+  | File system error | Ntfs 55, 98, 140 | none |
+  | Service stopped unexpectedly | Service Control Manager 7031, 7034 | crash count (never the service name) |
+  | Update install failed | WindowsUpdateClient 20 | error code (never the update title) |
+
+  Behaviour: recorded even during a privacy block (they do not depend on the app in front), but a manual pause, shutdown, the start
+  (no observation yet) and restricted test mode always win. What Windows logged while the app was paused is never recorded afterwards;
+  the only exception is the interval in which the app was **closed** after a run that ended while recording (capped at 7 days), so an
+  unexpected shutdown logged on the next boot is not lost. The source is read at most every 30 s, incrementally with a watermark kept
+  encrypted in the settings; repeated identical events within 60 s are stored once and one read stores at most 50 events. If the channel
+  cannot be read the source is simply "unavailable", with no error. The Activity tab lists the new events in both languages.
+
 ## [0.4.0] - 2026-10-02
 
 ### Fixed

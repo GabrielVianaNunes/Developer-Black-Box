@@ -18,6 +18,10 @@ const KINDS = [
   "SystemMetrics",
   "AppCrash",
   "AppHang",
+  "HealthEvent",
+  "InventoryChange",
+  "PowerStatus",
+  "HealthSample",
   "RecorderStateChanged",
   "UserMarker",
 ];

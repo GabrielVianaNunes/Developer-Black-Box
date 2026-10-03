@@ -2,7 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { getLanguage, setLanguage as saveLanguage } from "../services/backend";
 import type { Detail } from "../types/dashboard";
 import { en } from "./en";
+import { inventoryValueText } from "./inventory";
 import { ptBR } from "./pt-BR";
+import { sampleText } from "./telemetry";
 
 export type Lang = "en" | "pt-BR";
 export type Key = keyof typeof en;
@@ -136,6 +138,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const has = (key: string): key is Key => key in DICTS[lang];
     const lookup = (prefix: string, code: string) => (has(`${prefix}.${code}`) ? t(`${prefix}.${code}` as Key) : code);
 
+    // As chaves do inventário são montadas em tempo de execução (um texto por valor), por isso o tradutor é solto.
+    const tAny = (key: string, params?: Record<string, string | number>) => t(key as Key, params);
+
     const detailText = (d: Detail): string => {
       switch (d.code) {
         case "processStarted":
@@ -156,6 +161,33 @@ export function I18nProvider({ children }: { children: ReactNode }) {
           return t("detail.appCrash", { code: `0x${d.exceptionCode.toString(16).toUpperCase().padStart(8, "0")}` });
         case "appHang":
           return t("detail.appHang");
+        case "healthEvent": {
+          const category = lookup("health.category", d.category);
+          if (d.value == null) return t("detail.healthEvent", { category, id: d.eventId });
+          // Contagem de quedas do serviço e estado de destino da suspensão são números comuns (decimal); os demais números
+          // são códigos de erro ou de parada, em hexadecimal.
+          if (d.category === "SleepEntered") return t("detail.healthEventState", { category, id: d.eventId, n: d.value });
+          return d.category === "ServiceCrash"
+            ? t("detail.healthEventCount", { category, id: d.eventId, n: d.value })
+            : t("detail.healthEventCode", {
+                category,
+                id: d.eventId,
+                code: `0x${d.value.toString(16).toUpperCase().padStart(8, "0")}`,
+              });
+        }
+        case "healthSample":
+          return sampleText(d, tAny);
+        case "powerStatus":
+          return t("detail.powerStatus", {
+            ac: d.ac === "online" ? t("power.ac.online") : d.ac === "offline" ? t("power.ac.offline") : t("power.ac.unknown"),
+            charge: d.chargePercent == null ? t("power.charge.unknown") : `${d.chargePercent}%`,
+          });
+        case "inventoryChange":
+          return t("detail.inventoryChange", {
+            item: lookup("inventory.item", d.item),
+            from: inventoryValueText(d.item, d.previous, tAny),
+            to: inventoryValueText(d.item, d.current, tAny),
+          });
         case "userMarker":
           return t("detail.userMarker", { n: d.marker });
         case "recorderStateChanged":
@@ -179,6 +211,16 @@ export function I18nProvider({ children }: { children: ReactNode }) {
           return t("summary.app_crash", { code: `0x${num(0).toString(16).toUpperCase().padStart(8, "0")}` });
         case "app_hang":
           return t("summary.app_hang");
+        case "unexpected_shutdown":
+          return t("summary.unexpected_shutdown");
+        case "blue_screen":
+          return num(0) > 0
+            ? t("summary.blue_screen", { code: `0x${num(0).toString(16).toUpperCase().padStart(8, "0")}` })
+            : t("summary.blue_screen_nocode");
+        case "hardware_error":
+          return t("summary.hardware_error");
+        case "throttling":
+          return t("summary.throttling", { limit: num(0), load: num(1) });
         default:
           return summary; // incidente antigo, já gravado como texto: mostra como está
       }

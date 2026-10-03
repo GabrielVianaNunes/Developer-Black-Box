@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use bb_core::ExclusionSet;
-use bb_engine::{EngineError, PartialExclusion, Settings};
+use bb_engine::{EngineError, HealthSourceId, PartialExclusion, Settings, SourceState};
 use bb_query::{ActivityFilter, ActivityRow, IncidentDetail, IncidentDto, Overview, ProcessRow, SegmentDto};
 use bb_recorder::RecorderError;
 use bb_store::InvestigationState;
@@ -195,6 +195,40 @@ pub fn get_omitted_counts(app: AppHandle) -> Result<Vec<OmittedDto>, String> {
     with_engine(&app, |e| Ok(e.omitted_counts().into_iter().map(|(exe, count)| OmittedDto { exe, count }).collect()))
 }
 
+/// Uma linha da aba "Saúde do sistema": a fonte e o estado dela agora. Só enumerações fixas.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthSourceDto {
+    source: &'static str,
+    state: &'static str,
+}
+
+#[tauri::command]
+pub fn get_health_status(app: AppHandle) -> Result<Vec<HealthSourceDto>, String> {
+    let mono = app.state::<Arc<Runtime>>().mono_ms();
+    with_engine(&app, |e| {
+        Ok(e.health_sources(mono)
+            .into_iter()
+            .map(|(id, st)| HealthSourceDto {
+                source: match id {
+                    HealthSourceId::EventLog => "eventLog",
+                    HealthSourceId::Inventory => "inventory",
+                    HealthSourceId::Power => "power",
+                    HealthSourceId::Telemetry => "telemetry",
+                },
+                state: match st {
+                    SourceState::Ok => "ok",
+                    SourceState::Attention => "attention",
+                    SourceState::Unavailable => "unavailable",
+                    SourceState::Waiting => "waiting",
+                    SourceState::Paused => "paused",
+                    SourceState::Off => "off",
+                },
+            })
+            .collect())
+    })
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsDto {
@@ -210,6 +244,9 @@ pub struct SettingsDto {
     auto_start: bool,
     retention_max_mb: u64,
     retention_max_hours: u64,
+    // Sem `default`, como os campos acima: um cliente que esqueça este campo é recusado em vez de ligar ou desligar a
+    // telemetria em silêncio.
+    telemetry_enabled: bool,
 }
 
 impl From<&Settings> for SettingsDto {
@@ -230,6 +267,7 @@ impl From<&Settings> for SettingsDto {
             auto_start: s.auto_start,
             retention_max_mb: s.retention_max_mb,
             retention_max_hours: s.retention_max_hours,
+            telemetry_enabled: s.telemetry_enabled,
         }
     }
 }
@@ -250,6 +288,7 @@ impl From<SettingsDto> for Settings {
             auto_start: d.auto_start,
             retention_max_mb: d.retention_max_mb,
             retention_max_hours: d.retention_max_hours,
+            telemetry_enabled: d.telemetry_enabled,
         }
     }
 }

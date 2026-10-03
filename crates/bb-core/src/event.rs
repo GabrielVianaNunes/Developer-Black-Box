@@ -48,6 +48,95 @@ pub struct ProcessKey {
     pub start_time_ms: i64,
 }
 
+/// Categoria de um evento de saúde da máquina. Enumeração FECHADA: o que o Windows escreveu na mensagem
+/// nunca chega aqui, só em qual destas famílias o evento se encaixa.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+pub enum HealthCategory {
+    /// Desligamento inesperado (Kernel-Power 41, EventLog 6008).
+    UnexpectedShutdown,
+    /// Tela azul (código de verificação numérico).
+    BugCheck,
+    /// Erro de hardware reportado pelo WHEA.
+    HardwareError,
+    /// Reinício do driver de vídeo (Display 4101).
+    DisplayDriverReset,
+    /// Erro do driver de disco.
+    DiskError,
+    /// Erro do sistema de arquivos NTFS.
+    FileSystemError,
+    /// Serviço do Windows que encerrou sem querer (só a contagem; nunca o nome do serviço).
+    ServiceCrash,
+    /// Falha na instalação de uma atualização do Windows (só o código de erro).
+    UpdateFailure,
+    /// O computador entrou em suspensão ou hibernação (Kernel-Power 42; o número é o estado de destino).
+    SleepEntered,
+    /// O computador voltou da suspensão (Kernel-Power 107).
+    Resumed,
+}
+
+/// Tomada de energia. Enumeração fechada; "desconhecido" é `None` no evento.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+pub enum AcLine {
+    Offline,
+    Online,
+}
+
+/// O que o inventário acompanha. Enumeração fechada; cada item tem um valor NUMÉRICO (ver `bb-collector::inventory`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+pub enum InventoryItem {
+    /// Versão da BIOS/UEFI: versão pontuada empacotada, ou um código de hash quando o formato não é numérico.
+    BiosVersion,
+    /// Data da BIOS como AAAAMMDD.
+    BiosDate,
+    /// 1 = BIOS legada, 2 = UEFI.
+    FirmwareType,
+    /// 0 = desligado, 1 = ligado.
+    SecureBoot,
+    /// Build do Windows e revisão: `build << 20 | revisão`.
+    OsBuild,
+    /// Quantos dispositivos presentes têm código de problema de driver.
+    DeviceProblemCount,
+    /// Máscara dos códigos de problema presentes (bit N = código N; códigos acima de 52 caem no bit 0).
+    DeviceProblemCodes,
+}
+
+/// Uma amostra de contadores de desempenho do SISTEMA (nada por processo, por usuário ou por conexão). Só números;
+/// cada um é `None` quando o contador não existe ou o valor estava fora da faixa válida ("indisponível").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct HealthSample {
+    /// Maior temperatura entre as zonas térmicas, em kelvin (200 a 450).
+    pub thermal_kelvin: Option<u16>,
+    /// Menor "limite passivo" entre as zonas, em %: abaixo de 100 o Windows está reduzindo o desempenho por calor.
+    pub passive_limit_pct: Option<u8>,
+    /// Uso total da CPU, em %.
+    pub cpu_load_pct: Option<u8>,
+    /// Desempenho da CPU em relação ao nominal, em % (pode passar de 100 com turbo).
+    pub cpu_perf_pct: Option<u16>,
+    /// Frequência atual da CPU, em MHz.
+    pub cpu_freq_mhz: Option<u16>,
+    /// Memória comprometida em relação ao limite de commit, em %.
+    pub mem_commit_pct: Option<u8>,
+    /// Memória disponível, em MB.
+    pub mem_available_mb: Option<u32>,
+    /// Falhas de página por segundo.
+    pub page_faults_per_sec: Option<u32>,
+    /// Latência média por transferência de disco, em microssegundos.
+    pub disk_latency_us: Option<u32>,
+    /// Tempo de disco ocupado, em %.
+    pub disk_busy_pct: Option<u8>,
+    /// Erros de rede (recebidos + enviados) somados entre todos os adaptadores desde a amostra anterior. Sem nomes.
+    pub net_errors: Option<u32>,
+    /// Uso do motor 3D da GPU, em %.
+    pub gpu_pct: Option<u8>,
+}
+
+impl HealthSample {
+    /// Nenhum contador foi lido: a fonte está indisponível e a amostra não vale a pena gravar.
+    pub fn is_empty(&self) -> bool {
+        *self == HealthSample::default()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum EventKind {
     ProcessStarted { key: ProcessKey, exe_name: ExeName, parent_pid: u32 },
@@ -62,6 +151,18 @@ pub enum EventKind {
     RecorderStateChanged { state: RecorderState, reason: ReasonCode },
     /// Marcador pré-definido pelo usuário; sem texto.
     UserMarker { code: u16 },
+    /// Evento de saúde da máquina vindo do Event Log `System`. Só a categoria, o ID do evento (de uma lista fixa) e
+    /// um número opcional (ex. o código da tela azul); nunca o texto da mensagem, nomes de serviço, caminhos ou usuários.
+    /// Só `PrivacyGuard::admit_health` cria este evento, porque ele não depende do app em primeiro plano.
+    HealthEvent { category: HealthCategory, event_id: u16, code: Option<u32> },
+    /// Mudança de inventário entre duas leituras: valor anterior e novo (números; `None` = não lido). Nunca número de
+    /// série, UUID, nome do computador ou qualquer identificador. Mesma porta do evento de saúde (`admit_health`).
+    InventoryChange { item: InventoryItem, previous: Option<u64>, current: Option<u64> },
+    /// Energia: tomada ligada ou não e carga da bateria em porcentagem (0 a 100). Só números e dois estados; nada de
+    /// localização, rede ou identificador. Mesma porta do evento de saúde (`admit_health`).
+    PowerStatus { ac: Option<AcLine>, charge_percent: Option<u8> },
+    /// Amostra de contadores de desempenho do sistema (PDH), a cada ~30 s. Só números agregados.
+    HealthSample(HealthSample),
 }
 
 /// Só o Privacy Guard constrói este tipo (construtor `pub(crate)`), então o

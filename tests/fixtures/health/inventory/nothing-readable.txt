@@ -1,0 +1,8 @@
+# every source failed
+expect.BiosVersion=none
+expect.BiosDate=none
+expect.FirmwareType=none
+expect.SecureBoot=none
+expect.OsBuild=none
+expect.DeviceProblemCount=none
+expect.DeviceProblemCodes=none

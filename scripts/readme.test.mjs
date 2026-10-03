@@ -48,3 +48,61 @@ test("local project memory and the graphify output are ignored by Git, and the R
     assert.ok(part.includes("taskkill /f /im explorer.exe"), `${name}: the explorer restart step`);
   }
 });
+
+// ---- Saúde do sistema: a documentação acompanha o código ----
+
+const rust = readFileSync(root + "crates/bb-collector/src/healthlog.rs", "utf8").replace(/\r\n/g, "\n");
+/** As regras da lista fixa do Event Log: [{ provider, id }], lidas direto do código. */
+const eventRules = [...rust.matchAll(/^\s*rule\("([^"]+)",\s*(\d+),/gm)].map((m) => ({ provider: m[1], id: m[2] }));
+const short = (p) => p.replace(/^Microsoft-Windows-/, "");
+
+test("the README documents every Event Log rule of the fixed list, in both languages", () => {
+  assert.ok(eventRules.length >= 20, `positive control: the rules were read from the code (${eventRules.length})`);
+  for (const [lang, text] of [["EN", en], ["PT", pt]]) {
+    const rows = text.split("\n").filter((l) => l.startsWith("|"));
+    for (const r of eventRules) {
+      const row = rows.find((l) => l.includes(short(r.provider)) && new RegExp(`(?<![\\d])${r.id}(?![\\d])`).test(l));
+      assert.ok(row, `${lang}: ${r.provider} ${r.id} is not in a table row of the README`);
+    }
+  }
+});
+
+test("both languages have the System health section with what is read, never recorded, how to turn off and the limits", () => {
+  for (const [lang, text, heads] of [
+    ["EN", en, ["## System health", "### What is read", "### What is never recorded", "### When it records, and how to turn it off", "### What it cannot see without administrator rights", "### What has and has not been checked on a real Windows", "### Storage cost"]],
+    ["PT", pt, ["## Saúde do sistema", "### O que é lido", "### O que nunca é gravado", "### Quando grava e como desligar", "### O que ela não enxerga sem administrador", "### O que foi e o que ainda não foi conferido num Windows real", "### Custo de armazenamento"]],
+  ]) {
+    for (const h of heads) assert.ok(text.includes(h), `${lang}: missing "${h}"`);
+  }
+});
+
+test("the limits without administrator rights are all named, and kernel-driver sensor libraries are ruled out", () => {
+  for (const [text, words] of [
+    [en, ["SMART/NVMe", "TPM", "WHEA-Logger/Operational", "per-core temperature", "kernel driver", "battery wear"]],
+    [pt, ["SMART/NVMe", "TPM", "WHEA-Logger/Operational", "temperatura por núcleo", "driver de kernel", "desgaste da bateria"]],
+  ]) {
+    for (const w of words) assert.ok(text.includes(w), `missing "${w}"`);
+  }
+});
+
+test("the README names the telemetry switch exactly as the Privacy tab does", () => {
+  const i18n = (f) => readFileSync(root + f, "utf8");
+  const label = (src) => /"privacy\.telemetry":\s*"([^"(]+?)\s*(?:\(|")/.exec(src)[1];
+  assert.ok(en.includes(`"${label(i18n("src/i18n/en.ts"))}"`), "EN switch label");
+  assert.ok(pt.includes(`"${label(i18n("src/i18n/pt-BR.ts"))}"`), "PT switch label");
+});
+
+test("the README says health data is recorded during a privacy block and that the manual pause always wins", () => {
+  assert.match(en, /even while a privacy block is active/);
+  assert.match(en, /manual pause always wins/);
+  assert.match(pt, /mesmo com um bloqueio de privacidade ativo/);
+  assert.match(pt, /pausa manual sempre vence/);
+});
+
+test("the README states both what was checked on a real Windows and what was not", () => {
+  assert.match(en, /\*\*Not checked\*\*, because it did not happen on that machine/);
+  assert.match(pt, /\*\*Não foi conferido\*\*, porque não aconteceu naquela máquina/);
+  assert.match(en, /only with synthetic XML/);
+  assert.match(pt, /só testados com XML sintético/);
+  assert.ok(!/have not been verified on a real machine yet/.test(en) && !/ainda não foram verificados numa máquina real/.test(pt), "the old blanket claim is gone");
+});
