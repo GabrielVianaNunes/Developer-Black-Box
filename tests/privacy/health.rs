@@ -955,7 +955,7 @@ fn a_blue_screen_opens_an_incident_with_evidence_and_no_app_name() {
     r.cycle();
     let all = incidents(&r);
     assert_eq!(all.len(), 1, "positive control: one incident");
-    assert_eq!((all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()), (IncidentKind::BlueScreen, None, "blue_screen|209"));
+    assert_eq!((all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()), (IncidentKind::BlueScreen, None, format!("blue_screen|209|{ts}").as_str()));
     assert!(!all[0].segments.is_empty(), "the window before the incident is preserved right away");
     // passada a janela posterior, a captura conclui e as evidências incluem o próprio evento de saúde
     for _ in 0..8 {
@@ -1012,7 +1012,8 @@ fn sustained_throttling_opens_exactly_one_warning_incident() {
     }
     let all = incidents(&r);
     assert_eq!(all.len(), 1, "one incident for the condition, not one per sample: {all:?}");
-    assert_eq!((all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()), (IncidentKind::Throttling, None, "throttling|70|95"));
+    assert_eq!((all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()), (IncidentKind::Throttling, None, all[0].summary.as_str()));
+    assert!(all[0].summary.starts_with("throttling|70|95|"), "the last number is when the condition began: {}", all[0].summary);
 }
 
 #[test]
@@ -1129,4 +1130,180 @@ fn a_source_installed_after_the_app_opened_is_waiting_until_its_first_reading() 
     assert_eq!(state_of(&r, HealthSourceId::Telemetry), SourceState::Waiting, "present and allowed, but nothing read yet");
     r.tick();
     assert_eq!(state_of(&r, HealthSourceId::Telemetry), SourceState::Ok);
+}
+
+// ---- exportação do incidente com a saúde da máquina ----
+
+fn export_json(r: &mut Rig, id: i64) -> serde_json::Value {
+    let dir = tempfile::tempdir().unwrap();
+    let res = r.engine.export_incident(id, dir.path(), r.mono, r.utc()).expect("export works");
+    serde_json::from_slice(&std::fs::read(res.path).unwrap()).unwrap()
+}
+
+fn health_rows(doc: &serde_json::Value) -> Vec<serde_json::Value> {
+    doc["health"]["events"].as_array().cloned().unwrap_or_default()
+}
+
+fn rows_of_kind(doc: &serde_json::Value, kind: &str) -> usize {
+    health_rows(doc).iter().filter(|e| e["kind"] == kind).count()
+}
+
+/// Minutos de relógio sem eventos novos (o motor segue gravando amostras/energia conforme as fontes).
+fn minutes(r: &mut Rig, n: u64) {
+    for _ in 0..(n * 12) {
+        r.tick();
+    }
+}
+
+#[test]
+fn the_export_has_the_new_format_and_a_health_section_with_the_window() {
+    let (mut r, _t) = tel_rig();
+    r.until_recording();
+    let id = r.engine.capture_manual(r.utc()).unwrap();
+    let doc = export_json(&mut r, id);
+    assert_eq!(doc["format"], "developer-blackbox-export/2");
+    assert_eq!(doc["notesIncluded"], false);
+    let h = &doc["health"];
+    let (from, to) = (h["fromUtcMs"].as_i64().unwrap(), h["toUtcMs"].as_i64().unwrap());
+    assert!(from < to && to - from >= 60_000, "the window covers the evidence period: {from}..{to}");
+    assert!(h["events"].is_array() && h["dropped"].is_u64() && h["truncated"] == false);
+}
+
+#[test]
+fn the_export_of_an_incident_includes_the_health_around_it_and_nothing_outside_the_window() {
+    let (mut r, t) = tel_rig();
+    r.engine.set_power_source(Box::new(FakePower(Arc::new(Mutex::new(Pwr { reading: battery(AcLine::Offline, 80), ..Pwr::default() })))));
+    r.until_recording(); // amostra e energia iniciais (vão ficar bem antes da janela)
+    minutes(&mut r, 30);
+    let marker_before = r.utc();
+    t.lock().unwrap().sample = HealthSample { cpu_load_pct: Some(41), ..good_sample() };
+    for _ in 0..4 {
+        tel_interval(&mut r); // ~2 min de amostras logo antes do incidente
+    }
+    let id = r.engine.capture_manual(r.utc()).unwrap();
+    let created = r.utc();
+    for _ in 0..4 {
+        r.tick(); // 20 s de janela posterior
+    }
+    minutes(&mut r, 20); // muito depois da janela
+    t.lock().unwrap().sample = HealthSample { cpu_load_pct: Some(99), ..good_sample() };
+    tel_interval(&mut r);
+    let doc = export_json(&mut r, id);
+    let h = &doc["health"];
+    let (from, to) = (h["fromUtcMs"].as_i64().unwrap(), h["toUtcMs"].as_i64().unwrap());
+    let rows = health_rows(&doc);
+    assert!(!rows.is_empty(), "positive control: the window has health data");
+    for e in &rows {
+        let ts = e["tsUtcMs"].as_i64().unwrap();
+        assert!((from..=to).contains(&ts), "row outside the window: {ts} not in {from}..{to}");
+        assert_eq!(e["offsetMs"].as_i64().unwrap(), ts - created);
+    }
+    assert!(rows_of_kind(&doc, "HealthSample") >= 1, "samples near the incident are exported");
+    assert!(rows.iter().all(|e| e["tsUtcMs"].as_i64().unwrap() > marker_before - 61_000), "the first samples (30 min earlier) are out");
+    assert!(!serde_json::to_string(&doc).unwrap().contains("\"cpuLoadPct\":99"), "the late sample (after the window) is out");
+    assert!(from > marker_before - 61_000 - 1, "the window is the evidence window, not the whole recording");
+}
+
+#[test]
+fn the_export_never_includes_notes_or_free_text() {
+    let (mut r, _t) = tel_rig();
+    r.until_recording();
+    let id = r.engine.capture_manual(r.utc()).unwrap();
+    r.engine.store().unwrap().add_note(id, r.utc(), "synth-private-note-should-never-leave").unwrap();
+    r.cycle();
+    let doc = export_json(&mut r, id);
+    let text = serde_json::to_string(&doc).unwrap();
+    assert!(!text.contains("synth-private-note"), "notes never leave");
+    assert!(!text.to_lowercase().contains("\"notes\""));
+    // cada linha de saúde: só números, nulos e os nomes fechados
+    for e in health_rows(&doc) {
+        let d = e["detail"].as_object().expect("detail");
+        for (k, v) in d {
+            assert!(
+                v.is_number() || v.is_null() || k == "code" || k == "category" || k == "item" || k == "ac",
+                "unexpected field in a health row: {k}={v}"
+            );
+        }
+    }
+}
+
+#[test]
+fn todays_rules_apply_samples_are_left_out_when_the_counters_were_turned_off_after_recording() {
+    let (mut r, _t) = tel_rig();
+    r.until_recording();
+    r.push(rec(r.utc() + 5, HealthCategory::DiskError, 51, None));
+    r.cycle();
+    let id = r.engine.capture_manual(r.utc()).unwrap();
+    let on = export_json(&mut r, id);
+    assert!(rows_of_kind(&on, "HealthSample") >= 1, "positive control: samples are in while the counters are on");
+    assert_eq!(on["health"]["dropped"], 0);
+    set_telemetry(&mut r, false);
+    let off = export_json(&mut r, id);
+    assert_eq!(rows_of_kind(&off, "HealthSample"), 0, "turned off since: the samples do not leave");
+    assert!(off["health"]["dropped"].as_u64().unwrap() >= 1, "and they are counted as removed, without citing them");
+    assert!(rows_of_kind(&off, "HealthEvent") >= 1, "the other health rows stay");
+}
+
+#[test]
+fn the_trigger_event_read_after_a_long_gap_is_still_in_its_own_export() {
+    // O app esteve fechado; o Windows registrou o desligamento ruim no boot seguinte (há ~10 min da detecção).
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("meta.db");
+    let world: Shared = Arc::new(Mutex::new(World { foreground: Some("synth-editor.exe") }));
+    let feed: SharedFeed = Arc::default();
+    {
+        let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+        e.set_health_source(Box::new(FakeHealth(feed.clone())), ORIGIN);
+        let mut mono = 0u64;
+        for _ in 0..4 {
+            mono += STEP;
+            e.tick(mono, ORIGIN + mono as i64).unwrap();
+        }
+        e.shutdown().unwrap();
+    }
+    let closed_at = ORIGIN + 4 * STEP as i64;
+    let restart = closed_at + 600_000;
+    let crash_ts = closed_at + 30_000;
+    feed.lock().unwrap().records.push(rec(crash_ts, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+    e.set_health_source(Box::new(FakeHealth(feed.clone())), restart);
+    let mut mono = 0u64;
+    for _ in 0..10 {
+        mono += STEP;
+        e.tick(mono, restart + mono as i64).unwrap();
+    }
+    let inc = e.store().unwrap().list_incidents().unwrap().into_iter().find(|i| i.kind == IncidentKind::BlueScreen).expect("incident");
+    assert!(inc.created_utc_ms - crash_ts > 300_000, "setup: the event is much older than the evidence window");
+    let out = dir.path().join("out");
+    let res = e.export_incident(inc.id, &out, mono, restart + mono as i64).unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(res.path).unwrap()).unwrap();
+    let rows = health_rows(&doc);
+    assert!(rows.iter().any(|r| r["kind"] == "HealthEvent" && r["tsUtcMs"].as_i64() == Some(crash_ts)), "the trigger is in its own export: {rows:?}");
+}
+
+#[test]
+fn a_throttling_incident_export_reaches_back_to_where_the_condition_began() {
+    let (mut r, t) = tel_rig();
+    t.lock().unwrap().sample = HealthSample { passive_limit_pct: Some(70), cpu_load_pct: Some(95), ..good_sample() };
+    r.until_recording();
+    for _ in 0..16 {
+        tel_interval(&mut r);
+    }
+    let inc = incidents(&r).into_iter().find(|i| i.kind == IncidentKind::Throttling).expect("throttling incident");
+    let doc = export_json(&mut r, inc.id);
+    let from = doc["health"]["fromUtcMs"].as_i64().unwrap();
+    assert!(inc.created_utc_ms - from >= 300_000, "the window starts ~5 min before the incident: {}", inc.created_utc_ms - from);
+    assert!(rows_of_kind(&doc, "HealthSample") >= 8, "the samples that built up the condition are in");
+}
+
+#[test]
+fn app_events_in_the_export_keep_the_old_rules_and_health_rows_do_not_inflate_the_dropped_count() {
+    let (mut r, _t) = tel_rig();
+    r.until_recording();
+    r.push(rec(r.utc() + 5, HealthCategory::DiskError, 51, None));
+    r.cycle();
+    let id = r.engine.capture_manual(r.utc()).unwrap();
+    let doc = export_json(&mut r, id);
+    assert_eq!(doc["droppedEvents"], 0, "health rows have their own section and are not counted as filtered app events");
+    assert!(doc["events"].is_array());
 }

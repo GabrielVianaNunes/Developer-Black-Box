@@ -116,7 +116,7 @@ export const en = {
   "incidents.add": "Add",
   "incidents.exportTitle": "Export evidence",
   "incidents.exportHelp":
-    "Today's privacy rules are applied again: applications excluded or protected after recording are removed from the file, and events of unknown origin are dropped. Notes are not exported. The exported file is not encrypted.",
+    "Today's privacy rules are applied again: applications excluded or protected after recording are removed from the file, and events of unknown origin are dropped. Notes are not exported. The file also carries the machine health around the incident (numbers and fixed codes only), checked again against today's rules; performance samples are left out if the counters are off now. The exported file is not encrypted.",
   "incidents.exportButton": "Export incident",
   "incidents.exported": "Exported to {path} ({events} events; {dropped} removed by filtering).",
   "incidents.delete": "Delete incident",
