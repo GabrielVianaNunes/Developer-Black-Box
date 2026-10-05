@@ -434,6 +434,7 @@ pub fn run() {
             commands::delete_incident,
             commands::capture_incident,
             commands::export_incident,
+            commands::get_bug_report_summary,
             commands::get_app_version,
             guide::get_guide_state,
             guide::mark_news_seen,

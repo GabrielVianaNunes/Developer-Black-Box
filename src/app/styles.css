@@ -175,3 +175,4 @@ tr.before td { color: var(--muted); }
 .unsaved-bar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; padding: 10px 14px; border: 1px solid #6b82ff; border-radius: 10px; background: var(--card); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
 .unsaved-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; }
 .detected { margin-top: 10px; }
+.summary-text { display: block; width: 100%; margin-top: 8px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); resize: vertical; }

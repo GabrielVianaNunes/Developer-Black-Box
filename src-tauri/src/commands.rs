@@ -169,6 +169,16 @@ pub fn export_incident(app: AppHandle, id: i64) -> Result<ExportDto, String> {
     })
 }
 
+/// Resumo em texto para relatar um bug, montado a partir da exportação refiltrada pelas regras de agora. Nada é gravado em
+/// disco; quem copia é a interface, por ação da pessoa.
+#[tauri::command]
+pub fn get_bug_report_summary(app: AppHandle, id: i64) -> Result<String, String> {
+    let rt = app.state::<Arc<Runtime>>();
+    let lang = if rt.lang() == Lang::PtBr { bb_query::SummaryLang::PtBr } else { bb_query::SummaryLang::En };
+    let mono = rt.mono_ms();
+    with_engine(&app, |e| e.bug_report_summary(id, env!("CARGO_PKG_VERSION"), lang, mono, utc_ms()).map_err(engine_err))
+}
+
 #[tauri::command]
 pub fn capture_incident(app: AppHandle) -> Result<i64, String> {
     with_engine(&app, |e| e.capture_manual(utc_ms()).map_err(engine_err))

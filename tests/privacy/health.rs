@@ -1614,3 +1614,35 @@ fn the_same_type_waiting_twice_is_announced_once() {
     assert_eq!(incidents(&r).len(), 2, "setup: two blue screens opened two incidents");
     assert_eq!(notices(&mut r), vec![IncidentKind::BlueScreen], "one notice for the type, not one per incident");
 }
+
+// ---- Resumo para relatar um bug (#107) -----------------------------------------------------------------------------
+
+#[test]
+fn the_summary_has_the_windows_build_only_while_the_inventory_is_on_and_has_read_it() {
+    let (mut r, inv) = inv_rig();
+    inv.lock().unwrap().snap = vec![(InventoryItem::OsBuild, Some((26100 << 20) | 1742)), (InventoryItem::SecureBoot, Some(1))];
+    r.until_recording();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    r.cycle();
+    let id = incidents(&r)[0].id;
+    let text = |r: &Rig| r.engine.bug_report_summary(id, "0.5.0", bb_query::SummaryLang::En, r.mono, r.utc()).unwrap();
+    let t = text(&r);
+    assert!(t.contains("Windows build: 26100.1742") && t.contains("Blue screen") && t.contains("code 0xd1"), "control: {t}");
+    set_switch(&mut r, |s| s.inventory_enabled = false);
+    let t = text(&r);
+    assert!(!t.contains("Windows build"), "inventory off: its last values are forgotten and not used: {t}");
+}
+
+#[test]
+fn the_summary_of_a_blue_screen_carries_only_closed_text_and_numbers() {
+    let mut r = rig();
+    r.until_recording();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    r.cycle();
+    let id = incidents(&r)[0].id;
+    let t = r.engine.bug_report_summary(id, "0.5.0", bb_query::SummaryLang::PtBr, r.mono, r.utc()).unwrap();
+    assert!(t.contains("Tela azul") && t.contains("0xd1") && t.contains("Versão do app: 0.5.0"), "{t}");
+    assert!(!t.contains("blue_screen|") && !t.contains("synth-editor"), "no internal summary and no program: {t}");
+}

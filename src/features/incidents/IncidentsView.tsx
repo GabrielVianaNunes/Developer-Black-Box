@@ -6,6 +6,7 @@ import {
   captureIncident,
   deleteIncident,
   exportIncident,
+  getBugReportSummary,
   getIncident,
   listIncidents,
   setIncidentState,
@@ -83,6 +84,8 @@ function IncidentDetailPanel({ id, onChanged, onDeleted }: { id: number; onChang
   const { data: d, error, reload } = usePolling(() => getIncident(id), 3000, [id]);
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  // O texto gerado fica na tela para a pessoa conferir antes de colar em qualquer lugar.
+  const [summary, setSummary] = useState<{ id: number; text: string } | null>(null);
 
   if (error) return <p className="notice">{errorText(error)}</p>;
   if (!d) return <p className="muted">{t("app.loading")}</p>;
@@ -205,6 +208,27 @@ function IncidentDetailPanel({ id, onChanged, onDeleted }: { id: number; onChang
       >
         {t("incidents.exportButton")}
       </button>
+      <h3>{t("incidents.summaryTitle")}</h3>
+      <p className="muted small">{t("incidents.summaryHelp")}</p>
+      <button
+        onClick={() =>
+          run(async () => {
+            const text = await getBugReportSummary(inc.id);
+            setSummary({ id: inc.id, text });
+            try {
+              await navigator.clipboard.writeText(text);
+              setMsg(t("incidents.summaryCopied"));
+            } catch {
+              setMsg(t("incidents.summaryNotCopied"));
+            }
+          })
+        }
+      >
+        {t("incidents.summaryButton")}
+      </button>
+      {summary && summary.id === inc.id && (
+        <textarea className="summary-text" readOnly rows={12} value={summary.text} aria-label={t("incidents.summaryTitle")} />
+      )}
       <div className="row danger-zone">
         <button
           className="danger"

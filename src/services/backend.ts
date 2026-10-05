@@ -54,6 +54,7 @@ export const setIncidentState = (id: number, state: string) => invoke<void>("set
 export const addIncidentNote = (id: number, text: string) => invoke<void>("add_incident_note", { id, text });
 export const deleteIncident = (id: number) => invoke<void>("delete_incident", { id });
 export const captureIncident = () => invoke<number>("capture_incident");
+export const getBugReportSummary = (id: number) => invoke<string>("get_bug_report_summary", { id });
 export const exportIncident = (id: number) => invoke<ExportResult>("export_incident", { id });
 
 // Privacidade e armazenamento

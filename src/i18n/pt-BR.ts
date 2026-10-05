@@ -121,6 +121,12 @@ export const ptBR: Record<keyof typeof en, string> = {
   "incidents.exportHelp":
     "As regras de privacidade de agora são aplicadas de novo: aplicativos excluídos ou protegidos depois da gravação saem do arquivo, e eventos de origem desconhecida são descartados. Anotações não são exportadas. O arquivo também traz a saúde da máquina em torno do incidente (só números e códigos fixos), conferida de novo contra as regras de agora; as amostras de desempenho ficam de fora se os contadores estão desligados agora. O arquivo exportado não é cifrado.",
   "incidents.exportButton": "Exportar incidente",
+  "incidents.summaryTitle": "Resumo para relatar um bug",
+  "incidents.summaryHelp":
+    "Monta um texto curto a partir da exportação deste incidente (com as regras de privacidade de hoje aplicadas de novo): tipo, horário, versões do app e do Windows, eventos de saúde da máquina por perto e a última amostra de desempenho. Nunca tem as suas anotações, nomes de usuário ou de computador, caminhos nem textos de mensagens. Ele é copiado para a área de transferência e mostrado abaixo para você conferir: onde quer que você cole, ele sai deste app.",
+  "incidents.summaryButton": "Copiar resumo",
+  "incidents.summaryCopied": "Resumo copiado. Confira o texto abaixo antes de colar.",
+  "incidents.summaryNotCopied": "Não foi possível copiar automaticamente. Selecione o texto abaixo e copie você mesmo.",
   "incidents.exported": "Exportado em {path} ({events} eventos; {dropped} removidos pela filtragem).",
   "incidents.delete": "Excluir incidente",
   "incidents.confirmDelete": "Excluir este incidente e as anotações? As evidências deixam de ser preservadas.",
@@ -504,6 +510,8 @@ export const ptBR: Record<keyof typeof en, string> = {
   "guide.news.clarity.b2": "A Visão Geral agora mostra as regras em vigor e quantas vezes cada exclusão deixou algo de fora. É só uma contagem, guardada na memória.",
   "guide.news.switches.title": "Um interruptor para cada fonte de saúde",
   "guide.news.switches.b1": "A aba Privacidade agora tem um interruptor para os eventos de saúde do Windows, um para o inventário da máquina e um para energia e bateria, ao lado dos contadores de desempenho. Desligar um para a fonte na hora, e o que aconteceu enquanto esteve desligado nunca é lido depois. Há também um aviso opcional, desligado por padrão, que diz só o tipo de um incidente que abriu sozinho.",
+  "guide.news.summary.title": "Um resumo para relatar um bug",
+  "guide.news.summary.b1": "Cada incidente agora tem um botão Copiar resumo: um texto curto com o tipo, o horário, as versões, os eventos de saúde da máquina por perto e a última amostra de desempenho, pronto para colar num relato de bug. Ele sai da exportação, então as suas anotações, nomes e caminhos nunca estão nele, e você vê o texto antes de colar.",
   "guide.news.picker.title": "Escolha programas em vez de digitar",
   "guide.news.picker.b1": "Ao excluir um programa, procure pelo nome, escolha na lista ou procure o arquivo dele. A lista também lê os atalhos do Menu Iniciar, então aparecem muito mais programas, com os nomes que você conhece.",
   "guide.news.picker.b2": "A lista é montada no seu PC quando você a abre. Nada dela é guardado nem enviado a lugar nenhum.",
