@@ -118,7 +118,12 @@ impl Detector {
             severity: Severity::Warning,
             exe_name: None,
             // O último número é quando a condição começou (milissegundos UTC): a exportação usa para incluir a saúde do período.
-            summary: format!("throttling|{}|{}|{}", passive_limit_pct.unwrap_or(0), cpu_load_pct.unwrap_or(0), ts_utc_ms - THROTTLING_LOOKBACK_MS),
+            summary: format!(
+                "throttling|{}|{}|{}",
+                passive_limit_pct.unwrap_or(0),
+                cpu_load_pct.unwrap_or(0),
+                ts_utc_ms - THROTTLING_LOOKBACK_MS
+            ),
         })
     }
 
@@ -136,7 +141,9 @@ impl Detector {
                         (IncidentKind::BlueScreen, format!("blue_screen|{}|{ts_utc_ms}", code.unwrap_or(0)))
                     }
                     // O último número de cada resumo de saúde é o horário do evento (ms UTC): a exportação inclui a saúde desde ali.
-                    HealthCategory::UnexpectedShutdown => (IncidentKind::UnexpectedShutdown, format!("unexpected_shutdown|{event_id}|{ts_utc_ms}")),
+                    HealthCategory::UnexpectedShutdown => {
+                        (IncidentKind::UnexpectedShutdown, format!("unexpected_shutdown|{event_id}|{ts_utc_ms}"))
+                    }
                     HealthCategory::BugCheck => (IncidentKind::BlueScreen, format!("blue_screen|{}|{ts_utc_ms}", code.unwrap_or(0))),
                     HealthCategory::HardwareError => (IncidentKind::HardwareError, format!("hardware_error|{event_id}|{ts_utc_ms}")),
                     _ => return None,
@@ -194,9 +201,7 @@ impl Detector {
                         summary: format!("cpu_sustained|{}|{}", self.cfg.cpu_threshold_permille, streak),
                     });
                 }
-                if *working_set_kb >= self.cfg.memory_threshold_kb
-                    && self.cooled_down(*key, IncidentKind::MemoryHigh, ts_utc_ms)
-                {
+                if *working_set_kb >= self.cfg.memory_threshold_kb && self.cooled_down(*key, IncidentKind::MemoryHigh, ts_utc_ms) {
                     return Some(Finding {
                         kind: IncidentKind::MemoryHigh,
                         severity: Severity::Warning,
@@ -281,9 +286,7 @@ mod tests {
     #[test]
     fn a_crash_opens_a_critical_incident_stating_only_the_exception_code() {
         let mut d = Detector::new(cfg());
-        let f = d
-            .observe(&EventKind::AppCrash { exe_name: ExeName::new("synth.exe").unwrap(), exception_code: 0xc000_0005 }, 10)
-            .unwrap();
+        let f = d.observe(&EventKind::AppCrash { exe_name: ExeName::new("synth.exe").unwrap(), exception_code: 0xc000_0005 }, 10).unwrap();
         assert_eq!((f.kind, f.severity), (IncidentKind::UnexpectedExit, Severity::Critical));
         assert_eq!(f.summary, "app_crash|3221225477", "0xC0000005 as a decimal parameter");
         assert!(!f.summary.contains("synth"));
@@ -352,7 +355,10 @@ mod tests {
     fn an_unexpected_shutdown_without_a_stop_code_opens_a_critical_incident_with_no_app() {
         let mut d = Detector::new(IncidentConfig::default());
         let f = d.observe(&health(HealthCategory::UnexpectedShutdown, 6008, None), 10).unwrap();
-        assert_eq!((f.kind, f.severity, f.exe_name, f.summary.as_str()), (IncidentKind::UnexpectedShutdown, Severity::Critical, None, "unexpected_shutdown|6008|10"));
+        assert_eq!(
+            (f.kind, f.severity, f.exe_name, f.summary.as_str()),
+            (IncidentKind::UnexpectedShutdown, Severity::Critical, None, "unexpected_shutdown|6008|10")
+        );
     }
 
     #[test]
@@ -402,7 +408,10 @@ mod tests {
     fn throttling_opens_one_warning_per_half_hour() {
         let mut d = Detector::new(IncidentConfig::default());
         let f = d.throttling_finding(Some(70), Some(95), 1_000).unwrap();
-        assert_eq!((f.kind, f.severity, f.exe_name, f.summary.as_str()), (IncidentKind::Throttling, Severity::Warning, None, "throttling|70|95|-299000"));
+        assert_eq!(
+            (f.kind, f.severity, f.exe_name, f.summary.as_str()),
+            (IncidentKind::Throttling, Severity::Warning, None, "throttling|70|95|-299000")
+        );
         assert!(d.throttling_finding(Some(70), Some(95), 1_000 + 29 * 60_000).is_none());
         assert!(d.throttling_finding(Some(70), Some(95), 1_000 + 30 * 60_000).is_some());
     }

@@ -7,8 +7,7 @@
 use windows::core::HSTRING;
 use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_NO_MORE_ITEMS};
 use windows::Win32::System::EventLog::{
-    EvtClose, EvtNext, EvtQuery, EvtQueryChannelPath, EvtQueryForwardDirection, EvtRender, EvtRenderEventXml,
-    EVT_HANDLE,
+    EvtClose, EvtNext, EvtQuery, EvtQueryChannelPath, EvtQueryForwardDirection, EvtRender, EvtRenderEventXml, EVT_HANDLE,
 };
 
 use crate::eventlog::{iso_from_ms, parse_event_xml, CrashRecord, CrashSource};
@@ -43,18 +42,12 @@ impl Drop for Evt {
 }
 
 /// Consulta um canal e entrega o XML de cada evento a `on_xml`, até `MAX_RECORDS` aceitos. Sem administrador.
-fn query_channel(
-    channel: &HSTRING,
-    xpath: &HSTRING,
-    mut on_xml: impl FnMut(&str) -> bool,
-) -> Result<(), CollectError> {
+fn query_channel(channel: &HSTRING, xpath: &HSTRING, mut on_xml: impl FnMut(&str) -> bool) -> Result<(), CollectError> {
     let mut accepted = 0usize;
     // SAFETY: buffers locais; todos os handles são fechados por RAII.
     unsafe {
-        let results = Evt(
-            EvtQuery(None, channel, xpath, (EvtQueryChannelPath.0 | EvtQueryForwardDirection.0) as u32)
-                .map_err(|e| CollectError(format!("EvtQuery: {e}")))?,
-        );
+        let results = Evt(EvtQuery(None, channel, xpath, (EvtQueryChannelPath.0 | EvtQueryForwardDirection.0) as u32)
+            .map_err(|e| CollectError(format!("EvtQuery: {e}")))?);
         loop {
             let mut handles = [0isize; 32];
             let mut returned = 0u32;
@@ -115,11 +108,7 @@ impl Default for WindowsHealthSource {
 
 impl HealthSource for WindowsHealthSource {
     fn poll(&mut self, since_utc_ms: i64) -> Result<Vec<HealthRecord>, CollectError> {
-        let query = HSTRING::from(format!(
-            "*[System[({}) and TimeCreated[@SystemTime>='{}']]]",
-            id_filter(),
-            iso_from_ms(since_utc_ms)
-        ));
+        let query = HSTRING::from(format!("*[System[({}) and TimeCreated[@SystemTime>='{}']]]", id_filter(), iso_from_ms(since_utc_ms)));
         let mut out = Vec::new();
         query_channel(&HSTRING::from("System"), &query, |xml| match parse_health_xml(xml) {
             Some(rec) => {
@@ -142,16 +131,7 @@ unsafe fn render_xml(ev: &Evt) -> Option<String> {
         _ => return None,
     }
     let mut buf = vec![0u16; (used as usize).div_ceil(2) + 1];
-    EvtRender(
-        None,
-        ev.0,
-        EvtRenderEventXml.0 as u32,
-        (buf.len() * 2) as u32,
-        Some(buf.as_mut_ptr().cast()),
-        &mut used,
-        &mut props,
-    )
-    .ok()?;
+    EvtRender(None, ev.0, EvtRenderEventXml.0 as u32, (buf.len() * 2) as u32, Some(buf.as_mut_ptr().cast()), &mut used, &mut props).ok()?;
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     Some(String::from_utf16_lossy(&buf[..end]))
 }

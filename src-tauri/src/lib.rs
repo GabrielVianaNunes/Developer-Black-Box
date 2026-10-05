@@ -15,7 +15,10 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent, Wry};
 
-use bb_collector::{MetricsConfig, WindowsContextSource, WindowsCrashSource, WindowsHealthSource, WindowsInventorySource, WindowsPowerSource, WindowsProcessSource, WindowsTelemetrySource};
+use bb_collector::{
+    MetricsConfig, WindowsContextSource, WindowsCrashSource, WindowsHealthSource, WindowsInventorySource, WindowsPowerSource,
+    WindowsProcessSource, WindowsTelemetrySource,
+};
 use bb_core::{GuardConfig, ReasonCode, RecorderState};
 use bb_engine::{Engine, IncidentConfig};
 use bb_recorder::{DpapiKeyStore, KeyProvider, Recorder, RecorderConfig};
@@ -135,7 +138,13 @@ fn system_icon_size(large: bool) -> u32 {
     use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXICON, SM_CXSMICON};
     // SAFETY: consulta simples de métrica do sistema.
     let px = unsafe { GetSystemMetrics(if large { SM_CXICON } else { SM_CXSMICON }) };
-    if px > 0 { px as u32 } else if large { 32 } else { 16 }
+    if px > 0 {
+        px as u32
+    } else if large {
+        32
+    } else {
+        16
+    }
 }
 
 fn make_icon(light: Light, size: u32) -> Image<'static> {
@@ -277,8 +286,7 @@ fn build_engine() -> Result<(WinEngine, Lang), String> {
     let dir = data_dir()?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("data dir: {e}"))?;
     let keys = DpapiKeyStore::new(dir.join("key.bin"));
-    let recorder = Recorder::open(dir.join("recorder"), &keys, RecorderConfig::default())
-        .map_err(|e| format!("recorder: {e}"))?;
+    let recorder = Recorder::open(dir.join("recorder"), &keys, RecorderConfig::default()).map_err(|e| format!("recorder: {e}"))?;
     // Os campos sensíveis do banco (nome de app, anotações, listas) usam a mesma chave DPAPI.
     let master = keys.key().map_err(|e| format!("key: {e}"))?;
     let store = Store::open_encrypted(dir.join("meta.db"), &master).map_err(|e| format!("store: {e}"))?;
@@ -355,17 +363,7 @@ fn build_tray(app: &tauri::App, lang: Lang) -> tauri::Result<Ui> {
         })
         .build(app)?;
 
-    Ok(Ui {
-        tray,
-        open,
-        status,
-        pause,
-        resume,
-        privacy,
-        quit: quit_item,
-        last_light: Mutex::new(None),
-        last_lang: Mutex::new(Some(lang)),
-    })
+    Ok(Ui { tray, open, status, pause, resume, privacy, quit: quit_item, last_light: Mutex::new(None), last_lang: Mutex::new(Some(lang)) })
 }
 
 /// STARTF_TITLEISLINKNAME nas flags de inicialização: o "título" do processo é o caminho do atalho que o iniciou.
@@ -405,12 +403,7 @@ pub fn run() {
     if let Some(store) = engine.store() {
         icons::refresh_once(store, env!("CARGO_PKG_VERSION"), icons::notify_windows);
     }
-    let rt = Arc::new(Runtime {
-        engine: Mutex::new(engine),
-        start: Instant::now(),
-        stop: AtomicBool::new(false),
-        lang: Mutex::new(lang),
-    });
+    let rt = Arc::new(Runtime { engine: Mutex::new(engine), start: Instant::now(), stop: AtomicBool::new(false), lang: Mutex::new(lang) });
 
     tauri::Builder::default()
         // Duas instâncias disputariam o mesmo journal.

@@ -110,6 +110,7 @@ The first time you build the installer, Tauri downloads the NSIS tooling (from G
 ### Tests
 
 ```bash
+cargo fmt --all -- --check   # formatting (rustfmt.toml: 140 columns); `cargo fmt --all` fixes it
 cargo test --workspace   # all Rust tests, including tests/privacy/
 npm test                 # tests for the repository safety scripts
 npm run check:repo       # no sensitive files tracked + secret scanner
@@ -436,6 +437,7 @@ A primeira vez que você gera o instalador, o Tauri baixa as ferramentas do NSIS
 ### Testes
 
 ```bash
+cargo fmt --all -- --check   # formatação (rustfmt.toml: 140 colunas); `cargo fmt --all` corrige
 cargo test --workspace   # todos os testes de Rust, incluindo tests/privacy/
 npm test                 # testes dos scripts de segurança do repositório
 npm run check:repo       # nenhum arquivo sensível rastreado + scanner de segredos

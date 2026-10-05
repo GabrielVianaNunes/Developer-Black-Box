@@ -9,14 +9,21 @@ use std::collections::{HashMap, HashSet};
 
 use crate::event::{EventKind, ExeName, ProcessKey, ValidatedEvent};
 use crate::exclusion::{ExclusionKind, ExclusionSet};
-use crate::state::{
-    derive, PrivacyContext, ReasonCode, RecorderInputs, RecorderState, SensitiveReason,
-};
+use crate::state::{derive, PrivacyContext, ReasonCode, RecorderInputs, RecorderState, SensitiveReason};
 
 /// Navegadores e gerenciadores de senha: protegidos por padrão (política conservadora).
 const DEFAULT_PROTECTED: &[&str] = &[
-    "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe",
-    "1password.exe", "keepass.exe", "keepassxc.exe", "bitwarden.exe", "lastpass.exe",
+    "chrome.exe",
+    "msedge.exe",
+    "firefox.exe",
+    "brave.exe",
+    "opera.exe",
+    "vivaldi.exe",
+    "1password.exe",
+    "keepass.exe",
+    "keepassxc.exe",
+    "bitwarden.exe",
+    "lastpass.exe",
     "dashlane.exe",
 ];
 
@@ -47,10 +54,7 @@ pub struct GuardConfig {
 impl Default for GuardConfig {
     fn default() -> Self {
         Self {
-            protected_apps: DEFAULT_PROTECTED
-                .iter()
-                .map(|n| ExeName::new(n).expect("valid default"))
-                .collect(),
+            protected_apps: DEFAULT_PROTECTED.iter().map(|n| ExeName::new(n).expect("valid default")).collect(),
             excluded_apps: HashSet::new(),
             partial_exclusions: HashMap::new(),
             excluded_trees: HashSet::new(),
@@ -213,9 +217,7 @@ impl PrivacyGuard {
                 let root = if roots.contains(p.exe) {
                     Some(p.exe.clone())
                 } else if p.parent_pid != 0 {
-                    next.get(&p.parent_pid)
-                        .filter(|parent| parent.start_time_ms <= p.key.start_time_ms)
-                        .map(|parent| parent.root.clone())
+                    next.get(&p.parent_pid).filter(|parent| parent.start_time_ms <= p.key.start_time_ms).map(|parent| parent.root.clone())
                 } else {
                     None
                 };
@@ -279,12 +281,7 @@ impl PrivacyGuard {
             return Err(AuthError::ExcludedApp);
         }
         self.authorizations.retain(|a| a.exe != exe);
-        self.authorizations.push(Authorization {
-            exe,
-            expires_mono_ms: now_ms.saturating_add(duration_ms),
-            allow_metrics,
-            allow_crashes,
-        });
+        self.authorizations.push(Authorization { exe, expires_mono_ms: now_ms.saturating_add(duration_ms), allow_metrics, allow_crashes });
         self.safe_since = None;
         self.safe_class = None;
         Ok(())
@@ -507,11 +504,11 @@ impl PrivacyGuard {
     /// Porta dos eventos de saúde da máquina (Event Log `System`, inventário, energia, contadores). Só aceita tipos de
     /// saúde; qualquer outro devolve `None`.
     pub fn admit_health(&mut self, now_ms: u64, ts_utc_ms: i64, kind: EventKind) -> Option<ValidatedEvent> {
-        if !matches!(kind, EventKind::HealthEvent { .. }
-                | EventKind::InventoryChange { .. }
-                | EventKind::PowerStatus { .. }
-                | EventKind::HealthSample(_)
-        ) || !self.health_allowed(now_ms) {
+        if !matches!(
+            kind,
+            EventKind::HealthEvent { .. } | EventKind::InventoryChange { .. } | EventKind::PowerStatus { .. } | EventKind::HealthSample(_)
+        ) || !self.health_allowed(now_ms)
+        {
             return None;
         }
         let seq = self.next_seq;
@@ -548,10 +545,12 @@ impl PrivacyGuard {
                     match self.classify(obs, now_ms) {
                         c @ (PrivacyContext::Safe | PrivacyContext::AuthorizedOnly) => {
                             let stable = self.safe_class == Some(c)
-                                && self.safe_since.is_some_and(|s| {
-                                    now_ms.saturating_sub(s) >= self.config.stability_window_ms
-                                });
-                            if stable { c } else { PrivacyContext::Unknown }
+                                && self.safe_since.is_some_and(|s| now_ms.saturating_sub(s) >= self.config.stability_window_ms);
+                            if stable {
+                                c
+                            } else {
+                                PrivacyContext::Unknown
+                            }
                         }
                         other => other,
                     }
@@ -559,12 +558,6 @@ impl PrivacyGuard {
                 (privacy, healthy, false)
             }
         };
-        RecorderInputs {
-            starting,
-            shutting_down: self.shutting_down,
-            manual_paused: self.manual_paused,
-            privacy,
-            guard_healthy,
-        }
+        RecorderInputs { starting, shutting_down: self.shutting_down, manual_paused: self.manual_paused, privacy, guard_healthy }
     }
 }

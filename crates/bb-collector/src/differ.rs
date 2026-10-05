@@ -51,12 +51,7 @@ impl Differ {
 
     /// `silent_from`: processos iniciados a partir deste instante (UTC ms) e ainda
     /// desconhecidos nasceram durante uma pausa; são adotados sem gerar eventos.
-    pub fn tick(
-        &mut self,
-        samples: &[ProcessSample],
-        wall_ms: u64,
-        silent_from: Option<i64>,
-    ) -> Vec<EventKind> {
+    pub fn tick(&mut self, samples: &[ProcessSample], wall_ms: u64, silent_from: Option<i64>) -> Vec<EventKind> {
         self.tick_no += 1;
         let dt_ms = self.last_wall_ms.map_or(0, |l| wall_ms.saturating_sub(l));
         self.last_wall_ms = Some(wall_ms);
@@ -72,11 +67,7 @@ impl Differ {
                     let silent = silent_from.is_some_and(|t| s.key.start_time_ms >= t);
                     self.known.insert(s.key, Tracked { cpu_time_100ns: s.cpu_time_100ns, silent });
                     if !silent {
-                        events.push(EventKind::ProcessStarted {
-                            key: s.key,
-                            exe_name: s.exe_name.clone(),
-                            parent_pid: s.parent_pid,
-                        });
+                        events.push(EventKind::ProcessStarted { key: s.key, exe_name: s.exe_name.clone(), parent_pid: s.parent_pid });
                     }
                 }
                 Some(t) => {
@@ -87,21 +78,14 @@ impl Differ {
                     let delta = s.cpu_time_100ns.saturating_sub(prev);
                     let denom = dt_ms * 10_000 * self.ncpu;
                     let cpu = (delta.saturating_mul(1000) / denom).min(1000) as u16;
-                    if cpu >= self.metrics.min_cpu_permille
-                        || s.working_set_kb >= self.metrics.min_working_set_kb
-                    {
-                        events.push(EventKind::ProcessMetrics {
-                            key: s.key,
-                            cpu_permille: cpu,
-                            working_set_kb: s.working_set_kb,
-                        });
+                    if cpu >= self.metrics.min_cpu_permille || s.working_set_kb >= self.metrics.min_working_set_kb {
+                        events.push(EventKind::ProcessMetrics { key: s.key, cpu_permille: cpu, working_set_kb: s.working_set_kb });
                     }
                 }
             }
         }
 
-        let mut gone: Vec<ProcessKey> =
-            self.known.keys().filter(|k| !seen.contains(*k)).copied().collect();
+        let mut gone: Vec<ProcessKey> = self.known.keys().filter(|k| !seen.contains(*k)).copied().collect();
         gone.sort_by_key(|k| (k.pid, k.start_time_ms));
         for k in gone {
             if let Some(t) = self.known.remove(&k) {

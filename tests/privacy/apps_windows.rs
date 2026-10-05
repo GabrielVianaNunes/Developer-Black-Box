@@ -56,7 +56,8 @@ fn a_second_listing_is_just_as_fast_and_has_the_same_installed_apps() {
     let a = list_candidates();
     let (elapsed, b) = fastest_of_three(list_candidates);
     assert!(elapsed.as_secs_f64() < 2.0, "second listing took {elapsed:?}");
-    let installed = |l: &[bb_collector::apps::AppCandidate]| l.iter().filter(|c| c.installed).map(|c| c.exe.clone()).collect::<HashSet<_>>();
+    let installed =
+        |l: &[bb_collector::apps::AppCandidate]| l.iter().filter(|c| c.installed).map(|c| c.exe.clone()).collect::<HashSet<_>>();
     assert_eq!(installed(&a), installed(&b), "the installed set is stable between calls");
 }
 

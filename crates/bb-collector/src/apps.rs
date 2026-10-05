@@ -64,12 +64,7 @@ pub fn merge(running: &[String], installed: &[(String, String)]) -> Vec<AppCandi
         if !exe.ends_with(".exe") || ExeName::new(&exe).is_err() {
             return;
         }
-        let entry = by_exe.entry(exe.clone()).or_insert_with(|| AppCandidate {
-            name: stem(&exe),
-            exe,
-            running: false,
-            installed: false,
-        });
+        let entry = by_exe.entry(exe.clone()).or_insert_with(|| AppCandidate { name: stem(&exe), exe, running: false, installed: false });
         entry.running |= running;
         entry.installed |= installed;
         // O primeiro nome amigável real vence (não troca por outro nem volta para o nome do arquivo).
@@ -148,8 +143,21 @@ const MAX_SHORTCUT_FILES: usize = 5000;
 /// Programas genéricos que muitos atalhos abrem com um destino diferente (um painel, uma pasta, um script). O nome do
 /// atalho descreve o que ele abre, não o programa, então nesses casos o nome mostrado é o do próprio executável.
 const GENERIC_HOSTS: &[&str] = &[
-    "cmd.exe", "powershell.exe", "pwsh.exe", "explorer.exe", "control.exe", "mmc.exe", "rundll32.exe", "wscript.exe",
-    "cscript.exe", "conhost.exe", "msiexec.exe", "regedit.exe", "mshta.exe", "wsl.exe", "bash.exe",
+    "cmd.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "explorer.exe",
+    "control.exe",
+    "mmc.exe",
+    "rundll32.exe",
+    "wscript.exe",
+    "cscript.exe",
+    "conhost.exe",
+    "msiexec.exe",
+    "regedit.exe",
+    "mshta.exe",
+    "wsl.exe",
+    "bash.exe",
 ];
 
 /// Atalhos que só servem para desinstalar ou consertar não são programas que o usuário queira escolher.
@@ -222,8 +230,8 @@ mod win {
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
     };
     use windows::Win32::System::Registry::{
-        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE,
-        KEY_READ, REG_EXPAND_SZ, REG_SZ, REG_VALUE_TYPE,
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, REG_EXPAND_SZ,
+        REG_SZ, REG_VALUE_TYPE,
     };
 
     use std::path::PathBuf;
@@ -283,9 +291,7 @@ mod win {
         }
         let mut buf = vec![0u8; len as usize];
         // SAFETY: `buf` tem `len` bytes.
-        let status = unsafe {
-            RegQueryValueExW(key.0, PCWSTR(n.as_ptr()), None, Some(&mut kind), Some(buf.as_mut_ptr()), Some(&mut len))
-        };
+        let status = unsafe { RegQueryValueExW(key.0, PCWSTR(n.as_ptr()), None, Some(&mut kind), Some(buf.as_mut_ptr()), Some(&mut len)) };
         if status != ERROR_SUCCESS {
             return None;
         }
@@ -317,11 +323,7 @@ mod win {
     /// quando o ícone aponta para o executável, o exe.
     fn installed() -> Vec<(String, String)> {
         let mut out = Vec::new();
-        for (root, path) in [
-            (HKEY_LOCAL_MACHINE, APP_PATHS),
-            (HKEY_LOCAL_MACHINE, APP_PATHS_32),
-            (HKEY_CURRENT_USER, APP_PATHS),
-        ] {
+        for (root, path) in [(HKEY_LOCAL_MACHINE, APP_PATHS), (HKEY_LOCAL_MACHINE, APP_PATHS_32), (HKEY_CURRENT_USER, APP_PATHS)] {
             let Some(key) = open(root, path) else { continue };
             for name in subkeys(&key) {
                 if exe_from_icon_path(&name).is_some() {
@@ -329,11 +331,7 @@ mod win {
                 }
             }
         }
-        for (root, path) in [
-            (HKEY_LOCAL_MACHINE, UNINSTALL),
-            (HKEY_LOCAL_MACHINE, UNINSTALL_32),
-            (HKEY_CURRENT_USER, UNINSTALL),
-        ] {
+        for (root, path) in [(HKEY_LOCAL_MACHINE, UNINSTALL), (HKEY_LOCAL_MACHINE, UNINSTALL_32), (HKEY_CURRENT_USER, UNINSTALL)] {
             let Some(parent) = open(root, path) else { continue };
             for sub in subkeys(&parent) {
                 let Some(entry) = open(root, &format!("{path}\\{sub}")) else { continue };
@@ -457,7 +455,11 @@ mod tests {
         ] {
             assert!(manifest_executables(xml).is_empty(), "{xml:?}");
         }
-        assert_eq!(manifest_executables("<Application Executable=\"..\\..\\x\\evil.exe\"/>"), vec!["evil.exe"], "only the file name survives");
+        assert_eq!(
+            manifest_executables("<Application Executable=\"..\\..\\x\\evil.exe\"/>"),
+            vec!["evil.exe"],
+            "only the file name survives"
+        );
         let twice = "<Application Executable=\"a.exe\"/><Application Executable=\"A.exe\"/>";
         assert_eq!(manifest_executables(twice), vec!["a.exe"], "no repeats");
     }
@@ -528,10 +530,7 @@ mod tests {
 
     #[test]
     fn installed_apps_come_first_then_running_only_each_sorted_by_name() {
-        let out = merge(
-            &[s("zzz.exe"), s("aaa.exe")],
-            &[(s("b.exe"), s("Beta")), (s("a.exe"), s("alpha")), (s("c.exe"), s("Charlie"))],
-        );
+        let out = merge(&[s("zzz.exe"), s("aaa.exe")], &[(s("b.exe"), s("Beta")), (s("a.exe"), s("alpha")), (s("c.exe"), s("Charlie"))]);
         let order: Vec<&str> = out.iter().map(|c| c.exe.as_str()).collect();
         assert_eq!(order, ["a.exe", "b.exe", "c.exe", "aaa.exe", "zzz.exe"]);
     }

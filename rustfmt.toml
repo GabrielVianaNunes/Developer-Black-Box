@@ -1,0 +1,3 @@
+# Estilo do repositório: linhas largas (o código sempre foi escrito assim) e listas curtas em uma linha só.
+max_width = 140
+use_small_heuristics = "Max"

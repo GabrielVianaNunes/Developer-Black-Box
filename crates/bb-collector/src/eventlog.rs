@@ -152,8 +152,7 @@ pub fn parse_event_xml(xml: &str) -> Option<CrashRecord> {
     let data = data_fields(xml);
     let exe_name = ExeName::new(field(&data, "AppName", 0)?.trim()).ok()?;
     let exception_code = match kind {
-        CrashKind::Crash => field(&data, "ExceptionCode", 6)
-            .and_then(|c| u32::from_str_radix(c.trim().trim_start_matches("0x"), 16).ok()),
+        CrashKind::Crash => field(&data, "ExceptionCode", 6).and_then(|c| u32::from_str_radix(c.trim().trim_start_matches("0x"), 16).ok()),
         CrashKind::Hang => None,
     };
     Some(CrashRecord { ts_utc_ms, kind, exe_name, exception_code })

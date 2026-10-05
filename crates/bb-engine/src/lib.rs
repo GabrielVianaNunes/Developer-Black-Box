@@ -7,8 +7,8 @@
 //!   intervalo nunca é reconstruído ao retomar.
 
 pub mod health;
-pub mod inventory;
 pub mod incidents;
+pub mod inventory;
 pub mod settings;
 pub mod throttle;
 
@@ -16,7 +16,8 @@ use std::fmt;
 use std::time::Duration;
 
 use bb_collector::{
-    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, PowerSource, ProcessSource, TelemetrySource,
+    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, PowerSource, ProcessSource,
+    TelemetrySource,
 };
 use bb_core::{AuthError, EventKind, ExeName, GuardConfig, PrivacyGuard, ProcessRef, ReasonCode, RecorderState};
 use bb_recorder::{Recorder, RecorderError};
@@ -226,14 +227,7 @@ struct CrashState {
 const CRASH_OVERLAP_MS: i64 = 3_000;
 
 impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
-    pub fn new(
-        guard_cfg: GuardConfig,
-        metrics: MetricsConfig,
-        recorder: Recorder,
-        procs: P,
-        ctx: C,
-        ncpu: usize,
-    ) -> Self {
+    pub fn new(guard_cfg: GuardConfig, metrics: MetricsConfig, recorder: Recorder, procs: P, ctx: C, ncpu: usize) -> Self {
         Self {
             guard: PrivacyGuard::new(guard_cfg),
             recorder,
@@ -335,7 +329,11 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             } else if !enabled {
                 SourceState::Off
             } else if !allowed {
-                if self.guard.is_manually_paused() { SourceState::Paused } else { SourceState::Waiting }
+                if self.guard.is_manually_paused() {
+                    SourceState::Paused
+                } else {
+                    SourceState::Waiting
+                }
             } else if unavailable {
                 SourceState::Unavailable
             } else if !read_ok {
@@ -351,12 +349,33 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             .power_last
             .is_some_and(|p| p.ac == Some(bb_core::AcLine::Offline) && p.charge_percent.is_some_and(|c| c <= LOW_BATTERY_PCT));
         vec![
-            (HealthSourceId::EventLog, state(self.health.is_some(), self.settings.health_log_enabled, self.health_unavailable, self.health_read_ok, false)),
-            (HealthSourceId::Inventory, state(self.inventory.is_some(), self.settings.inventory_enabled, self.inventory_unavailable, self.inventory_read_ok, devices_with_problem)),
-            (HealthSourceId::Power, state(self.power.is_some(), self.settings.power_enabled, self.power_unavailable, self.power_read_ok, battery_low)),
+            (
+                HealthSourceId::EventLog,
+                state(self.health.is_some(), self.settings.health_log_enabled, self.health_unavailable, self.health_read_ok, false),
+            ),
+            (
+                HealthSourceId::Inventory,
+                state(
+                    self.inventory.is_some(),
+                    self.settings.inventory_enabled,
+                    self.inventory_unavailable,
+                    self.inventory_read_ok,
+                    devices_with_problem,
+                ),
+            ),
+            (
+                HealthSourceId::Power,
+                state(self.power.is_some(), self.settings.power_enabled, self.power_unavailable, self.power_read_ok, battery_low),
+            ),
             (
                 HealthSourceId::Telemetry,
-                state(self.telemetry.is_some(), self.settings.telemetry_enabled, self.telemetry_unavailable, self.telemetry_read_ok, self.throttle.sustained()),
+                state(
+                    self.telemetry.is_some(),
+                    self.settings.telemetry_enabled,
+                    self.telemetry_unavailable,
+                    self.telemetry_read_ok,
+                    self.throttle.sustained(),
+                ),
             ),
         ]
     }
@@ -396,21 +415,18 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         mono_ms: u64,
         utc_ms: i64,
     ) -> Result<(), EngineError> {
-        let name = ExeName::new(exe.trim().to_lowercase().as_str())
-            .map_err(|_| EngineError::Invalid("auth.bad_name".into()))?;
-        self.guard
-            .authorize(mono_ms, name, minutes.saturating_mul(60_000), allow_metrics, allow_crashes)
-            .map_err(|e| {
-                EngineError::Invalid(
-                    match e {
-                        AuthError::NotProtectedApp => "auth.not_protected",
-                        AuthError::ExcludedApp => "auth.excluded",
-                        AuthError::BadDuration => "auth.bad_duration",
-                        AuthError::NoSource => "auth.no_source",
-                    }
-                    .into(),
-                )
-            })?;
+        let name = ExeName::new(exe.trim().to_lowercase().as_str()).map_err(|_| EngineError::Invalid("auth.bad_name".into()))?;
+        self.guard.authorize(mono_ms, name, minutes.saturating_mul(60_000), allow_metrics, allow_crashes).map_err(|e| {
+            EngineError::Invalid(
+                match e {
+                    AuthError::NotProtectedApp => "auth.not_protected",
+                    AuthError::ExcludedApp => "auth.excluded",
+                    AuthError::BadDuration => "auth.bad_duration",
+                    AuthError::NoSource => "auth.no_source",
+                }
+                .into(),
+            )
+        })?;
         self.log_authorization_change(utc_ms, "added")
     }
 
@@ -503,13 +519,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
     /// Exporta um incidente para `out_dir` (criada se preciso), refiltrando pelas regras de
     /// privacidade de AGORA. O arquivo sai da cifra; o nome é gerado (id e horário), nunca
     /// derivado de dados do incidente. Devolve o caminho e quantos eventos a filtragem removeu.
-    pub fn export_incident(
-        &mut self,
-        id: i64,
-        out_dir: &std::path::Path,
-        mono_ms: u64,
-        utc_ms: i64,
-    ) -> Result<ExportResult, EngineError> {
+    pub fn export_incident(&mut self, id: i64, out_dir: &std::path::Path, mono_ms: u64, utc_ms: i64) -> Result<ExportResult, EngineError> {
         let doc = self.export_doc(id, mono_ms, utc_ms)?;
         std::fs::create_dir_all(out_dir).map_err(|_| EngineError::Invalid("export.folder".into()))?;
         let path = out_dir.join(format!("incident-{id}-{utc_ms}.json"));
@@ -1008,7 +1018,8 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         self.finalize_captures(utc_ms, false)?;
         // A saúde da máquina não depende do app em primeiro plano: segue mesmo com bloqueio de privacidade.
         // A pausa manual (e o modo restrito) a param no próprio Guard.
-        let health_persisted = self.health_tick(mono_ms, utc_ms)? + self.inventory_tick(mono_ms, utc_ms)?
+        let health_persisted = self.health_tick(mono_ms, utc_ms)?
+            + self.inventory_tick(mono_ms, utc_ms)?
             + self.power_tick(mono_ms, utc_ms)?
             + self.telemetry_tick(mono_ms, utc_ms)?;
         if !state.is_recording() {
@@ -1027,10 +1038,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         let samples = self.procs.processes()?;
         // A árvore de processos dos programas excluídos (com a opção dos filhos) vem do instantâneo completo, antes dos
         // eventos do ciclo: nada disto é gravado.
-        let refs: Vec<ProcessRef> = samples
-            .iter()
-            .map(|p| ProcessRef { key: p.key, exe: &p.exe_name, parent_pid: p.parent_pid })
-            .collect();
+        let refs: Vec<ProcessRef> = samples.iter().map(|p| ProcessRef { key: p.key, exe: &p.exe_name, parent_pid: p.parent_pid }).collect();
         self.guard.observe_processes(&refs);
         let mut kinds = self.differ.tick(&samples, mono_ms, silent_from);
         let sys = self.procs.system()?;

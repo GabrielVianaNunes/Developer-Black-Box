@@ -155,7 +155,7 @@ mod tests {
         assert!(!w.deactivate(), "second deactivate reports nothing active");
         assert_eq!(w.since(), None, "no polling while paused");
         w.activate(100_000); // retomada
-        // evento da pausa (50_000) pedido por uma fonte mal comportada: rejeitado; o novo (100_500), aceito
+                             // evento da pausa (50_000) pedido por uma fonte mal comportada: rejeitado; o novo (100_500), aceito
         let got = w.accept(vec![rec(50_000, 51, None), rec(100_500, 51, None)]);
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].ts_utc_ms, 100_500);
@@ -176,8 +176,8 @@ mod tests {
         assert_eq!(w.since(), Some(1_000));
         w.activate(500_000); // o usuário só retoma em 500_000
         let got = w.accept(vec![
-            rec(2_000, 6008, None),   // no atraso: aceito (o app estava fechado)
-            rec(300_000, 51, None),   // durante a pausa desta execução: rejeitado
+            rec(2_000, 6008, None),    // no atraso: aceito (o app estava fechado)
+            rec(300_000, 51, None),    // durante a pausa desta execução: rejeitado
             rec(500_001, 51, Some(2)), // depois de retomar: aceito
         ]);
         assert_eq!(got.iter().map(|r| r.ts_utc_ms).collect::<Vec<_>>(), vec![2_000, 500_001]);

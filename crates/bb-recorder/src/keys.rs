@@ -27,9 +27,7 @@ mod dpapi {
 
     use aes_gcm::aead::{rand_core::RngCore, OsRng};
     use windows::Win32::Foundation::{LocalFree, HLOCAL};
-    use windows::Win32::Security::Cryptography::{
-        CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-    };
+    use windows::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
 
     use super::KeyProvider;
     use crate::error::{RecorderError, Result};
@@ -89,8 +87,7 @@ mod dpapi {
         fn key(&self) -> Result<[u8; 32]> {
             if self.path.exists() {
                 let plain = unprotect(&std::fs::read(&self.path)?)?;
-                return <[u8; 32]>::try_from(plain.as_slice())
-                    .map_err(|_| RecorderError::KeyStore("unexpected key length".into()));
+                return <[u8; 32]>::try_from(plain.as_slice()).map_err(|_| RecorderError::KeyStore("unexpected key length".into()));
             }
             let mut key = [0u8; 32];
             OsRng.fill_bytes(&mut key);

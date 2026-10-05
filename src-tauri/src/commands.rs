@@ -387,17 +387,9 @@ pub fn list_authorizations(app: AppHandle) -> Result<Vec<AuthorizationDto>, Stri
 }
 
 #[tauri::command]
-pub fn authorize_app(
-    app: AppHandle,
-    exe: String,
-    minutes: u64,
-    allow_metrics: bool,
-    allow_crashes: bool,
-) -> Result<(), String> {
+pub fn authorize_app(app: AppHandle, exe: String, minutes: u64, allow_metrics: bool, allow_crashes: bool) -> Result<(), String> {
     let mono = app.state::<Arc<Runtime>>().mono_ms();
-    with_engine(&app, |e| {
-        e.authorize_app(&exe, minutes, allow_metrics, allow_crashes, mono, utc_ms()).map_err(engine_err)
-    })?;
+    with_engine(&app, |e| e.authorize_app(&exe, minutes, allow_metrics, allow_crashes, mono, utc_ms()).map_err(engine_err))?;
     refresh(&app);
     Ok(())
 }

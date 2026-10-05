@@ -14,11 +14,7 @@ fn keys() -> StaticKey {
 
 fn recording_guard() -> (PrivacyGuard, u64) {
     let mut g = PrivacyGuard::new(GuardConfig::default());
-    let obs = Observation {
-        detector_ok: true,
-        session_locked: false,
-        foreground: Some(ExeName::new("synth-editor.exe").unwrap()),
-    };
+    let obs = Observation { detector_ok: true, session_locked: false, foreground: Some(ExeName::new("synth-editor.exe").unwrap()) };
     g.observe(0, obs.clone());
     g.observe(6_000, obs);
     (g, 6_000)
@@ -30,11 +26,7 @@ fn events(n: usize) -> Vec<ValidatedEvent> {
     (0..n)
         .map(|i| {
             let key = ProcessKey { pid: i as u32 + 1, start_time_ms: 1 };
-            let kind = EventKind::ProcessStarted {
-                key,
-                exe_name: ExeName::new(MARKER).unwrap(),
-                parent_pid: 0,
-            };
+            let kind = EventKind::ProcessStarted { key, exe_name: ExeName::new(MARKER).unwrap(), parent_pid: 0 };
             g.admit(t, i as i64, kind).expect("guard admits synthetic event")
         })
         .collect()
@@ -279,20 +271,27 @@ fn windows_closure(pkg: &str) -> std::collections::BTreeSet<String> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let out = std::process::Command::new(cargo)
-        .args(["tree", "-p", pkg, "--target", "x86_64-pc-windows-msvc", "--prefix", "none", "-e", "normal,build", "--offline", "--manifest-path"])
+        .args([
+            "tree",
+            "-p",
+            pkg,
+            "--target",
+            "x86_64-pc-windows-msvc",
+            "--prefix",
+            "none",
+            "-e",
+            "normal,build",
+            "--offline",
+            "--manifest-path",
+        ])
         .arg(&manifest)
         .output()
         .expect("run cargo tree");
     assert!(out.status.success(), "cargo tree failed: {}", String::from_utf8_lossy(&out.stderr));
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|l| l.split_whitespace().next())
-        .map(str::to_owned)
-        .collect()
+    String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.split_whitespace().next()).map(str::to_owned).collect()
 }
 
-const HTTP_TLS_CLIENTS: [&str; 9] =
-    ["reqwest", "hyper", "ureq", "curl", "isahc", "surf", "native-tls", "openssl", "rustls"];
+const HTTP_TLS_CLIENTS: [&str; 9] = ["reqwest", "hyper", "ureq", "curl", "isahc", "surf", "native-tls", "openssl", "rustls"];
 const SOCKET_STACKS: [&str; 4] = ["tokio", "mio", "socket2", "h2"];
 
 // O núcleo não depende de nenhuma biblioteca de rede ou de sockets.
