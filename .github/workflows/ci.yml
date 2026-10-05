@@ -46,6 +46,12 @@ jobs:
       - name: JavaScript tests (i18n, versioning, signing, repository safety)
         run: npm test
 
+      - name: Interface tests (real browser, simulated backend)
+        # O Chrome já vem nos runners do Windows; sem ele, o teste falha em vez de ser pulado (BB_UI_REQUIRE).
+        run: npm run test:ui
+        env:
+          BB_UI_REQUIRE: "1"
+
       - name: Repository safety checks
         run: npm run check:repo
 

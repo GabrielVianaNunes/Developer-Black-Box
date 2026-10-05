@@ -548,7 +548,8 @@ mod tests {
     use std::fs;
 
     fn write(dir: &std::path::Path, rel: &str, bytes: &[u8]) {
-        let p = dir.join(rel);
+        // `\` separa as pastas nos nomes de teste; no Linux ela seria só uma letra do nome do arquivo.
+        let p = rel.split('\\').fold(dir.to_path_buf(), |acc, part| acc.join(part));
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, bytes).unwrap();
     }

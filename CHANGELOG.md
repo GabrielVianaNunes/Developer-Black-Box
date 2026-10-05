@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Tests
+- Interface tests in a real browser (`npm run build && npm run test:ui`, also in CI): the welcome guide (steps, skipping, Esc, keyboard focus kept
+  inside, the smaller buttons), the System health tab, the Privacy tab (switches, unsaved-changes bar, Apply and Discard) and the language switch,
+  against a simulated backend with made-up data only. Dev dependency added: `playwright-core` (it uses the Chrome already installed; nothing is
+  downloaded). (#108)
+- The two `apps::` tests that failed on Linux now pass (they built folder paths with `\`); the timing checks of the Windows program listing use
+  the fastest of three runs, so a load spike no longer fails them while a real slowdown still does. (#108)
+
 ### Added
 - Privacy tab: individual switches for the Windows health events, the machine inventory and the power and battery sources (all on by default),
   next to the existing one for the performance counters. Turning a source off stops it at once and what happened while it was off is never
