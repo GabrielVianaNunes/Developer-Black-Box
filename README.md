@@ -113,7 +113,11 @@ The first time you build the installer, Tauri downloads the NSIS tooling (from G
 cargo test --workspace   # all Rust tests, including tests/privacy/
 npm test                 # tests for the repository safety scripts
 npm run check:repo       # no sensitive files tracked + secret scanner
+npm run build && npm run test:ui   # interface tests in a real browser, with a simulated backend
 ```
+
+`test:ui` opens the built interface (`dist/`) in Chrome with a fake backend and only made-up data. Point `BB_UI_BROWSER` at a browser
+executable if Chrome is not installed; without any browser the tests are skipped, unless `BB_UI_REQUIRE=1` (set in CI) makes that a failure.
 
 The privacy tests use **synthetic data only** and cover, among other things: manual pause, resume that
 respects the Guard, excluded apps, temporary authorizations, encryption on disk, export with
@@ -435,7 +439,12 @@ A primeira vez que você gera o instalador, o Tauri baixa as ferramentas do NSIS
 cargo test --workspace   # todos os testes de Rust, incluindo tests/privacy/
 npm test                 # testes dos scripts de segurança do repositório
 npm run check:repo       # nenhum arquivo sensível rastreado + scanner de segredos
+npm run build && npm run test:ui   # testes da interface num navegador real, com backend simulado
 ```
+
+O `test:ui` abre a interface compilada (`dist/`) no Chrome com um backend de mentira e só dados inventados. Aponte `BB_UI_BROWSER` para o
+executável de um navegador se o Chrome não estiver instalado; sem nenhum navegador os testes são pulados, a menos que `BB_UI_REQUIRE=1`
+(definido no CI) torne isso uma falha.
 
 Os testes de privacidade usam **somente dados sintéticos** e cobrem, entre outros: pausa manual, retomada
 que respeita o Guard, apps excluídos, autorizações temporárias, cifra em disco, exportação com nova

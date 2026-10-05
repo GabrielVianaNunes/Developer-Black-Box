@@ -2,16 +2,28 @@
 #![cfg(windows)]
 
 use std::collections::HashSet;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bb_collector::apps::{list_candidates, MAX_CANDIDATES};
 use bb_core::ExeName;
 
+/// Roda `f` três vezes e devolve o resultado da última com a duração da MAIS RÁPIDA. Um pico de carga da máquina (CI, antivírus)
+/// atrasa uma execução e não pode derrubar o teste; uma lentidão de verdade atrasa as três.
+fn fastest_of_three<T>(mut f: impl FnMut() -> T) -> (Duration, T) {
+    let mut best = Duration::MAX;
+    let mut last = None;
+    for _ in 0..3 {
+        let started = Instant::now();
+        let out = f();
+        best = best.min(started.elapsed());
+        last = Some(out);
+    }
+    (best, last.expect("ran three times"))
+}
+
 #[test]
 fn the_list_is_fast_valid_unique_and_contains_the_running_test_process() {
-    let started = Instant::now();
-    let list = list_candidates();
-    let elapsed = started.elapsed();
+    let (elapsed, list) = fastest_of_three(list_candidates);
     println!("{} candidates in {elapsed:?}", list.len());
 
     assert!(elapsed.as_secs_f64() < 2.0, "listing must feel instant, took {elapsed:?}");
@@ -42,18 +54,15 @@ fn the_list_is_fast_valid_unique_and_contains_the_running_test_process() {
 #[test]
 fn a_second_listing_is_just_as_fast_and_has_the_same_installed_apps() {
     let a = list_candidates();
-    let started = Instant::now();
-    let b = list_candidates();
-    assert!(started.elapsed().as_secs_f64() < 2.0);
+    let (elapsed, b) = fastest_of_three(list_candidates);
+    assert!(elapsed.as_secs_f64() < 2.0, "second listing took {elapsed:?}");
     let installed = |l: &[bb_collector::apps::AppCandidate]| l.iter().filter(|c| c.installed).map(|c| c.exe.clone()).collect::<HashSet<_>>();
     assert_eq!(installed(&a), installed(&b), "the installed set is stable between calls");
 }
 
 #[test]
 fn the_start_menu_adds_real_programs_with_friendly_names_quickly() {
-    let started = Instant::now();
-    let found = bb_collector::apps::start_menu_programs();
-    let took = started.elapsed();
+    let (took, found) = fastest_of_three(bb_collector::apps::start_menu_programs);
     println!("{} start menu programs in {took:?}", found.len());
 
     assert!(took.as_secs_f64() < 2.0, "reading the shortcuts must feel instant, took {took:?}");
@@ -74,9 +83,7 @@ fn the_start_menu_adds_real_programs_with_friendly_names_quickly() {
 #[test]
 fn store_apps_are_listed_as_installed_with_valid_names_and_fast() {
     use bb_collector::apps::store_packages;
-    let started = Instant::now();
-    let store = store_packages();
-    let elapsed = started.elapsed();
+    let (elapsed, store) = fastest_of_three(store_packages);
     println!("{} store entries in {elapsed:?}", store.len());
     assert!(elapsed.as_secs_f64() < 2.0, "store listing must stay fast, took {elapsed:?}");
     for (exe, name) in &store {
