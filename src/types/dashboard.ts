@@ -144,6 +144,10 @@ export interface Settings {
   retentionMaxHours: number;
   /** Telemetria contínua de desempenho do sistema (contadores PDH). Volta intacta ao salvar. */
   telemetryEnabled: boolean;
+  /** Interruptores das fontes de saúde (log de eventos, inventário, energia). Voltam intactos ao salvar. */
+  healthLogEnabled: boolean;
+  inventoryEnabled: boolean;
+  powerEnabled: boolean;
 }
 
 export interface ExportResult {

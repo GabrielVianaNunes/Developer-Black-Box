@@ -184,8 +184,12 @@ test data.
   interval (up to 7 days) is read once at the next start, so an unexpected shutdown logged on the next boot is not lost.
 - **Performance counters** have their own switch: Privacy tab, **"Record system performance counters"** (on by default). Turning it off stops
   reading the counters at once; if the setting cannot be read back, they stay off.
-- The event log, inventory and power sources have **no separate switch**: pause recording to stop all of them, and use **Storage > Delete
-  activity** to remove what was recorded. While **test mode** (a temporary authorization for a browser) is collecting because the authorized program is in front,
+- The other three sources have their own switches too, in the Privacy tab (all on by default): **"Read Windows health events (shutdowns, blue
+  screens, hardware errors)"**, **"Record machine inventory changes (BIOS, Secure Boot, Windows build, drivers)"** and **"Record power and
+  battery status"**. Turning one off stops it at once and **what happened while it was off is never read afterwards**: the event log drops the
+  pending interval (even after a restart), the inventory forgets its last known values (so turning it on again starts a fresh baseline instead
+  of recording what changed meanwhile) and the power source records the state of that moment. Turning a switch off does not delete what was
+  already recorded: use **Storage > Delete activity** for that, and pause recording to stop all sources. While **test mode** (a temporary authorization for a browser) is collecting because the authorized program is in front,
   health collection waits too, because in that mode nothing outside the authorized program is collected; it resumes when you leave it.
 - Exporting an incident includes the health data of its window, checked again against today's rules (see [Export format](#export-format)).
 
@@ -497,8 +501,13 @@ dados de teste inventados.
   registrado no boot.
 - Os **contadores de desempenho** têm chave própria: aba Privacidade, **"Gravar contadores de desempenho do sistema"** (ligada por padrão).
   Desligar para a leitura dos contadores na hora; se a configuração não puder ser lida de volta, ficam desligados.
-- As fontes de log de eventos, inventário e energia **não têm chave separada**: pause a gravação para parar todas, e use **Armazenamento >
-  Excluir atividade** para apagar o que foi gravado. Enquanto o **modo de teste** (autorização temporária para um navegador) está coletando porque o programa autorizado está em primeiro
+- As outras três fontes também têm interruptor próprio na aba Privacidade (todos ligados por padrão): **"Ler eventos de saúde do Windows
+  (desligamentos, telas azuis, erros de hardware)"**, **"Registrar mudanças no inventário da máquina (BIOS, Secure Boot, build do Windows,
+  drivers)"** e **"Registrar energia e bateria"**. Desligar um para a fonte na hora e **o que aconteceu enquanto esteve desligado nunca é lido
+  depois**: o log de eventos descarta o intervalo pendente (mesmo após reiniciar), o inventário esquece os últimos valores conhecidos (ao ligar
+  de novo começa uma referência nova, em vez de gravar o que mudou nesse meio-tempo) e a energia grava o estado daquele momento. Desligar um
+  interruptor não apaga o que já foi gravado: use **Armazenamento > Excluir atividade** para isso, e pause a gravação para parar todas as
+  fontes. Enquanto o **modo de teste** (autorização temporária para um navegador) está coletando porque o programa autorizado está em primeiro
   plano, a coleta de saúde também espera, porque nesse modo nada fora do programa autorizado é coletado; ela volta quando você sai dele.
 - Exportar um incidente inclui os dados de saúde da janela dele, conferidos de novo contra as regras de agora (veja
   [Formato da exportação](#formato-da-exportação)).

@@ -92,6 +92,17 @@ test("the README names the telemetry switch exactly as the Privacy tab does", ()
   assert.ok(pt.includes(`"${label(i18n("src/i18n/pt-BR.ts"))}"`), "PT switch label");
 });
 
+test("the README names the switches of the other health sources exactly as the Privacy tab does", () => {
+  const flat = (s) => s.replace(/\s+/g, " ");
+  for (const [file, text] of [["src/i18n/en.ts", flat(en)], ["src/i18n/pt-BR.ts", flat(pt)]]) {
+    const src = readFileSync(root + file, "utf8");
+    for (const key of ["privacy.healthLog", "privacy.inventory", "privacy.power"]) {
+      const label = new RegExp(`"${key.replace(".", "\\.")}":\\s*"([^"]+)"`).exec(src)[1];
+      assert.ok(text.includes(`"${label}"`), `${file}: README lacks the switch "${label}"`);
+    }
+  }
+});
+
 test("the README says health data is recorded during a privacy block and that the manual pause always wins", () => {
   assert.match(en, /even while a privacy block is active/);
   assert.match(en, /manual pause always wins/);
