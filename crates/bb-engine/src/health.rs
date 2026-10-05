@@ -69,6 +69,15 @@ impl HealthWindow {
         self.open_from.take().is_some()
     }
 
+    /// A pessoa desligou a leitura: some o intervalo aberto E o atraso da execução anterior, para que ligar de novo
+    /// comece de agora e nunca leia o período desligado. Devolve se havia algo a descartar.
+    pub fn discard(&mut self) -> bool {
+        let was_open = self.deactivate();
+        let had_backlog = !self.backlog.is_empty();
+        self.backlog.clear();
+        was_open || had_backlog
+    }
+
     /// Menor instante a pedir ao Event Log (`None` = nada a ler).
     pub fn since(&self) -> Option<i64> {
         self.backlog.iter().map(|(from, _)| *from).chain(self.open_from).min()

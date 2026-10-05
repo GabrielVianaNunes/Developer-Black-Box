@@ -346,9 +346,9 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             .power_last
             .is_some_and(|p| p.ac == Some(bb_core::AcLine::Offline) && p.charge_percent.is_some_and(|c| c <= LOW_BATTERY_PCT));
         vec![
-            (HealthSourceId::EventLog, state(self.health.is_some(), true, self.health_unavailable, self.health_read_ok, false)),
-            (HealthSourceId::Inventory, state(self.inventory.is_some(), true, self.inventory_unavailable, self.inventory_read_ok, devices_with_problem)),
-            (HealthSourceId::Power, state(self.power.is_some(), true, self.power_unavailable, self.power_read_ok, battery_low)),
+            (HealthSourceId::EventLog, state(self.health.is_some(), self.settings.health_log_enabled, self.health_unavailable, self.health_read_ok, false)),
+            (HealthSourceId::Inventory, state(self.inventory.is_some(), self.settings.inventory_enabled, self.inventory_unavailable, self.inventory_read_ok, devices_with_problem)),
+            (HealthSourceId::Power, state(self.power.is_some(), self.settings.power_enabled, self.power_unavailable, self.power_read_ok, battery_low)),
             (
                 HealthSourceId::Telemetry,
                 state(self.telemetry.is_some(), self.settings.telemetry_enabled, self.telemetry_unavailable, self.telemetry_read_ok, self.throttle.sustained()),
@@ -802,6 +802,14 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         if self.power.is_none() {
             return Ok(0);
         }
+        if !self.settings.power_enabled {
+            // Desligada pela pessoa: nada é lido, e ao ligar de novo a primeira leitura é a de agora.
+            self.power_next_mono = None;
+            self.power_tracker.reset();
+            self.power_last = None;
+            self.power_read_ok = false;
+            return Ok(0);
+        }
         if !self.guard.health_allowed(mono_ms) {
             self.power_next_mono = None; // depois de uma pausa, a primeira leitura volta a ser gravada
             self.power_tracker.reset();
@@ -837,6 +845,19 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
     /// manual, encerramento e modo restrito param a leitura. Devolve quantos eventos foram gravados.
     fn inventory_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
         if self.inventory.is_none() {
+            return Ok(0);
+        }
+        if !self.settings.inventory_enabled {
+            // Desligado pela pessoa: nada é lido e a referência é esquecida, para que ligar de novo comece uma referência
+            // nova em vez de gravar como "mudança" o que aconteceu enquanto estava desligado.
+            self.inventory_next_mono = None;
+            self.inventory_read_ok = false;
+            if self.inventory_base != inventory::Baseline::default() {
+                self.inventory_base = inventory::Baseline::default();
+                if let Some(i) = self.incidents.as_ref() {
+                    let _ = i.store.set_setting(INVENTORY_KEY, ""); // melhor esforço
+                }
+            }
             return Ok(0);
         }
         if !self.guard.health_allowed(mono_ms) {
@@ -878,6 +899,15 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
     /// Lê e grava os eventos de saúde do ciclo. Devolve quantos foram gravados.
     fn health_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
         if self.health.is_none() {
+            return Ok(0);
+        }
+        if !self.settings.health_log_enabled {
+            // Desligado pela pessoa: também descarta o atraso da execução anterior, que não deve ser lido depois.
+            if self.health_win.discard() && !self.shutting_down {
+                self.save_health_marks(false, None);
+            }
+            self.health_last_poll_mono = None;
+            self.health_read_ok = false;
             return Ok(0);
         }
         if !self.guard.health_allowed(mono_ms) {

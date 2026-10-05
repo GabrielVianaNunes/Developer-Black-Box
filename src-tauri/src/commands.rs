@@ -247,6 +247,10 @@ pub struct SettingsDto {
     // Sem `default`, como os campos acima: um cliente que esqueça este campo é recusado em vez de ligar ou desligar a
     // telemetria em silêncio.
     telemetry_enabled: bool,
+    // Idem para os três interruptores das fontes de saúde: sem `default`, um cliente que os esqueça é recusado.
+    health_log_enabled: bool,
+    inventory_enabled: bool,
+    power_enabled: bool,
 }
 
 impl From<&Settings> for SettingsDto {
@@ -268,6 +272,9 @@ impl From<&Settings> for SettingsDto {
             retention_max_mb: s.retention_max_mb,
             retention_max_hours: s.retention_max_hours,
             telemetry_enabled: s.telemetry_enabled,
+            health_log_enabled: s.health_log_enabled,
+            inventory_enabled: s.inventory_enabled,
+            power_enabled: s.power_enabled,
         }
     }
 }
@@ -289,6 +296,9 @@ impl From<SettingsDto> for Settings {
             retention_max_mb: d.retention_max_mb,
             retention_max_hours: d.retention_max_hours,
             telemetry_enabled: d.telemetry_enabled,
+            health_log_enabled: d.health_log_enabled,
+            inventory_enabled: d.inventory_enabled,
+            power_enabled: d.power_enabled,
         }
     }
 }

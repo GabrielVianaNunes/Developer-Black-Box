@@ -1356,3 +1356,146 @@ fn with_the_manual_pause_on_no_health_source_is_even_read() {
     r.cycle();
     assert!(r.polls() > 0 && inv.lock().unwrap().reads > 0 && pw.lock().unwrap().reads > 0 && t.lock().unwrap().reads > 0);
 }
+
+// ---- Interruptores individuais das fontes (#105) -------------------------------------------------------------------
+
+fn set_switch(r: &mut Rig, f: impl FnOnce(&mut bb_engine::Settings)) {
+    let mut s = r.engine.settings().clone();
+    f(&mut s);
+    r.engine.apply_settings(s, r.utc()).unwrap();
+}
+
+#[test]
+fn the_three_source_switches_are_on_by_default() {
+    let s = bb_engine::Settings::default();
+    assert!(s.health_log_enabled && s.inventory_enabled && s.power_enabled);
+}
+
+#[test]
+fn the_event_log_switch_stops_reading_and_the_time_it_was_off_is_never_read() {
+    let mut r = rig();
+    r.until_recording();
+    r.cycle();
+    assert!(r.polls() > 0, "positive control: it reads while on");
+    set_switch(&mut r, |s| s.health_log_enabled = false);
+    let polls = r.polls();
+    r.push(rec(r.utc() + 10_000, HealthCategory::DiskError, 7, None)); // acontece com o interruptor desligado
+    r.cycle();
+    r.cycle();
+    assert_eq!(r.polls(), polls, "off means the log is not even queried");
+    assert_eq!(state_of(&r, HealthSourceId::EventLog), SourceState::Off);
+    set_switch(&mut r, |s| s.health_log_enabled = true);
+    r.cycle();
+    assert!(r.health_lines().is_empty(), "what happened while it was off is never read afterwards: {:?}", r.health_lines());
+    r.push(rec(r.utc() + 1_000, HealthCategory::DiskError, 7, None));
+    r.cycle();
+    assert_eq!(r.health_lines().len(), 1, "positive control: events after turning it on are recorded");
+    assert_eq!(state_of(&r, HealthSourceId::EventLog), SourceState::Ok);
+}
+
+#[test]
+fn a_restart_with_the_event_log_off_does_not_read_the_closed_interval_when_it_is_turned_on_later() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("meta.db");
+    let world: Shared = Arc::new(Mutex::new(World { foreground: Some("synth-editor.exe") }));
+    let feed: SharedFeed = Arc::default();
+    {
+        // execução 1: lendo, encerra normalmente (a marca d'água fica "lendo")
+        let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+        e.set_health_source(Box::new(FakeHealth(feed.clone())), ORIGIN);
+        let mut mono = 0u64;
+        for _ in 0..4 {
+            mono += STEP;
+            e.tick(mono, ORIGIN + mono as i64).unwrap();
+        }
+        e.shutdown().unwrap();
+    }
+    let restart = ORIGIN + 4 * STEP as i64 + 600_000;
+    feed.lock().unwrap().records.push(rec(ORIGIN + 4 * STEP as i64 + 30_000, HealthCategory::UnexpectedShutdown, 41, Some(0)));
+    let polls_before = feed.lock().unwrap().polls.len(); // da execução 1
+
+    // execução 2: o interruptor está desligado desde antes de abrir
+    let mut e = engine_on(&dir.path().join("rec"), &world, Some(Store::open(&db).unwrap()));
+    e.set_health_source(Box::new(FakeHealth(feed.clone())), restart);
+    let mut s = e.settings().clone();
+    s.health_log_enabled = false;
+    e.apply_settings(s.clone(), restart).unwrap();
+    let mut mono = 0u64;
+    for _ in 0..20 {
+        mono += STEP;
+        e.tick(mono, restart + mono as i64).unwrap();
+    }
+    assert_eq!(feed.lock().unwrap().polls.len(), polls_before, "off from the start: never queried");
+    s.health_log_enabled = true;
+    e.apply_settings(s, restart + mono as i64).unwrap();
+    for _ in 0..8 {
+        mono += STEP;
+        e.tick(mono, restart + mono as i64).unwrap();
+    }
+    e.recorder_mut().seal().unwrap();
+    let rec_ = e.recorder();
+    let lines: Vec<String> = rec_.list_segments().unwrap().iter().flat_map(|s| rec_.read_segment(s.index).unwrap()).collect();
+    assert!(!lines.iter().any(|l| l.contains("UnexpectedShutdown")), "the closed interval was dropped when it was switched off");
+    assert!(feed.lock().unwrap().polls.len() > polls_before, "positive control: it reads again after being turned on");
+}
+
+#[test]
+fn the_inventory_switch_stops_reading_and_starting_again_is_a_fresh_baseline_not_a_change() {
+    let (mut r, inv) = inv_rig();
+    r.until_recording();
+    inventory_interval(&mut r);
+    let reads = inv.lock().unwrap().reads;
+    assert!(reads > 0, "positive control");
+    set_switch(&mut r, |s| s.inventory_enabled = false);
+    inv.lock().unwrap().snap = vec![(InventoryItem::OsBuild, Some(101)), (InventoryItem::SecureBoot, Some(1))];
+    inventory_interval(&mut r);
+    inventory_interval(&mut r);
+    assert_eq!(inv.lock().unwrap().reads, reads, "off means the inventory is not even read");
+    assert_eq!(state_of(&r, HealthSourceId::Inventory), SourceState::Off);
+    set_switch(&mut r, |s| s.inventory_enabled = true);
+    inventory_interval(&mut r);
+    assert!(inventory_lines(&mut r).is_empty(), "what changed while it was off is not recorded as a change");
+    inv.lock().unwrap().snap = vec![(InventoryItem::OsBuild, Some(102)), (InventoryItem::SecureBoot, Some(1))];
+    inventory_interval(&mut r);
+    let lines = inventory_lines(&mut r);
+    assert_eq!(lines.len(), 1, "positive control: a change after turning it on is recorded: {lines:?}");
+    assert!(lines[0].contains("101") && lines[0].contains("102"));
+}
+
+#[test]
+fn the_power_switch_stops_reading_and_the_first_reading_after_turning_it_on_is_recorded_again() {
+    let (mut r, p) = power_rig(battery(AcLine::Offline, 80));
+    r.until_recording();
+    power_interval(&mut r);
+    assert_eq!(power_lines(&mut r).len(), 1, "positive control: first reading recorded, no change since");
+    set_switch(&mut r, |s| s.power_enabled = false);
+    let reads = p.lock().unwrap().reads;
+    power_interval(&mut r);
+    power_interval(&mut r);
+    assert_eq!(p.lock().unwrap().reads, reads, "off means the battery is not even read");
+    assert_eq!(state_of(&r, HealthSourceId::Power), SourceState::Off);
+    assert_eq!(power_lines(&mut r).len(), 1, "nothing new while off");
+    set_switch(&mut r, |s| s.power_enabled = true);
+    power_interval(&mut r);
+    let lines = power_lines(&mut r);
+    assert_eq!(lines.len(), 2, "the state of NOW is recorded again even though it did not change: {lines:?}");
+}
+
+#[test]
+fn each_switch_turns_off_only_its_own_source() {
+    let (mut r, t) = tel_rig();
+    let inv: SharedInv = Arc::new(Mutex::new(Inv { snap: vec![(InventoryItem::OsBuild, Some(1))], ..Inv::default() }));
+    let pw: SharedPwr = Arc::new(Mutex::new(Pwr { reading: battery(AcLine::Online, 50), ..Pwr::default() }));
+    r.engine.set_inventory_source(Box::new(FakeInv(inv.clone())));
+    r.engine.set_power_source(Box::new(FakePower(pw.clone())));
+    r.until_recording();
+    set_switch(&mut r, |s| s.inventory_enabled = false);
+    for id in [HealthSourceId::EventLog, HealthSourceId::Power, HealthSourceId::Telemetry] {
+        assert_ne!(state_of(&r, id), SourceState::Off, "{id:?} stays on");
+    }
+    assert_eq!(state_of(&r, HealthSourceId::Inventory), SourceState::Off);
+    let (reads, tel_reads) = (pw.lock().unwrap().reads, t.lock().unwrap().reads);
+    power_interval(&mut r);
+    assert!(pw.lock().unwrap().reads > reads, "power is still read");
+    assert!(t.lock().unwrap().reads > tel_reads, "counters are still read");
+}

@@ -158,6 +158,15 @@ export const en = {
   "privacy.telemetry": "Record system performance counters (about every 30 s)",
   "privacy.telemetryHelp":
     "On by default. Takes about one sample every 30 seconds of system-wide numbers: temperature and thermal limit, CPU, memory, disk, network errors (a single total) and GPU usage. Never anything per program, per user or per connection, and no adapter names. It follows the pause and the privacy rules, and turning it off stops it at once.",
+  "privacy.healthLog": "Read Windows health events (shutdowns, blue screens, hardware errors)",
+  "privacy.healthLogHelp":
+    "On by default. Reads a fixed list of event numbers from the Windows System log, never their texts. Turning it off stops it at once, and the time it was off is never read afterwards, not even after a restart.",
+  "privacy.inventory": "Record machine inventory changes (BIOS, Secure Boot, Windows build, drivers)",
+  "privacy.inventoryHelp":
+    "On by default. Only numbers, never serial numbers or names. Turning it off stops it and forgets the last known values, so turning it on again starts fresh instead of recording what changed meanwhile.",
+  "privacy.power": "Record power and battery status",
+  "privacy.powerHelp":
+    "On by default. Only whether the charger is plugged in and the charge percentage. Turning it off stops it at once.",
   "privacy.autoStartHelp":
     "Off by default: without it the app opens paused and only records after you click \"Resume recording\".",
   "privacy.apply": "Apply",
@@ -431,6 +440,9 @@ export const en = {
   "configKey.stability_window_ms": "Stability window",
   "configKey.auto_start": "Auto-start recording",
   "configKey.telemetry_enabled": "System performance counters",
+  "configKey.health_log_enabled": "Windows health events",
+  "configKey.inventory_enabled": "Machine inventory",
+  "configKey.power_enabled": "Power and battery",
   "configKey.retention_max_mb": "Storage limit",
   "configKey.retention_max_hours": "Retention",
   "configKey.authorizations": "Test authorizations",
@@ -482,6 +494,8 @@ export const en = {
   "guide.news.health.b1": "A new System health tab shows what the app reads about your machine itself: unexpected shutdowns, blue screens, hardware errors, power and battery, BIOS and Windows changes, and a sample of temperature, CPU, memory, disk and GPU about every 30 seconds. A source your machine does not offer is shown as unavailable, never as an alarm.",
   "guide.news.health.b2": "A blue screen, an unexpected shutdown, a hardware error or sustained thermal throttling now opens an incident on its own, with the evidence from before and after. Only numbers and codes are stored, never message texts, serial numbers or names. The performance counters are on by default and you can turn them off in the Privacy tab; the pause always wins.",
   "guide.news.clarity.b2": "The Overview now shows the rules in effect and how many times each exclusion left something out. It is only a count, kept in memory.",
+  "guide.news.switches.title": "A switch for each health source",
+  "guide.news.switches.b1": "The Privacy tab now has a switch for Windows health events, one for machine inventory and one for power and battery, next to the performance counters. Turning one off stops it at once, and what happened while it was off is never read afterwards.",
   "guide.news.picker.title": "Pick programs instead of typing",
   "guide.news.picker.b1": "When you exclude a program, search for it by name, choose it from the list, or browse for its file. The list also reads your Start Menu shortcuts, so many more programs show up, with the names you know.",
   "guide.news.picker.b2": "The list is built on your PC when you open it. Nothing from it is stored or sent anywhere.",

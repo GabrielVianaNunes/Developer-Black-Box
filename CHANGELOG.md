@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- Privacy tab: individual switches for the Windows health events, the machine inventory and the power and battery sources (all on by default),
+  next to the existing one for the performance counters. Turning a source off stops it at once and what happened while it was off is never
+  read afterwards: the event log drops its pending interval (even across a restart), the inventory forgets its last known values so turning
+  it on again starts a fresh baseline instead of recording what changed meanwhile, and the power source records the state of that moment.
+  A setting that cannot be read back counts as off. The System health tab shows a switched-off source as "off". (#105)
+
 ### Changed
 - The welcome guide is shorter: the first-run tour went from 8 steps to 6 (the "starts paused" step now sits with the recording light, and
   "language and updates" and "you are ready" became one closing step) and each step is one or two paragraphs, keeping the same facts. The

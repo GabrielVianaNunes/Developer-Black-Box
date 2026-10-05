@@ -161,6 +161,15 @@ export const ptBR: Record<keyof typeof en, string> = {
   "privacy.telemetry": "Gravar contadores de desempenho do sistema (a cada ~30 s)",
   "privacy.telemetryHelp":
     "Ligada por padrão. Faz cerca de uma amostra a cada 30 segundos de números do sistema inteiro: temperatura e limite térmico, CPU, memória, disco, erros de rede (um total só) e uso da GPU. Nunca nada por programa, por usuário ou por conexão, e sem nomes de adaptadores. Respeita a pausa e as regras de privacidade, e desligar para na hora.",
+  "privacy.healthLog": "Ler eventos de saúde do Windows (desligamentos, telas azuis, erros de hardware)",
+  "privacy.healthLogHelp":
+    "Vem ligado. Lê uma lista fixa de números de eventos do log System do Windows, nunca os textos. Ao desligar, para na hora, e o tempo em que ficou desligado nunca é lido depois, nem após reiniciar.",
+  "privacy.inventory": "Registrar mudanças no inventário da máquina (BIOS, Secure Boot, build do Windows, drivers)",
+  "privacy.inventoryHelp":
+    "Vem ligado. Só números, nunca números de série ou nomes. Ao desligar, para e esquece os últimos valores conhecidos; ao ligar de novo, começa do zero em vez de gravar o que mudou nesse meio-tempo.",
+  "privacy.power": "Registrar energia e bateria",
+  "privacy.powerHelp":
+    "Vem ligado. Só se o carregador está ligado e a porcentagem de carga. Ao desligar, para na hora.",
   "privacy.autoStartHelp":
     "Desligado por padrão: sem isso, o app abre pausado e só grava depois que você clicar em \"Retomar gravação\".",
   "privacy.apply": "Aplicar",
@@ -435,6 +444,9 @@ export const ptBR: Record<keyof typeof en, string> = {
   "configKey.stability_window_ms": "Janela de estabilidade",
   "configKey.auto_start": "Início automático da gravação",
   "configKey.telemetry_enabled": "Contadores de desempenho do sistema",
+  "configKey.health_log_enabled": "Eventos de saúde do Windows",
+  "configKey.inventory_enabled": "Inventário da máquina",
+  "configKey.power_enabled": "Energia e bateria",
   "configKey.retention_max_mb": "Limite de armazenamento",
   "configKey.retention_max_hours": "Retenção",
   "configKey.authorizations": "Autorizações de teste",
@@ -486,6 +498,8 @@ export const ptBR: Record<keyof typeof en, string> = {
   "guide.news.health.b1": "Uma nova aba Saúde do sistema mostra o que o app lê sobre a própria máquina: desligamentos inesperados, telas azuis, erros de hardware, energia e bateria, mudanças de BIOS e do Windows, e uma amostra de temperatura, CPU, memória, disco e GPU a cada 30 segundos. Uma fonte que a sua máquina não oferece aparece como indisponível, nunca como alarme.",
   "guide.news.health.b2": "Uma tela azul, um desligamento inesperado, um erro de hardware ou uma redução de desempenho por calor prolongada agora abre um incidente sozinha, com as evidências de antes e depois. Só números e códigos são gravados, nunca textos de mensagens, números de série ou nomes. Os contadores de desempenho vêm ligados e você pode desligá-los na aba Privacidade; a pausa sempre vence.",
   "guide.news.clarity.b2": "A Visão Geral agora mostra as regras em vigor e quantas vezes cada exclusão deixou algo de fora. É só uma contagem, guardada na memória.",
+  "guide.news.switches.title": "Um interruptor para cada fonte de saúde",
+  "guide.news.switches.b1": "A aba Privacidade agora tem um interruptor para os eventos de saúde do Windows, um para o inventário da máquina e um para energia e bateria, ao lado dos contadores de desempenho. Desligar um para a fonte na hora, e o que aconteceu enquanto esteve desligado nunca é lido depois.",
   "guide.news.picker.title": "Escolha programas em vez de digitar",
   "guide.news.picker.b1": "Ao excluir um programa, procure pelo nome, escolha na lista ou procure o arquivo dele. A lista também lê os atalhos do Menu Iniciar, então aparecem muito mais programas, com os nomes que você conhece.",
   "guide.news.picker.b2": "A lista é montada no seu PC quando você a abre. Nada dela é guardado nem enviado a lugar nenhum.",

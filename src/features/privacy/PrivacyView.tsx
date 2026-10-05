@@ -12,6 +12,13 @@ import { NewsCard } from "./NewsCard";
 import { isKnownHost } from "./rulesSummary.ts";
 import { UpdatesCard } from "./UpdatesCard";
 
+/** Interruptores das fontes de saúde; os contadores de desempenho têm o seu logo acima. */
+const HEALTH_SWITCHES = [
+  { field: "healthLogEnabled", label: "privacy.healthLog", help: "privacy.healthLogHelp" },
+  { field: "inventoryEnabled", label: "privacy.inventory", help: "privacy.inventoryHelp" },
+  { field: "powerEnabled", label: "privacy.power", help: "privacy.powerHelp" },
+] as const;
+
 export function PrivacyView({ status, onShowNews, privacy }: { status: Status; onShowNews: () => void; privacy: PrivacyDraft }) {
   const { t, f, label } = useI18n();
   const { saved, draft, setDraft, msg, dirty, apply, discard } = privacy;
@@ -69,6 +76,19 @@ export function PrivacyView({ status, onShowNews, privacy }: { status: Status; o
           {t("privacy.telemetry")}
         </label>
         <p className="muted small">{t("privacy.telemetryHelp")}</p>
+        {HEALTH_SWITCHES.map((sw) => (
+          <div key={sw.field}>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft[sw.field]}
+                onChange={(e) => setDraft({ ...draft, [sw.field]: e.target.checked })}
+              />
+              {t(sw.label)}
+            </label>
+            <p className="muted small">{t(sw.help)}</p>
+          </div>
+        ))}
         <div className="row">
           <button className="primary" disabled={!dirty} onClick={() => void apply()}>{t("privacy.apply")}</button>
           <button disabled={!dirty} onClick={discard}>{t("privacy.discard")}</button>
