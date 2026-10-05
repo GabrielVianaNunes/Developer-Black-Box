@@ -168,6 +168,8 @@ pub struct Engine<P: ProcessSource, C: ContextSource> {
     shutting_down: bool,
     inventory: Option<Box<dyn InventorySource + Send>>,
     inventory_base: inventory::Baseline,
+    /// Tipos de incidente automático à espera de aviso ao usuário (hora UTC de abertura). Só o tipo, nada mais.
+    notices: Vec<(IncidentKind, i64)>,
     /// Próxima leitura do inventário (relógio monotônico). `None` = ler assim que a saúde puder ser lida.
     inventory_next_mono: Option<u64>,
     inventory_unavailable: bool,
@@ -196,6 +198,8 @@ pub struct Engine<P: ProcessSource, C: ContextSource> {
 const HEALTH_CURSOR_KEY: &str = "health.cursor";
 const HEALTH_ACTIVE_KEY: &str = "health.active";
 /// Referência do inventário (números por item, cifrada no armazenamento).
+/// Um aviso que esperou mais que isto (por exemplo, durante um bloqueio de privacidade) já não serve e é descartado.
+const NOTICE_MAX_AGE_MS: i64 = 30 * 60_000;
 const INVENTORY_KEY: &str = "health.inventory";
 /// Intervalo entre leituras do inventário (relógio monotônico): detecta, por exemplo, um dispositivo que passou a falhar.
 const INVENTORY_INTERVAL_MS: u64 = 10 * 60_000;
@@ -252,6 +256,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             shutting_down: false,
             inventory: None,
             inventory_base: inventory::Baseline::default(),
+            notices: Vec::new(),
             inventory_next_mono: None,
             inventory_unavailable: false,
             power: None,
@@ -573,6 +578,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             summary,
             post_until_utc_ms: utc_ms + cfg.post_window_ms,
         })?;
+        self.queue_notice(kind, utc_ms);
         // Preserva já a janela anterior, para a retenção não removê-la antes do fim da captura.
         self.recorder.seal()?;
         let segs = self.recorder.segments_overlapping(utc_ms - cfg.pre_window_ms, utc_ms)?;
@@ -583,6 +589,30 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             inc.store.set_segments(id, &segs)?;
         }
         Ok(id)
+    }
+
+    /// Guarda o tipo de um incidente automático para o aviso ao usuário, se ele ligou o aviso. A captura manual não avisa
+    /// (foi a própria pessoa que pediu) e um tipo já à espera não se repete.
+    fn queue_notice(&mut self, kind: IncidentKind, utc_ms: i64) {
+        if !self.settings.notify_incidents || kind == IncidentKind::Manual || self.notices.iter().any(|(k, _)| *k == kind) {
+            return;
+        }
+        self.notices.push((kind, utc_ms));
+    }
+
+    /// Tipos de incidente a avisar AGORA, uma vez cada. Só avisa quando a gravação está de fato ativa: durante um bloqueio
+    /// de privacidade (um navegador ou gerenciador de senhas na frente) o aviso espera, para não aparecer por cima dele;
+    /// pausa manual ou aviso desligado descartam o que estava na fila; o que esperou mais de `NOTICE_MAX_AGE_MS` também.
+    pub fn take_incident_notices(&mut self, mono_ms: u64, utc_ms: i64) -> Vec<IncidentKind> {
+        if !self.settings.notify_incidents || self.guard.is_manually_paused() {
+            self.notices.clear();
+            return Vec::new();
+        }
+        self.notices.retain(|(_, at)| utc_ms.saturating_sub(*at) <= NOTICE_MAX_AGE_MS);
+        if self.state(mono_ms).0 != RecorderState::Recording {
+            return Vec::new();
+        }
+        std::mem::take(&mut self.notices).into_iter().map(|(k, _)| k).collect()
     }
 
     /// Conclui capturas cuja janela posterior venceu (ou todas, se `force`).

@@ -1499,3 +1499,118 @@ fn each_switch_turns_off_only_its_own_source() {
     assert!(pw.lock().unwrap().reads > reads, "power is still read");
     assert!(t.lock().unwrap().reads > tel_reads, "counters are still read");
 }
+
+// ---- Aviso quando um incidente abre sozinho (#106) -----------------------------------------------------------------
+
+fn notices(r: &mut Rig) -> Vec<IncidentKind> {
+    r.engine.take_incident_notices(r.mono, r.utc())
+}
+
+/// Motor gravando, aviso ligado, e uma tela azul já registrada (incidente aberto, aviso ainda não retirado).
+fn notice_rig() -> Rig {
+    let mut r = rig();
+    set_switch(&mut r, |s| s.notify_incidents = true);
+    r.until_recording();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    r.cycle();
+    assert_eq!(incidents(&r).len(), 1, "setup: the incident really opened");
+    r
+}
+
+#[test]
+fn the_notice_is_off_by_default_even_though_the_incident_opens() {
+    let mut r = rig();
+    assert!(!r.engine.settings().notify_incidents);
+    r.until_recording();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    r.cycle();
+    assert_eq!(incidents(&r).len(), 1, "positive control: the incident exists");
+    assert!(notices(&mut r).is_empty(), "nobody asked for a notice");
+}
+
+#[test]
+fn an_automatic_incident_is_announced_once_by_its_type_only() {
+    let mut r = notice_rig();
+    assert_eq!(notices(&mut r), vec![IncidentKind::BlueScreen]);
+    assert!(notices(&mut r).is_empty(), "once");
+}
+
+#[test]
+fn a_manual_capture_never_notifies() {
+    let mut r = rig();
+    set_switch(&mut r, |s| s.notify_incidents = true);
+    r.until_recording();
+    r.engine.capture_manual(r.utc()).unwrap();
+    assert_eq!(incidents(&r).len(), 1, "positive control");
+    assert!(notices(&mut r).is_empty(), "the person asked for it themselves");
+}
+
+#[test]
+fn the_notice_waits_while_a_privacy_block_is_active_and_comes_after() {
+    let mut r = rig();
+    set_switch(&mut r, |s| s.notify_incidents = true);
+    r.until_recording();
+    r.world.lock().unwrap().foreground = Some("chrome.exe");
+    let (state, _) = r.cycle();
+    assert_eq!(state, RecorderState::PrivacyBlocked, "setup: really blocked");
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    r.cycle();
+    assert_eq!(incidents(&r).len(), 1, "setup: health incidents open despite the block");
+    assert!(notices(&mut r).is_empty(), "nothing pops up over a browser or password manager");
+    r.world.lock().unwrap().foreground = Some("synth-editor.exe");
+    r.cycle();
+    r.cycle();
+    assert_eq!(notices(&mut r), vec![IncidentKind::BlueScreen], "it comes once the block is gone");
+}
+
+#[test]
+fn the_manual_pause_and_turning_the_notice_off_discard_what_was_waiting() {
+    let mut r = notice_rig();
+    r.engine.pause();
+    assert!(notices(&mut r).is_empty(), "paused: no notice");
+    r.engine.resume(r.mono);
+    r.cycle();
+    assert!(notices(&mut r).is_empty(), "and it was discarded, not saved for later");
+
+    let mut r = notice_rig();
+    set_switch(&mut r, |s| s.notify_incidents = false);
+    assert!(notices(&mut r).is_empty(), "switched off: the queue is dropped");
+    set_switch(&mut r, |s| s.notify_incidents = true);
+    r.cycle();
+    assert!(notices(&mut r).is_empty(), "and turning it on again does not bring it back");
+}
+
+#[test]
+fn an_old_notice_is_dropped() {
+    let mut fresh = notice_rig();
+    assert_eq!(fresh.engine.take_incident_notices(fresh.mono, fresh.utc() + 29 * 60_000), vec![IncidentKind::BlueScreen], "positive control");
+    let mut old = notice_rig();
+    assert!(old.engine.take_incident_notices(old.mono, old.utc() + 31 * 60_000).is_empty(), "it no longer says anything useful");
+}
+
+#[test]
+fn an_incident_that_opened_while_the_notice_was_off_is_not_announced_when_it_is_turned_on() {
+    let mut r = rig();
+    r.until_recording();
+    let ts = r.utc() + 5;
+    r.push(rec(ts, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    r.cycle();
+    assert_eq!(incidents(&r).len(), 1, "setup: the incident opened with the notice off");
+    set_switch(&mut r, |s| s.notify_incidents = true);
+    r.cycle(); // aplicar a configuração reinicia a estabilidade do Guard: espera voltar a gravar
+    assert_eq!(r.engine.state(r.mono).0, RecorderState::Recording, "setup: recording again, so only the queue can matter");
+    assert!(notices(&mut r).is_empty(), "what happened before the switch was on is not announced afterwards");
+}
+
+#[test]
+fn the_same_type_waiting_twice_is_announced_once() {
+    let mut r = notice_rig();
+    let later = r.utc() + 6 * 60_000; // depois do intervalo mínimo entre incidentes do mesmo tipo
+    r.push(rec(later, HealthCategory::BugCheck, 1001, Some(0xd1)));
+    r.cycle();
+    assert_eq!(incidents(&r).len(), 2, "setup: two blue screens opened two incidents");
+    assert_eq!(notices(&mut r), vec![IncidentKind::BlueScreen], "one notice for the type, not one per incident");
+}

@@ -12,11 +12,12 @@ import { NewsCard } from "./NewsCard";
 import { isKnownHost } from "./rulesSummary.ts";
 import { UpdatesCard } from "./UpdatesCard";
 
-/** Interruptores das fontes de saúde; os contadores de desempenho têm o seu logo acima. */
+/** Interruptores de saúde e de aviso; os contadores de desempenho têm o seu logo acima. */
 const HEALTH_SWITCHES = [
   { field: "healthLogEnabled", label: "privacy.healthLog", help: "privacy.healthLogHelp" },
   { field: "inventoryEnabled", label: "privacy.inventory", help: "privacy.inventoryHelp" },
   { field: "powerEnabled", label: "privacy.power", help: "privacy.powerHelp" },
+  { field: "notifyIncidents", label: "privacy.notify", help: "privacy.notifyHelp" },
 ] as const;
 
 export function PrivacyView({ status, onShowNews, privacy }: { status: Status; onShowNews: () => void; privacy: PrivacyDraft }) {

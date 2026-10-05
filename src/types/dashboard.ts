@@ -148,6 +148,8 @@ export interface Settings {
   healthLogEnabled: boolean;
   inventoryEnabled: boolean;
   powerEnabled: boolean;
+  /** Aviso do sistema quando um incidente abre sozinho (só o tipo). Volta intacto ao salvar. */
+  notifyIncidents: boolean;
 }
 
 export interface ExportResult {
