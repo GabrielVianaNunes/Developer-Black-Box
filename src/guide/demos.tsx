@@ -51,20 +51,6 @@ function LightStates() {
   );
 }
 
-function PausedBar() {
-  const { t } = useI18n();
-  return (
-    <DemoFrame label={t("guide.tour.paused.title")}>
-      <div className="demo-bar">
-        <Light color="red" />
-        <span className="demo-grow">{t("guide.demo.pausedManually")}</span>
-        <button className="primary" disabled>{t("app.pause")}</button>
-        <button className="primary demo-focus" disabled>{t("app.resume")}</button>
-      </div>
-    </DemoFrame>
-  );
-}
-
 function PrivacyList() {
   const { t } = useI18n();
   return (
@@ -163,7 +149,6 @@ export const DEMOS: Record<DemoId, () => ReactNode> = {
   welcome: Welcome,
   picker: PickerDemo,
   light: LightStates,
-  paused: PausedBar,
   privacy: PrivacyList,
   incidents: IncidentRow,
   rules: RuleRow,

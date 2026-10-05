@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- The welcome guide is shorter: the first-run tour went from 8 steps to 6 (the "starts paused" step now sits with the recording light, and
+  "language and updates" and "you are ready" became one closing step) and each step is one or two paragraphs, keeping the same facts. The
+  "What's new" text of 0.5.0 went from three paragraphs to two.
+- The buttons of the welcome guide and of the "What's new" window (Skip, Back, Next) are smaller and lighter. The rest of the app keeps its buttons.
+
 ## [0.5.0] - 2026-10-03
 
 ### Changed

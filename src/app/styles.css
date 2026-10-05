@@ -147,7 +147,10 @@ tr.before td { color: var(--muted); }
 .guide { width: min(640px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; margin: 0; }
 .guide h2 { margin-top: 4px; }
 .guide-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.guide-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.guide-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+/* Botões do guia mais discretos que os do resto do app: o guia é uma conversa, não um formulário. */
+.guide-actions button { padding: 4px 12px; font-size: 13px; border-radius: 6px; }
+.guide-actions button.primary { padding: 4px 14px; font-weight: 500; }
 .guide-dots { display: flex; justify-content: center; gap: 6px; margin-top: 12px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
 .dot.on { background: var(--accent); }
