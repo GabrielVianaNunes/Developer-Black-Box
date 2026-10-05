@@ -16,6 +16,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   fixed text, never a program name or recorded data. It is not shown for the manual capture, waits while a browser or password manager is in
   front, is dropped on a manual pause, when the switch is turned off or after 30 minutes, and clicking it does not open the app. New
   dependency in the app: `tauri-plugin-notification` (no network library). (#106)
+- Incident detail: **Copy summary**, a short text for a bug report (type, time, app version, Windows build, the nearest machine health events and
+  the last performance sample before the incident). It is built from the same export document, with today's privacy rules applied again, never
+  from the recorded data directly: no notes, no user or computer names, no paths or message texts, and the program name only if the export
+  would include it. The text is copied and also shown, read-only, for you to check; nothing is written to disk or sent. (#107)
 
 ### Changed
 - The welcome guide is shorter: the first-run tour went from 8 steps to 6 (the "starts paused" step now sits with the recording light, and

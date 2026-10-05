@@ -6,6 +6,9 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+mod summary;
+pub use summary::{bug_report_summary, SummaryLang};
+
 use bb_recorder::Recorder;
 use bb_store::{Incident, Store};
 use serde::Serialize;

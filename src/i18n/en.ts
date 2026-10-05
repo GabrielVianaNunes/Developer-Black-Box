@@ -118,6 +118,12 @@ export const en = {
   "incidents.exportHelp":
     "Today's privacy rules are applied again: applications excluded or protected after recording are removed from the file, and events of unknown origin are dropped. Notes are not exported. The file also carries the machine health around the incident (numbers and fixed codes only), checked again against today's rules; performance samples are left out if the counters are off now. The exported file is not encrypted.",
   "incidents.exportButton": "Export incident",
+  "incidents.summaryTitle": "Summary for a bug report",
+  "incidents.summaryHelp":
+    "Builds a short text from this incident's export (with today's privacy rules applied again): type, time, app and Windows versions, nearby machine health events and the last performance sample. It never has your notes, user or computer names, paths or message texts. It is copied to the clipboard and shown below so you can check it: whatever you paste it into, it leaves this app.",
+  "incidents.summaryButton": "Copy summary",
+  "incidents.summaryCopied": "Summary copied. Check the text below before pasting it.",
+  "incidents.summaryNotCopied": "Could not copy automatically. Select the text below and copy it yourself.",
   "incidents.exported": "Exported to {path} ({events} events; {dropped} removed by filtering).",
   "incidents.delete": "Delete incident",
   "incidents.confirmDelete": "Delete this incident and its notes? The evidence will no longer be preserved.",
@@ -500,6 +506,8 @@ export const en = {
   "guide.news.clarity.b2": "The Overview now shows the rules in effect and how many times each exclusion left something out. It is only a count, kept in memory.",
   "guide.news.switches.title": "A switch for each health source",
   "guide.news.switches.b1": "The Privacy tab now has a switch for Windows health events, one for machine inventory and one for power and battery, next to the performance counters. Turning one off stops it at once, and what happened while it was off is never read afterwards. There is also an optional notification, off by default, that says only the type of an incident that opened by itself.",
+  "guide.news.summary.title": "A summary to report a bug",
+  "guide.news.summary.b1": "Each incident now has a Copy summary button: a short text with the type, time, versions, nearby machine health events and the last performance sample, ready to paste in a bug report. It is built from the export, so your notes, names and paths are never in it, and you see the text before pasting it.",
   "guide.news.picker.title": "Pick programs instead of typing",
   "guide.news.picker.b1": "When you exclude a program, search for it by name, choose it from the list, or browse for its file. The list also reads your Start Menu shortcuts, so many more programs show up, with the names you know.",
   "guide.news.picker.b2": "The list is built on your PC when you open it. Nothing from it is stored or sent anywhere.",

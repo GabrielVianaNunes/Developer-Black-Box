@@ -996,3 +996,65 @@ fn an_export_reapplies_the_exclusion_of_a_whole_process_tree() {
     assert!(res.dropped > 0);
     assert_eq!(exported_kinds(&v, "synth-editor.exe"), exported_kinds(&export_json(&before), "synth-editor.exe"), "other programs untouched");
 }
+
+// ---- Resumo para relatar um bug (#107): sai da exportação refiltrada, nunca direto dos dados ------------------------
+
+fn cpu_incident() -> (Rig, i64) {
+    let mut r = rig();
+    r.until_recording();
+    for _ in 0..8 {
+        r.burn(100);
+        r.tick();
+    }
+    let id = r.store().list_incidents().unwrap().remove(0).id;
+    (r, id)
+}
+
+fn summary(r: &mut Rig, id: i64) -> String {
+    let utc = r.utc();
+    r.engine.bug_report_summary(id, "0.5.0", bb_query::SummaryLang::En, r.now, utc).unwrap()
+}
+
+#[test]
+fn the_summary_names_the_program_only_while_the_export_would() {
+    let (mut r, id) = cpu_incident();
+    let text = summary(&mut r, id);
+    assert!(text.contains("Sustained high CPU") && text.contains("Program: synth-editor.exe"), "control: {text}");
+
+    let mut s = quick_settings();
+    s.excluded_apps = vec!["synth-editor.exe".into()];
+    r.engine.apply_settings(s, 1).unwrap();
+    let text = summary(&mut r, id);
+    assert!(!text.contains("synth-editor.exe") && !text.contains("Program:"), "excluded today: {text}");
+
+    let mut s = quick_settings();
+    s.partial_exclusions = vec![rule("synth-editor.exe", X::new(false, false, true))];
+    r.engine.apply_settings(s, 2).unwrap();
+    let text = summary(&mut r, id);
+    assert!(!text.contains("synth-editor.exe"), "any partial rule hides the name, as in the export: {text}");
+}
+
+#[test]
+fn the_summary_never_carries_notes_or_the_internal_summary() {
+    let (mut r, id) = cpu_incident();
+    r.store().add_note(id, 5, "synth private note about my customer").unwrap();
+    let text = summary(&mut r, id);
+    assert!(!text.contains("private") && !text.contains("customer") && !text.contains("cpu_sustained|"), "{text}");
+    assert!(text.contains("Incident:") && text.contains("When:") && text.contains("App version: 0.5.0"), "control: {text}");
+}
+
+#[test]
+fn the_summary_of_an_unknown_incident_fails_like_the_export() {
+    let mut r = rig();
+    let err = r.engine.bug_report_summary(999, "0.5.0", bb_query::SummaryLang::En, 0, 0).unwrap_err();
+    assert_eq!(err.code(), "export.not_found");
+}
+
+#[test]
+fn the_summary_writes_nothing_to_disk() {
+    let (mut r, id) = cpu_incident();
+    let before = std::fs::read_dir(r._dir.path()).map(|d| d.count()).unwrap_or(0);
+    let _ = summary(&mut r, id);
+    assert!(!r._dir.path().join("exports").exists(), "no export file is created");
+    assert_eq!(std::fs::read_dir(r._dir.path()).map(|d| d.count()).unwrap_or(0), before);
+}

@@ -480,16 +480,8 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         Ok(())
     }
 
-    /// Exporta um incidente para `out_dir` (criada se preciso), refiltrando pelas regras de
-    /// privacidade de AGORA. O arquivo sai da cifra; o nome é gerado (id e horário), nunca
-    /// derivado de dados do incidente. Devolve o caminho e quantos eventos a filtragem removeu.
-    pub fn export_incident(
-        &mut self,
-        id: i64,
-        out_dir: &std::path::Path,
-        mono_ms: u64,
-        utc_ms: i64,
-    ) -> Result<ExportResult, EngineError> {
+    /// A exportação de um incidente já refiltrada pelas regras de privacidade de AGORA (em memória; nada é escrito).
+    fn export_doc(&self, id: i64, mono_ms: u64, utc_ms: i64) -> Result<bb_query::ExportDoc, EngineError> {
         let Some(inc) = self.incidents.as_ref() else {
             return Err(EngineError::Invalid("store.unavailable".into()));
         };
@@ -504,13 +496,41 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             // As amostras de contadores só saem se a telemetria está LIGADA agora: desligou depois de gravar, não saem.
             include_samples: self.settings.telemetry_enabled,
         };
-        let doc = bb_query::export_incident(&self.recorder, &inc.store, id, &rules, utc_ms)
-            .ok_or_else(|| EngineError::Invalid("export.not_found".into()))?;
+        bb_query::export_incident(&self.recorder, &inc.store, id, &rules, utc_ms)
+            .ok_or_else(|| EngineError::Invalid("export.not_found".into()))
+    }
+
+    /// Exporta um incidente para `out_dir` (criada se preciso), refiltrando pelas regras de
+    /// privacidade de AGORA. O arquivo sai da cifra; o nome é gerado (id e horário), nunca
+    /// derivado de dados do incidente. Devolve o caminho e quantos eventos a filtragem removeu.
+    pub fn export_incident(
+        &mut self,
+        id: i64,
+        out_dir: &std::path::Path,
+        mono_ms: u64,
+        utc_ms: i64,
+    ) -> Result<ExportResult, EngineError> {
+        let doc = self.export_doc(id, mono_ms, utc_ms)?;
         std::fs::create_dir_all(out_dir).map_err(|_| EngineError::Invalid("export.folder".into()))?;
         let path = out_dir.join(format!("incident-{id}-{utc_ms}.json"));
         let json = serde_json::to_vec_pretty(&doc).map_err(|_| EngineError::Invalid("export.write".into()))?;
         std::fs::write(&path, json).map_err(|_| EngineError::Invalid("export.write".into()))?;
         Ok(ExportResult { path, events: doc.events.len(), dropped: doc.dropped_events })
+    }
+
+    /// Resumo em texto para relatar um bug, montado a partir da MESMA exportação refiltrada (nunca direto dos dados
+    /// gravados). O build do Windows só entra se o inventário está ligado e já o leu.
+    pub fn bug_report_summary(
+        &self,
+        id: i64,
+        app_version: &str,
+        lang: bb_query::SummaryLang,
+        mono_ms: u64,
+        utc_ms: i64,
+    ) -> Result<String, EngineError> {
+        let doc = self.export_doc(id, mono_ms, utc_ms)?;
+        let os_build = if self.settings.inventory_enabled { self.inventory_base.get(bb_core::InventoryItem::OsBuild) } else { None };
+        Ok(bb_query::bug_report_summary(&doc, app_version, os_build, lang))
     }
 
     /// Exclui atividade gravada. As evidências de incidentes só saem com `include_preserved`,

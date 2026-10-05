@@ -25,6 +25,10 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
   with evidence from the window before and after. Optionally (off by default, Privacy tab: **"Notify me when an incident opens by itself"**),
   a Windows notification says **only the type** of an automatic incident, never a program name or any recorded data; it waits while a browser
   or password manager is in front, is dropped on a manual pause or after 30 minutes, and clicking it does not open the app.
+  In the incident detail, **Copy summary** puts a short text on the clipboard (and shows it for you to check) to paste into a bug report: type,
+  time, app and Windows build, nearby machine health events and the last performance sample. It is built from the same export, with today's
+  privacy rules applied again, so it never has your notes, user or computer names, paths or message texts, and it names the program only if
+  the export would.
 - **System health:** a **System health** tab and automatic incidents (blue screen, unexpected shutdown, hardware error, sustained thermal
   throttling), fed by Windows events from a fixed list, inventory changes, power and battery, and performance counters, all **without
   administrator rights** and with numbers and codes only. See [System health](#system-health) for exactly what is read, what is never
@@ -341,6 +345,10 @@ de comando.
   incidente abrir sozinho"**), uma notificação do Windows diz **só o tipo** de um incidente automático, nunca o nome de um programa nem
   dado gravado; ela espera enquanto um navegador ou gerenciador de senhas está em primeiro plano, é descartada na pausa manual ou depois de
   30 minutos, e clicar nela não abre o app.
+  No detalhe do incidente, **Copiar resumo** coloca na área de transferência (e mostra para você conferir) um texto curto para colar num
+  relato de bug: tipo, horário, versão do app e build do Windows, eventos de saúde da máquina por perto e a última amostra de desempenho. Ele
+  sai da mesma exportação, com as regras de privacidade de hoje aplicadas de novo, então nunca tem as suas anotações, nomes de usuário ou de
+  computador, caminhos nem textos de mensagens, e cita o programa só se a exportação citaria.
 - **Saúde do sistema:** uma aba **Saúde do sistema** e incidentes automáticos (tela azul, desligamento inesperado, erro de hardware,
   redução de desempenho por calor prolongada), alimentados por eventos do Windows de uma lista fixa, mudanças de inventário, energia e
   bateria e contadores de desempenho, tudo **sem administrador** e só com números e códigos. Veja [Saúde do sistema](#saúde-do-sistema)

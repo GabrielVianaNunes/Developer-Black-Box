@@ -29,7 +29,10 @@ export const RELEASES: Release[] = [
   },
   {
     version: "0.6.0",
-    steps: [{ id: "privacy", title: "guide.news.switches.title", body: ["guide.news.switches.b1"] }],
+    steps: [
+      { id: "privacy", title: "guide.news.switches.title", body: ["guide.news.switches.b1"] },
+      { id: "incidents", title: "guide.news.summary.title", body: ["guide.news.summary.b1"] },
+    ],
   },
 ];
 
