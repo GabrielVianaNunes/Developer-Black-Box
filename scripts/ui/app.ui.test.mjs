@@ -173,3 +173,53 @@ describe("privacy tab", () => {
     await app.close();
   });
 });
+
+describe("incidents tab: export with a password", () => {
+  async function openIncident(app) {
+    await app.page.getByRole("button", { name: t("nav.incidents") }).click();
+    await app.page.locator("button.list-item").first().click();
+    await app.page.getByText(t("incidents.exportProtectedTitle")).waitFor();
+  }
+  const pw = (app) => app.page.getByLabel(t("incidents.password"), { exact: true });
+  const repeat = (app) => app.page.getByLabel(t("incidents.passwordRepeat"), { exact: true });
+  const send = (app) => app.page.getByRole("button", { name: t("incidents.exportProtectedButton") });
+
+  ui("the button needs 8+ characters and two equal passwords, and the fields hide what is typed", async () => {
+    const app = await openApp(browser, url);
+    await openIncident(app);
+    assert.equal(await pw(app).getAttribute("type"), "password");
+    assert.equal(await repeat(app).getAttribute("type"), "password");
+    assert.equal(await send(app).isDisabled(), true, "empty");
+    await pw(app).fill("short");
+    await repeat(app).fill("short");
+    assert.equal(await send(app).isDisabled(), true, "too short even if equal");
+    await app.page.getByText(t("incidents.passwordShort", { n: 8 }), { exact: true }).waitFor();
+    await pw(app).fill("long enough password");
+    await repeat(app).fill("long enough passworD");
+    assert.equal(await send(app).isDisabled(), true, "different");
+    await app.page.getByText(t("incidents.passwordMismatch"), { exact: true }).waitFor();
+    await repeat(app).fill("long enough password");
+    assert.equal(await send(app).isDisabled(), false);
+    assert.equal((await used(app, "export_incident_protected")).length, 0, "nothing is sent before the click");
+    await app.close();
+  });
+
+  ui("the password goes to the backend once, on the click, and the fields are emptied at once", async () => {
+    const app = await openApp(browser, url);
+    await openIncident(app);
+    await pw(app).fill("synthetic password 1");
+    await repeat(app).fill("synthetic password 1");
+    await send(app).click();
+    await app.page.getByText("synthetic/incident.protected.json", { exact: false }).waitFor();
+    const calls = await used(app, "export_incident_protected");
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].args, { id: 7, password: "synthetic password 1" });
+    assert.equal(await pw(app).inputValue(), "");
+    assert.equal(await repeat(app).inputValue(), "");
+    assert.equal((await used(app, "export_incident")).length, 0, "the plain export was not used");
+    // a senha não ficou em nenhum armazenamento do navegador
+    const stored = await app.page.evaluate(() => JSON.stringify([{ ...localStorage }, { ...sessionStorage }]));
+    assert.ok(!stored.includes("synthetic password"), stored);
+    await app.close();
+  });
+});

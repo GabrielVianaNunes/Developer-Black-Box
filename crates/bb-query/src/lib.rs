@@ -6,6 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+pub mod protect;
 mod summary;
 pub use summary::{bug_report_summary, SummaryLang};
 

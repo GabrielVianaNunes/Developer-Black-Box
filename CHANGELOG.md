@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- Incident detail: **Export with a password**. The same export document is encrypted with a password you choose at that moment (8+ characters,
+  typed twice): AES-256-GCM, key from Argon2id (64 MiB, 3 passes), random salt and nonce, format and costs authenticated. The readable text never
+  touches the disk and the file is `incident-<id>-<time>.protected.json`. There is no recovery: the app does not keep the password anywhere. A
+  wrong password and a damaged file give the same error; costs read from a file are bounded. The plain export keeps working and is still labelled
+  as not encrypted. New dependency: `argon2` (RustCrypto, no network code); the key derivation is checked against the Argon2 reference
+  implementation. (#109)
+
 ### Tests
 - Rust code is now formatted with `rustfmt` (`rustfmt.toml`: 140 columns, short lists on one line, to stay close to the existing style) and CI
   fails if `cargo fmt --all -- --check` finds a difference. The formatting commit changes no logic: all 527 tests pass before and after. (#108)

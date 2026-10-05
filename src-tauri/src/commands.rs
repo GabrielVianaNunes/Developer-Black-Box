@@ -179,6 +179,20 @@ pub fn get_bug_report_summary(app: AppHandle, id: i64) -> Result<String, String>
     with_engine(&app, |e| e.bug_report_summary(id, env!("CARGO_PKG_VERSION"), lang, mono, utc_ms()).map_err(engine_err))
 }
 
+/// Exportação protegida por senha. A senha só passa por aqui (dentro do processo), é validada e usada uma vez pelo motor;
+/// não é registrada, guardada nem devolvida. Os custos da derivação são SEMPRE os de produção.
+#[tauri::command]
+pub fn export_incident_protected(app: AppHandle, id: i64, password: String) -> Result<ExportDto, String> {
+    let out = crate::data_dir().map_err(|_| "internal".to_string())?.join("exports");
+    let mono = app.state::<Arc<Runtime>>().mono_ms();
+    with_engine(&app, |e| {
+        let r = e
+            .export_incident_protected(id, &out, &password, bb_query::protect::KdfParams::PRODUCTION, mono, utc_ms())
+            .map_err(engine_err)?;
+        Ok(ExportDto { path: r.path.display().to_string(), events: r.events, dropped: r.dropped })
+    })
+}
+
 #[tauri::command]
 pub fn capture_incident(app: AppHandle) -> Result<i64, String> {
     with_engine(&app, |e| e.capture_manual(utc_ms()).map_err(engine_err))

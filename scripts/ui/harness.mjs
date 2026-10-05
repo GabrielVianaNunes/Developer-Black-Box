@@ -74,6 +74,18 @@ export async function openApp(browser, baseUrl, opts = {}) {
     tourSeen: opts.tourSeen ?? true,
     settings: { ...defaultSettings(), ...(opts.settings ?? {}) },
     health: opts.health ?? defaultHealth(),
+    incident: {
+      id: 7,
+      kind: "blue_screen",
+      severity: "critical",
+      createdUtcMs: 1_000_000_000_000,
+      exeName: null,
+      summary: "blue_screen|209|1000000000000",
+      state: "new",
+      capture: "preserved",
+      postUntilUtcMs: 1_000_000_300_000,
+      segments: [],
+    },
   };
   await page.addInitScript((init) => {
     const calls = [];
@@ -113,7 +125,9 @@ export async function openApp(browser, baseUrl, opts = {}) {
       get_launch_at_login: () => false,
       get_update_state: () => ({ enabled: false, checking: false, available: null, error: null, lastCheckedUtcMs: null }),
       list_app_candidates: () => [],
-      list_incidents: () => [],
+      list_incidents: () => [s.incident],
+      get_incident: () => ({ incident: s.incident, notes: [], segments: [], timeline: [] }),
+      export_incident_protected: () => ({ path: "synthetic/incident.protected.json", events: 3, dropped: 1 }),
     };
     window.__TAURI_INTERNALS__ = {
       transformCallback: () => 1,
