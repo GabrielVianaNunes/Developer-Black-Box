@@ -25,7 +25,7 @@ export const RELEASES: Release[] = [
   },
   {
     version: "0.5.0",
-    steps: [{ id: "incidents", title: "guide.news.health.title", body: ["guide.news.health.b1", "guide.news.health.b2", "guide.news.health.b3"] }],
+    steps: [{ id: "incidents", title: "guide.news.health.title", body: ["guide.news.health.b1", "guide.news.health.b2"] }],
   },
 ];
 
