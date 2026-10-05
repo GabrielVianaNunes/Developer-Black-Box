@@ -65,7 +65,11 @@ mod tests {
     #[test]
     fn no_core_window_yet_is_unknown_not_a_guess() {
         assert_eq!(resolve_hosted(FRAME, &[]), None);
-        assert_eq!(resolve_hosted(FRAME, &[child(FRAME, false), child(900, false)]), None, "a child that is not a core window is not the app");
+        assert_eq!(
+            resolve_hosted(FRAME, &[child(FRAME, false), child(900, false)]),
+            None,
+            "a child that is not a core window is not the app"
+        );
     }
 
     #[test]

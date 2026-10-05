@@ -6,8 +6,7 @@
 use std::collections::BTreeSet;
 
 use bb_core::{
-    AcLine, EventKind, ExeName, GuardConfig, HealthCategory, HealthSample, InventoryItem, Observation, PrivacyGuard,
-    ValidatedEvent,
+    AcLine, EventKind, ExeName, GuardConfig, HealthCategory, HealthSample, InventoryItem, Observation, PrivacyGuard, ValidatedEvent,
 };
 use serde_json::Value;
 
@@ -15,8 +14,16 @@ use serde_json::Value;
 fn categories() -> Vec<HealthCategory> {
     use HealthCategory::*;
     let all = vec![
-        UnexpectedShutdown, BugCheck, HardwareError, DisplayDriverReset, DiskError, FileSystemError, ServiceCrash, UpdateFailure,
-        SleepEntered, Resumed,
+        UnexpectedShutdown,
+        BugCheck,
+        HardwareError,
+        DisplayDriverReset,
+        DiskError,
+        FileSystemError,
+        ServiceCrash,
+        UpdateFailure,
+        SleepEntered,
+        Resumed,
     ];
     for c in &all {
         match c {
@@ -68,7 +75,10 @@ fn health_kinds() -> Vec<EventKind> {
     v.push(EventKind::HealthSample(HealthSample::default()));
     for k in &v {
         match k {
-            EventKind::HealthEvent { .. } | EventKind::InventoryChange { .. } | EventKind::PowerStatus { .. } | EventKind::HealthSample(_) => {}
+            EventKind::HealthEvent { .. }
+            | EventKind::InventoryChange { .. }
+            | EventKind::PowerStatus { .. }
+            | EventKind::HealthSample(_) => {}
             // os tipos que NÃO são de saúde ficam fora desta lista, mas precisam ser nomeados aqui
             EventKind::ProcessStarted { .. }
             | EventKind::ProcessExited { .. }
@@ -175,14 +185,30 @@ fn the_keys_of_each_health_kind_are_exactly_the_documented_ones() {
         ks.sort();
         ks
     };
-    assert_eq!(keys(EventKind::HealthEvent { category: HealthCategory::BugCheck, event_id: 1, code: None }), ["category", "code", "event_id"]);
-    assert_eq!(keys(EventKind::InventoryChange { item: InventoryItem::OsBuild, previous: None, current: None }), ["current", "item", "previous"]);
+    assert_eq!(
+        keys(EventKind::HealthEvent { category: HealthCategory::BugCheck, event_id: 1, code: None }),
+        ["category", "code", "event_id"]
+    );
+    assert_eq!(
+        keys(EventKind::InventoryChange { item: InventoryItem::OsBuild, previous: None, current: None }),
+        ["current", "item", "previous"]
+    );
     assert_eq!(keys(EventKind::PowerStatus { ac: None, charge_percent: None }), ["ac", "charge_percent"]);
     assert_eq!(
         keys(EventKind::HealthSample(full_sample())),
         [
-            "cpu_freq_mhz", "cpu_load_pct", "cpu_perf_pct", "disk_busy_pct", "disk_latency_us", "gpu_pct", "mem_available_mb",
-            "mem_commit_pct", "net_errors", "page_faults_per_sec", "passive_limit_pct", "thermal_kelvin"
+            "cpu_freq_mhz",
+            "cpu_load_pct",
+            "cpu_perf_pct",
+            "disk_busy_pct",
+            "disk_latency_us",
+            "gpu_pct",
+            "mem_available_mb",
+            "mem_commit_pct",
+            "net_errors",
+            "page_faults_per_sec",
+            "passive_limit_pct",
+            "thermal_kelvin"
         ]
     );
 }

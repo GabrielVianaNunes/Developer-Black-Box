@@ -83,7 +83,11 @@ pub fn verify_release(trusted_hex: &[&str], version: &Version, sha256_hex: &str,
             .and_then(|b| VerifyingKey::from_bytes(&b).ok())
             .is_some_and(|key| key.verify_strict(&message, &signature).is_ok())
     });
-    if ok { Ok(()) } else { Err(VerifyError::Mismatch) }
+    if ok {
+        Ok(())
+    } else {
+        Err(VerifyError::Mismatch)
+    }
 }
 
 /// Chaves em que o app confia: as embutidas acima. Num build de TESTE (feature `e2e`) aceita também a chave
@@ -181,7 +185,16 @@ mod tests {
         let (sha, good) = sign(&k, "0.2.0", b"x");
         let keys = [pub_hex(&k)];
         let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
-        for bad in ["", "zz", &good[..127], &format!("{good}00"), &good.to_uppercase(), &format!(" {good}"), &format!("{good} extra"), "not hex at all"] {
+        for bad in [
+            "",
+            "zz",
+            &good[..127],
+            &format!("{good}00"),
+            &good.to_uppercase(),
+            &format!(" {good}"),
+            &format!("{good} extra"),
+            "not hex at all",
+        ] {
             assert_eq!(verify_release(&keys, &v("0.2.0"), &sha, bad), Err(VerifyError::BadSignatureFormat), "{bad:?}");
         }
         // Um bit alterado continua sendo 128 hex válidos, mas não confere.
@@ -227,7 +240,8 @@ mod cross_language {
 
     #[test]
     fn a_signature_made_by_the_node_script_verifies_in_rust() {
-        let (key, version, file, sig) = (field("publicKey"), Version::parse(&field("version")).unwrap(), field("fileUtf8"), field("signature"));
+        let (key, version, file, sig) =
+            (field("publicKey"), Version::parse(&field("version")).unwrap(), field("fileUtf8"), field("signature"));
         let sha = sha256_hex(file.as_bytes()).unwrap();
         assert_eq!(verify_release(&[&key], &version, &sha, &sig), Ok(()));
         // Qualquer mudança (arquivo, versão ou chave) é recusada.

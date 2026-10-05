@@ -146,9 +146,7 @@ fn sample(l: &Layout, size: u32, x: f32, y: f32, light: Option<[u8; 3]>) -> Opti
     }
     // vincos internos que separam as três faces (em 16 px o tom das faces já basta)
     let crease = edge * 0.6;
-    if size >= 20
-        && (seg_dist(c, v[5], p) < crease || seg_dist(c, v[1], p) < crease || seg_dist(c, v[3], p) < crease)
-    {
+    if size >= 20 && (seg_dist(c, v[5], p) < crease || seg_dist(c, v[1], p) < crease || seg_dist(c, v[3], p) < crease) {
         return Some(CREASE);
     }
 
@@ -368,8 +366,12 @@ mod tests {
         for size in SIZES {
             let l = layout(size);
             for st in [
-                RecorderState::Recording, RecorderState::ManualPause, RecorderState::PrivacyBlocked,
-                RecorderState::SafetyFault, RecorderState::Starting, RecorderState::ShuttingDown,
+                RecorderState::Recording,
+                RecorderState::ManualPause,
+                RecorderState::PrivacyBlocked,
+                RecorderState::SafetyFault,
+                RecorderState::Starting,
+                RecorderState::ShuttingDown,
             ] {
                 let img = render(light_for(st), size);
                 let p = px(&img, size, l.dot_cx as u32, l.dot_cy as u32);

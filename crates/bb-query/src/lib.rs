@@ -64,18 +64,42 @@ fn exe_map(events: &[Ev]) -> HashMap<(u64, i64), String> {
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "code", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Detail {
-    ProcessStarted { parent_pid: u64 },
-    ProcessExited { exit_code: Option<i64> },
-    ProcessMetrics { cpu_permille: u64, working_set_kb: u64 },
-    SystemMetrics { cpu_permille: u64, mem_used_kb: u64, mem_total_kb: u64 },
-    AppCrash { exception_code: u64 },
+    ProcessStarted {
+        parent_pid: u64,
+    },
+    ProcessExited {
+        exit_code: Option<i64>,
+    },
+    ProcessMetrics {
+        cpu_permille: u64,
+        working_set_kb: u64,
+    },
+    SystemMetrics {
+        cpu_permille: u64,
+        mem_used_kb: u64,
+        mem_total_kb: u64,
+    },
+    AppCrash {
+        exception_code: u64,
+    },
     AppHang,
     /// Evento de saúde da máquina: categoria (enumeração fechada), ID do evento e um número opcional (sem texto).
-    HealthEvent { category: String, event_id: u64, value: Option<u64> },
+    HealthEvent {
+        category: String,
+        event_id: u64,
+        value: Option<u64>,
+    },
     /// Mudança de inventário: item (enumeração fechada) e valores numéricos anterior e novo.
-    InventoryChange { item: String, previous: Option<u64>, current: Option<u64> },
+    InventoryChange {
+        item: String,
+        previous: Option<u64>,
+        current: Option<u64>,
+    },
     /// Energia: tomada ("offline" ou "online"; ausente = desconhecida) e carga em porcentagem.
-    PowerStatus { ac: Option<String>, charge_percent: Option<u64> },
+    PowerStatus {
+        ac: Option<String>,
+        charge_percent: Option<u64>,
+    },
     /// Amostra de contadores de desempenho do sistema: só números; cada campo ausente = indisponível.
     HealthSample {
         thermal_kelvin: Option<u64>,
@@ -91,7 +115,9 @@ pub enum Detail {
         net_errors: Option<u64>,
         gpu_pct: Option<u64>,
     },
-    UserMarker { marker: u64 },
+    UserMarker {
+        marker: u64,
+    },
     RecorderStateChanged,
     Unknown,
 }
@@ -128,14 +154,10 @@ fn row_of(e: &Ev, exes: &HashMap<(u64, i64), String>) -> ActivityRow {
     let detail = match e.kind.as_str() {
         "ProcessStarted" => Detail::ProcessStarted { parent_pid: n("parent_pid") },
         "ProcessExited" => Detail::ProcessExited { exit_code: e.body.get("exit_code").and_then(Value::as_i64) },
-        "ProcessMetrics" => {
-            Detail::ProcessMetrics { cpu_permille: n("cpu_permille"), working_set_kb: n("working_set_kb") }
+        "ProcessMetrics" => Detail::ProcessMetrics { cpu_permille: n("cpu_permille"), working_set_kb: n("working_set_kb") },
+        "SystemMetrics" => {
+            Detail::SystemMetrics { cpu_permille: n("cpu_permille"), mem_used_kb: n("mem_used_kb"), mem_total_kb: n("mem_total_kb") }
         }
-        "SystemMetrics" => Detail::SystemMetrics {
-            cpu_permille: n("cpu_permille"),
-            mem_used_kb: n("mem_used_kb"),
-            mem_total_kb: n("mem_total_kb"),
-        },
         "AppCrash" => Detail::AppCrash { exception_code: n("exception_code") },
         "AppHang" => Detail::AppHang,
         "HealthEvent" => Detail::HealthEvent {
@@ -173,14 +195,7 @@ fn row_of(e: &Ev, exes: &HashMap<(u64, i64), String>) -> ActivityRow {
         "RecorderStateChanged" => Detail::RecorderStateChanged,
         _ => Detail::Unknown,
     };
-    ActivityRow {
-        seq: e.seq,
-        ts_utc_ms: e.ts,
-        kind: e.kind.clone(),
-        pid: key.map(|k| k.0 as u32),
-        exe_name,
-        detail,
-    }
+    ActivityRow { seq: e.seq, ts_utc_ms: e.ts, kind: e.kind.clone(), pid: key.map(|k| k.0 as u32), exe_name, detail }
 }
 
 /// Atividade mais recente primeiro.
@@ -498,15 +513,33 @@ pub const MAX_HEALTH_ROWS: usize = 5_000;
 const MAX_HEALTH_LOOKBACK_MS: i64 = 8 * 86_400_000;
 
 const HEALTH_CATEGORIES: &[&str] = &[
-    "UnexpectedShutdown", "BugCheck", "HardwareError", "DisplayDriverReset", "DiskError", "FileSystemError", "ServiceCrash",
-    "UpdateFailure", "SleepEntered", "Resumed",
+    "UnexpectedShutdown",
+    "BugCheck",
+    "HardwareError",
+    "DisplayDriverReset",
+    "DiskError",
+    "FileSystemError",
+    "ServiceCrash",
+    "UpdateFailure",
+    "SleepEntered",
+    "Resumed",
 ];
 const INVENTORY_ITEMS: &[&str] =
     &["BiosVersion", "BiosDate", "FirmwareType", "SecureBoot", "OsBuild", "DeviceProblemCount", "DeviceProblemCodes"];
 const AC_VALUES: &[&str] = &["Offline", "Online"];
 const SAMPLE_KEYS: &[&str] = &[
-    "thermal_kelvin", "passive_limit_pct", "cpu_load_pct", "cpu_perf_pct", "cpu_freq_mhz", "mem_commit_pct", "mem_available_mb",
-    "page_faults_per_sec", "disk_latency_us", "disk_busy_pct", "net_errors", "gpu_pct",
+    "thermal_kelvin",
+    "passive_limit_pct",
+    "cpu_load_pct",
+    "cpu_perf_pct",
+    "cpu_freq_mhz",
+    "mem_commit_pct",
+    "mem_available_mb",
+    "page_faults_per_sec",
+    "disk_latency_us",
+    "disk_busy_pct",
+    "net_errors",
+    "gpu_pct",
 ];
 /// Tudo é abaixo de 2^53: a interface (JavaScript) lê sem perder precisão.
 const MAX_SAFE_NUMBER: u64 = 1 << 53;
@@ -638,7 +671,9 @@ pub fn export_incident(rec: &Recorder, store: &Store, id: i64, rules: &ExportRul
     let mut kept = Vec::new();
     for e in &events {
         // Início, CPU/memória e fim de quem está na árvore de um programa excluído nunca saem.
-        if matches!(e.kind.as_str(), "ProcessStarted" | "ProcessMetrics" | "ProcessExited") && key_of(&e.body).is_some_and(|k| tree.contains(&k)) {
+        if matches!(e.kind.as_str(), "ProcessStarted" | "ProcessMetrics" | "ProcessExited")
+            && key_of(&e.body).is_some_and(|k| tree.contains(&k))
+        {
             continue;
         }
         let row = row_of(e, &exes);
@@ -697,10 +732,7 @@ pub fn incident_detail(rec: &Recorder, store: &Store, id: i64) -> Option<Inciden
     events.sort_by_key(|e| (e.ts, e.seq));
     let exes = exe_map(&events);
     let skip = events.len().saturating_sub(1000);
-    let timeline = events[skip..]
-        .iter()
-        .map(|e| TimelineRow { offset_ms: e.ts - inc.created_utc_ms, row: row_of(e, &exes) })
-        .collect();
+    let timeline = events[skip..].iter().map(|e| TimelineRow { offset_ms: e.ts - inc.created_utc_ms, row: row_of(e, &exes) }).collect();
 
     Some(IncidentDetail { incident: IncidentDto::from(&inc), notes, segments, timeline })
 }
@@ -838,7 +870,11 @@ mod health_export_tests {
         let all = vec![row(1, 100, -400), row(2, 200, -300), row(3, 300, -10), row(4, 400, 20), row(5, 500, 350), row(6, 600, 450)];
         let (rows, truncated) = cap_rows(all, 3);
         assert!(truncated);
-        assert_eq!(rows.iter().map(|r| r.row.seq).collect::<Vec<_>>(), vec![2, 3, 4], "the nearest three (offsets 10, 20 and 300), oldest first");
+        assert_eq!(
+            rows.iter().map(|r| r.row.seq).collect::<Vec<_>>(),
+            vec![2, 3, 4],
+            "the nearest three (offsets 10, 20 and 300), oldest first"
+        );
     }
 
     #[test]

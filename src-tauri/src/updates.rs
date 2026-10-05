@@ -188,9 +188,7 @@ pub fn set_update_check(app: AppHandle, enabled: bool) -> Result<UpdateDto, Stri
         let e = rt.engine.lock().map_err(|_| "internal".to_string())?;
         if let Some(store) = e.store() {
             let was = store.get_setting(UPDATE_CHECK_SETTING).ok().flatten().is_some_and(|v| v == "true");
-            store
-                .set_setting(UPDATE_CHECK_SETTING, if enabled { "true" } else { "false" })
-                .map_err(|_| "store.error".to_string())?;
+            store.set_setting(UPDATE_CHECK_SETTING, if enabled { "true" } else { "false" }).map_err(|_| "store.error".to_string())?;
             if was != enabled {
                 let _ = store.log_config_change(utc_ms(), "update_check", "changed");
             }
@@ -288,6 +286,9 @@ fn open_in_browser(url: &str) -> Result<(), ()> {
     // SAFETY: cadeia UTF-16 terminada em zero que vive até o fim da chamada.
     let result = unsafe { ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), None, None, SW_SHOWNORMAL) };
     // ShellExecute devolve um valor > 32 em caso de sucesso.
-    if result.0 as usize > 32 { Ok(()) } else { Err(()) }
+    if result.0 as usize > 32 {
+        Ok(())
+    } else {
+        Err(())
+    }
 }
-

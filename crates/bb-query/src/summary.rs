@@ -121,9 +121,7 @@ fn inventory_value(item: &str, v: Option<u64>) -> String {
 }
 
 fn find_sample(rows: &[TimelineRow]) -> Option<&TimelineRow> {
-    rows.iter()
-        .filter(|r| r.offset_ms <= 0 && matches!(r.row.detail, Detail::HealthSample { .. }))
-        .max_by_key(|r| (r.offset_ms, r.row.seq))
+    rows.iter().filter(|r| r.offset_ms <= 0 && matches!(r.row.detail, Detail::HealthSample { .. })).max_by_key(|r| (r.offset_ms, r.row.seq))
 }
 
 fn sample_text(lang: SummaryLang, d: &Detail) -> Option<String> {
@@ -194,7 +192,9 @@ pub fn bug_report_summary(doc: &ExportDoc, app_version: &str, os_build: Option<u
     let mut out = Vec::new();
     out.push(pick(lang, "Developer Black Box - incident summary", "Developer Black Box - resumo do incidente").to_owned());
     // Só versões com a forma de um número de versão: nada que a pessoa ou um programa possa ter escrito.
-    let version_ok = !app_version.is_empty() && app_version.len() <= 32 && app_version.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b'+');
+    let version_ok = !app_version.is_empty()
+        && app_version.len() <= 32
+        && app_version.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b'+');
     if version_ok {
         out.push(format!("{}: {app_version}", pick(lang, "App version", "Versão do app")));
     }
@@ -208,12 +208,8 @@ pub fn bug_report_summary(doc: &ExportDoc, app_version: &str, os_build: Option<u
         out.push(format!("{}: {exe}", pick(lang, "Program", "Programa")));
     }
 
-    let mut near: Vec<(&TimelineRow, String)> = doc
-        .health
-        .events
-        .iter()
-        .filter_map(|r| listed_line(lang, &r.row, r.offset_ms).map(|l| (r, l)))
-        .collect();
+    let mut near: Vec<(&TimelineRow, String)> =
+        doc.health.events.iter().filter_map(|r| listed_line(lang, &r.row, r.offset_ms).map(|l| (r, l))).collect();
     near.sort_by_key(|(r, _)| (r.offset_ms.unsigned_abs(), r.row.seq));
     near.truncate(MAX_LISTED);
     near.sort_by_key(|(r, _)| (r.offset_ms, r.row.seq));
@@ -224,7 +220,12 @@ pub fn bug_report_summary(doc: &ExportDoc, app_version: &str, os_build: Option<u
     }
     if let Some(sample) = find_sample(&doc.health.events).and_then(|r| sample_text(lang, &r.row.detail).map(|t| (r.offset_ms, t))) {
         out.push(String::new());
-        out.push(format!("{} ({}): {}", pick(lang, "Last performance sample before it", "Última amostra de desempenho antes dele"), offset_text(sample.0), sample.1));
+        out.push(format!(
+            "{} ({}): {}",
+            pick(lang, "Last performance sample before it", "Última amostra de desempenho antes dele"),
+            offset_text(sample.0),
+            sample.1
+        ));
     }
     out.push(String::new());
     out.push(
@@ -249,7 +250,10 @@ mod tests {
     use crate::{HealthExport, IncidentDto};
 
     fn row(seq: u64, offset_ms: i64, detail: Detail) -> TimelineRow {
-        TimelineRow { offset_ms, row: ActivityRow { seq, ts_utc_ms: 1_000_000_000_000 + offset_ms, kind: "x".into(), pid: None, exe_name: None, detail } }
+        TimelineRow {
+            offset_ms,
+            row: ActivityRow { seq, ts_utc_ms: 1_000_000_000_000 + offset_ms, kind: "x".into(), pid: None, exe_name: None, detail },
+        }
     }
 
     fn doc(kind: &str, exe: Option<&str>, health: Vec<TimelineRow>) -> ExportDoc {
@@ -332,7 +336,11 @@ mod tests {
 
     #[test]
     fn it_is_available_in_both_languages_with_no_untranslated_fixed_text() {
-        let d = doc("unexpected_shutdown", None, vec![row(1, -10_000, Detail::HealthEvent { category: "UnexpectedShutdown".into(), event_id: 6008, value: None })]);
+        let d = doc(
+            "unexpected_shutdown",
+            None,
+            vec![row(1, -10_000, Detail::HealthEvent { category: "UnexpectedShutdown".into(), event_id: 6008, value: None })],
+        );
         let en = bug_report_summary(&d, "0.5.0", None, SummaryLang::En);
         let pt = bug_report_summary(&d, "0.5.0", None, SummaryLang::PtBr);
         assert!(en.contains("incident summary") && pt.contains("resumo do incidente"));
@@ -342,10 +350,28 @@ mod tests {
 
     #[test]
     fn every_kind_and_category_has_its_own_text_in_both_languages() {
-        let kinds = ["manual", "cpu_sustained", "memory_high", "unexpected_exit", "app_hang", "unexpected_shutdown", "blue_screen", "hardware_error", "throttling"];
+        let kinds = [
+            "manual",
+            "cpu_sustained",
+            "memory_high",
+            "unexpected_exit",
+            "app_hang",
+            "unexpected_shutdown",
+            "blue_screen",
+            "hardware_error",
+            "throttling",
+        ];
         let cats = [
-            "UnexpectedShutdown", "BugCheck", "HardwareError", "DisplayDriverReset", "DiskError", "FileSystemError", "ServiceCrash",
-            "UpdateFailure", "SleepEntered", "Resumed",
+            "UnexpectedShutdown",
+            "BugCheck",
+            "HardwareError",
+            "DisplayDriverReset",
+            "DiskError",
+            "FileSystemError",
+            "ServiceCrash",
+            "UpdateFailure",
+            "SleepEntered",
+            "Resumed",
         ];
         for lang in [SummaryLang::En, SummaryLang::PtBr] {
             let mut seen = std::collections::HashSet::new();
@@ -392,7 +418,11 @@ mod tests {
     fn it_lists_only_the_nearest_health_events_and_skips_unknown_ones() {
         let mut rows: Vec<TimelineRow> = (0..20).map(|i| bugcheck(i, -(i as i64) * 1000)).collect();
         rows.push(row(99, -500, Detail::HealthEvent { category: "SomethingNew".into(), event_id: 1, value: None }));
-        rows.push(row(100, -400, Detail::InventoryChange { item: "OsBuild".into(), previous: Some((26100 << 20) | 1), current: Some((26100 << 20) | 2) }));
+        rows.push(row(
+            100,
+            -400,
+            Detail::InventoryChange { item: "OsBuild".into(), previous: Some((26100 << 20) | 1), current: Some((26100 << 20) | 2) },
+        ));
         let s = bug_report_summary(&doc("blue_screen", None, rows), "0.5.0", None, SummaryLang::En);
         let listed = s.lines().filter(|l| l.starts_with("- ")).count();
         assert_eq!(listed, MAX_LISTED, "{s}");

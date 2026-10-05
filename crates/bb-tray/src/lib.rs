@@ -74,12 +74,9 @@ pub fn light_for(state: RecorderState) -> Light {
 pub fn describe(lang: Lang, state: RecorderState, reason: ReasonCode) -> String {
     let pt = lang == Lang::PtBr;
     match state {
-        RecorderState::Recording if reason == ReasonCode::RestrictedTest => if pt {
-            "Gravando (modo de teste: só o aplicativo autorizado)"
-        } else {
-            "Recording (test mode: authorized app only)"
+        RecorderState::Recording if reason == ReasonCode::RestrictedTest => {
+            if pt { "Gravando (modo de teste: só o aplicativo autorizado)" } else { "Recording (test mode: authorized app only)" }.into()
         }
-        .into(),
         RecorderState::Recording => if pt { "Gravando" } else { "Recording" }.into(),
         RecorderState::Starting => if pt { "Iniciando" } else { "Starting" }.into(),
         RecorderState::ShuttingDown => if pt { "Encerrando" } else { "Shutting down" }.into(),
@@ -99,7 +96,11 @@ pub fn describe(lang: Lang, state: RecorderState, reason: ReasonCode) -> String 
                 (_, true) => "regra de privacidade",
                 (_, false) => "privacy rule",
             };
-            if pt { format!("Suspenso: {why}") } else { format!("Suspended: {why}") }
+            if pt {
+                format!("Suspenso: {why}")
+            } else {
+                format!("Suspended: {why}")
+            }
         }
     }
 }
@@ -363,7 +364,17 @@ mod tests {
     #[test]
     fn a_notice_carries_only_fixed_text_never_a_placeholder_or_a_number() {
         for lang in Lang::ALL {
-            for code in ["blue_screen", "cpu_sustained", "memory_high", "unexpected_exit", "app_hang", "throttling", "hardware_error", "unexpected_shutdown", "x"] {
+            for code in [
+                "blue_screen",
+                "cpu_sustained",
+                "memory_high",
+                "unexpected_exit",
+                "app_hang",
+                "throttling",
+                "hardware_error",
+                "unexpected_shutdown",
+                "x",
+            ] {
                 let (_, body) = incident_notice(lang, code);
                 assert!(!body.contains('{') && !body.chars().any(|c| c.is_ascii_digit()), "{code}: {body}");
             }

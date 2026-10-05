@@ -204,12 +204,10 @@ impl Store {
 
     fn dec(&self, ctx: &str, stored: String) -> Result<String> {
         match &self.cipher {
-            Some(c) => c
-                .decrypt(ctx, &stored)
-                .ok_or_else(|| StoreError("cannot decrypt a stored field (wrong key or tampered data)".into())),
-            None if is_encrypted(&stored) => {
-                Err(StoreError("stored data is encrypted but no key was provided".into()))
+            Some(c) => {
+                c.decrypt(ctx, &stored).ok_or_else(|| StoreError("cannot decrypt a stored field (wrong key or tampered data)".into()))
             }
+            None if is_encrypted(&stored) => Err(StoreError("stored data is encrypted but no key was provided".into())),
             None => Ok(stored),
         }
     }
@@ -276,10 +274,7 @@ impl Store {
     }
 
     pub fn get_incident(&self, id: i64) -> Result<Option<Incident>> {
-        let raw = self
-            .conn
-            .query_row(&format!("SELECT {COLS} FROM incidents WHERE id = ?1"), [id], row_to_incident)
-            .optional()?;
+        let raw = self.conn.query_row(&format!("SELECT {COLS} FROM incidents WHERE id = ?1"), [id], row_to_incident).optional()?;
         raw.map(|i| self.decode_incident(i)).transpose()
     }
 
@@ -328,9 +323,7 @@ impl Store {
     }
 
     pub fn list_notes(&self, incident_id: i64) -> Result<Vec<Note>> {
-        let mut st = self.conn.prepare(
-            "SELECT id, incident_id, created_utc_ms, text FROM notes WHERE incident_id = ?1 ORDER BY id",
-        )?;
+        let mut st = self.conn.prepare("SELECT id, incident_id, created_utc_ms, text FROM notes WHERE incident_id = ?1 ORDER BY id")?;
         let raw = st
             .query_map([incident_id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?)))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -347,10 +340,7 @@ impl Store {
     }
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
-        let raw: Option<String> = self
-            .conn
-            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0))
-            .optional()?;
+        let raw: Option<String> = self.conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()?;
         raw.map(|v| self.dec(&format!("settings.{key}"), v)).transpose()
     }
 
@@ -365,21 +355,15 @@ impl Store {
     }
 
     pub fn log_config_change(&self, at_utc_ms: i64, key: &str, change: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO config_history (at_utc_ms, key, change) VALUES (?1, ?2, ?3)",
-            params![at_utc_ms, key, change],
-        )?;
+        self.conn.execute("INSERT INTO config_history (at_utc_ms, key, change) VALUES (?1, ?2, ?3)", params![at_utc_ms, key, change])?;
         Ok(())
     }
 
     /// Mais recentes primeiro.
     pub fn config_history(&self, limit: usize) -> Result<Vec<ConfigChange>> {
-        let mut st = self.conn.prepare(
-            "SELECT id, at_utc_ms, key, change FROM config_history ORDER BY id DESC LIMIT ?1",
-        )?;
-        let rows = st.query_map([limit as i64], |r| {
-            Ok(ConfigChange { id: r.get(0)?, at_utc_ms: r.get(1)?, key: r.get(2)?, change: r.get(3)? })
-        })?;
+        let mut st = self.conn.prepare("SELECT id, at_utc_ms, key, change FROM config_history ORDER BY id DESC LIMIT ?1")?;
+        let rows =
+            st.query_map([limit as i64], |r| Ok(ConfigChange { id: r.get(0)?, at_utc_ms: r.get(1)?, key: r.get(2)?, change: r.get(3)? }))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 }

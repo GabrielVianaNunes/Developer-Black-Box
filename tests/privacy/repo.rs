@@ -67,8 +67,8 @@ fn no_sensitive_file_is_tracked_by_git() {
     let out = git(&["ls-files"]).expect("git ls-files");
     let files = String::from_utf8_lossy(&out.stdout);
     let banned_suffixes = [
-        ".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite3", ".bbseg", ".bbwal", ".corrupt", ".keep", ".log", ".dmp",
-        ".pem", ".key", ".pfx", ".p12", ".bak", ".pcap", ".etl",
+        ".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite3", ".bbseg", ".bbwal", ".corrupt", ".keep", ".log", ".dmp", ".pem", ".key",
+        ".pfx", ".p12", ".bak", ".pcap", ".etl",
     ];
     for f in files.lines() {
         let lower = f.to_lowercase();

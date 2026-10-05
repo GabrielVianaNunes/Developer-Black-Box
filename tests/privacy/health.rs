@@ -5,9 +5,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use bb_collector::{
-    CollectError, ContextSource, HealthRecord, HealthSource, MetricsConfig, ProcessSample, ProcessSource, SystemSample,
-};
+use bb_collector::{CollectError, ContextSource, HealthRecord, HealthSource, MetricsConfig, ProcessSample, ProcessSource, SystemSample};
 use bb_core::{ExeName, GuardConfig, HealthCategory, Observation, RecorderState};
 use bb_engine::{Engine, IncidentConfig};
 use bb_recorder::{Recorder, RecorderConfig, StaticKey};
@@ -274,7 +272,7 @@ fn a_restart_reads_what_happened_while_the_app_was_closed_but_not_what_happened_
     }
     let closed_at = ORIGIN + 4 * STEP as i64;
     let restart = closed_at + 600_000; // o app ficou fechado 10 min
-    // o Windows registra o desligamento inesperado no boot seguinte (dentro do intervalo fechado)
+                                       // o Windows registra o desligamento inesperado no boot seguinte (dentro do intervalo fechado)
     feed.lock().unwrap().records.push(rec(closed_at + 30_000, HealthCategory::UnexpectedShutdown, 41, Some(0)));
     // e há um evento que acontecerá na pausa desta nova execução
     let during_pause = restart + 60_000;
@@ -335,7 +333,13 @@ fn quitting_while_paused_leaves_no_backlog_for_the_next_start() {
     assert!(!feed.lock().unwrap().polls.is_empty(), "positive control: it did read");
     e.recorder_mut().seal().unwrap();
     let rec_ = e.recorder();
-    let stored = rec_.list_segments().unwrap().iter().flat_map(|s| rec_.read_segment(s.index).unwrap()).filter(|l| l.contains("HealthEvent")).count();
+    let stored = rec_
+        .list_segments()
+        .unwrap()
+        .iter()
+        .flat_map(|s| rec_.read_segment(s.index).unwrap())
+        .filter(|l| l.contains("HealthEvent"))
+        .count();
     assert_eq!(stored, 0, "events from a stretch that ended in a manual pause are never reconstructed");
 }
 
@@ -459,7 +463,12 @@ fn the_baseline_survives_a_restart_so_a_change_made_while_closed_is_detected() {
         }
         e.shutdown().unwrap();
         let rec_ = e.recorder();
-        rec_.list_segments().unwrap().iter().flat_map(|s| rec_.read_segment(s.index).unwrap()).filter(|l| l.contains("InventoryChange")).collect()
+        rec_.list_segments()
+            .unwrap()
+            .iter()
+            .flat_map(|s| rec_.read_segment(s.index).unwrap())
+            .filter(|l| l.contains("InventoryChange"))
+            .collect()
     };
     assert!(run(&inv).is_empty(), "first run: baseline only");
     inv.lock().unwrap().snap = vec![(InventoryItem::BiosVersion, Some(8))];
@@ -721,8 +730,18 @@ fn a_sample_is_recorded_with_only_the_closed_numeric_fields() {
     assert_eq!(
         keys,
         vec![
-            "cpu_freq_mhz", "cpu_load_pct", "cpu_perf_pct", "disk_busy_pct", "disk_latency_us", "gpu_pct", "mem_available_mb",
-            "mem_commit_pct", "net_errors", "page_faults_per_sec", "passive_limit_pct", "thermal_kelvin"
+            "cpu_freq_mhz",
+            "cpu_load_pct",
+            "cpu_perf_pct",
+            "disk_busy_pct",
+            "disk_latency_us",
+            "gpu_pct",
+            "mem_available_mb",
+            "mem_commit_pct",
+            "net_errors",
+            "page_faults_per_sec",
+            "passive_limit_pct",
+            "thermal_kelvin"
         ]
     );
     assert!(body.values().all(|x| x.is_u64()), "every value is a plain number: {body:?}");
@@ -906,7 +925,7 @@ fn storage_cost_of_a_day_of_samples_is_measured_and_small() {
 fn retention_keeps_the_samples_within_the_budget_and_drops_the_oldest_first() {
     let dir = tempfile::tempdir().unwrap();
     let events = sample_events(6_000); // ~2 dias de amostras
-    // mede quanto as 6000 amostras ocupam sem limite e usa um terço como orçamento
+                                       // mede quanto as 6000 amostras ocupam sem limite e usa um terço como orçamento
     let probe_dir = tempfile::tempdir().unwrap();
     let probe_cfg = RecorderConfig { max_events_per_segment: 200, max_age: None, ..RecorderConfig::default() };
     let mut probe = Recorder::open(probe_dir.path(), &StaticKey([3u8; 32]), probe_cfg).unwrap();
@@ -955,7 +974,10 @@ fn a_blue_screen_opens_an_incident_with_evidence_and_no_app_name() {
     r.cycle();
     let all = incidents(&r);
     assert_eq!(all.len(), 1, "positive control: one incident");
-    assert_eq!((all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()), (IncidentKind::BlueScreen, None, format!("blue_screen|209|{ts}").as_str()));
+    assert_eq!(
+        (all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()),
+        (IncidentKind::BlueScreen, None, format!("blue_screen|209|{ts}").as_str())
+    );
     assert!(!all[0].segments.is_empty(), "the window before the incident is preserved right away");
     // passada a janela posterior, a captura conclui e as evidências incluem o próprio evento de saúde
     for _ in 0..8 {
@@ -1012,7 +1034,10 @@ fn sustained_throttling_opens_exactly_one_warning_incident() {
     }
     let all = incidents(&r);
     assert_eq!(all.len(), 1, "one incident for the condition, not one per sample: {all:?}");
-    assert_eq!((all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()), (IncidentKind::Throttling, None, all[0].summary.as_str()));
+    assert_eq!(
+        (all[0].kind, all[0].exe_name.as_deref(), all[0].summary.as_str()),
+        (IncidentKind::Throttling, None, all[0].summary.as_str())
+    );
     assert!(all[0].summary.starts_with("throttling|70|95|"), "the last number is when the condition began: {}", all[0].summary);
 }
 
@@ -1118,7 +1143,11 @@ fn a_stale_attention_is_not_kept_when_the_source_becomes_unavailable() {
     assert_eq!(state_of(&r, HealthSourceId::Inventory), SourceState::Attention, "setup: attention while readable");
     inv.lock().unwrap().fail = true;
     inventory_interval(&mut r);
-    assert_eq!(state_of(&r, HealthSourceId::Inventory), SourceState::Unavailable, "a source that cannot be read is unavailable, not an old alarm");
+    assert_eq!(
+        state_of(&r, HealthSourceId::Inventory),
+        SourceState::Unavailable,
+        "a source that cannot be read is unavailable, not an old alarm"
+    );
 }
 
 #[test]
@@ -1278,7 +1307,10 @@ fn the_trigger_event_read_after_a_long_gap_is_still_in_its_own_export() {
     let res = e.export_incident(inc.id, &out, mono, restart + mono as i64).unwrap();
     let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(res.path).unwrap()).unwrap();
     let rows = health_rows(&doc);
-    assert!(rows.iter().any(|r| r["kind"] == "HealthEvent" && r["tsUtcMs"].as_i64() == Some(crash_ts)), "the trigger is in its own export: {rows:?}");
+    assert!(
+        rows.iter().any(|r| r["kind"] == "HealthEvent" && r["tsUtcMs"].as_i64() == Some(crash_ts)),
+        "the trigger is in its own export: {rows:?}"
+    );
 }
 
 #[test]
@@ -1313,10 +1345,8 @@ fn app_events_in_the_export_keep_the_old_rules_and_health_rows_do_not_inflate_th
 #[test]
 fn when_every_health_source_is_unavailable_nothing_breaks_nothing_is_recorded_and_no_alarm_is_raised() {
     let (mut r, t) = tel_rig();
-    let (inv, pw) = (
-        Arc::new(Mutex::new(Inv { fail: true, ..Inv::default() })),
-        Arc::new(Mutex::new(Pwr { fail: true, ..Pwr::default() })),
-    );
+    let (inv, pw) =
+        (Arc::new(Mutex::new(Inv { fail: true, ..Inv::default() })), Arc::new(Mutex::new(Pwr { fail: true, ..Pwr::default() })));
     r.engine.set_inventory_source(Box::new(FakeInv(inv)));
     r.engine.set_power_source(Box::new(FakePower(pw)));
     t.lock().unwrap().fail = true;
@@ -1586,7 +1616,11 @@ fn the_manual_pause_and_turning_the_notice_off_discard_what_was_waiting() {
 #[test]
 fn an_old_notice_is_dropped() {
     let mut fresh = notice_rig();
-    assert_eq!(fresh.engine.take_incident_notices(fresh.mono, fresh.utc() + 29 * 60_000), vec![IncidentKind::BlueScreen], "positive control");
+    assert_eq!(
+        fresh.engine.take_incident_notices(fresh.mono, fresh.utc() + 29 * 60_000),
+        vec![IncidentKind::BlueScreen],
+        "positive control"
+    );
     let mut old = notice_rig();
     assert!(old.engine.take_incident_notices(old.mono, old.utc() + 31 * 60_000).is_empty(), "it no longer says anything useful");
 }

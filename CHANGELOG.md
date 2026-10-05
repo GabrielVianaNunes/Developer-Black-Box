@@ -7,6 +7,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Tests
+- Rust code is now formatted with `rustfmt` (`rustfmt.toml`: 140 columns, short lists on one line, to stay close to the existing style) and CI
+  fails if `cargo fmt --all -- --check` finds a difference. The formatting commit changes no logic: all 527 tests pass before and after. (#108)
 - Interface tests in a real browser (`npm run build && npm run test:ui`, also in CI): the welcome guide (steps, skipping, Esc, keyboard focus kept
   inside, the smaller buttons), the System health tab, the Privacy tab (switches, unsaved-changes bar, Apply and Discard) and the language switch,
   against a simulated backend with made-up data only. Dev dependency added: `playwright-core` (it uses the Chrome already installed; nothing is

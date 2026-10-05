@@ -5,9 +5,7 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use bb_collector::{
-    CollectError, ContextSource, MetricsConfig, ProcessSample, ProcessSource, SystemSample,
-};
+use bb_collector::{CollectError, ContextSource, MetricsConfig, ProcessSample, ProcessSource, SystemSample};
 use bb_core::{ExeName, GuardConfig, Observation, ProcessKey, ReasonCode, RecorderState};
 use bb_engine::Engine;
 use bb_recorder::{Recorder, RecorderConfig, StaticKey};
@@ -45,11 +43,7 @@ impl ContextSource for FakeCtx {
     fn observe(&mut self) -> Observation {
         let mut w = self.0.borrow_mut();
         w.ctx_calls += 1;
-        Observation {
-            detector_ok: true,
-            session_locked: w.locked,
-            foreground: w.foreground.map(|n| ExeName::new(n).unwrap()),
-        }
+        Observation { detector_ok: true, session_locked: w.locked, foreground: w.foreground.map(|n| ExeName::new(n).unwrap()) }
     }
 }
 
@@ -317,10 +311,28 @@ fn shutdown_seals_and_stops_recording() {
 #[test]
 fn persisted_events_only_use_allowlisted_fields() {
     let allowed: BTreeSet<&str> = [
-        "seq", "ts_utc_ms", "kind", "ProcessStarted", "key", "pid", "start_time_ms", "exe_name",
-        "parent_pid", "ProcessExited", "exit_code", "ProcessMetrics", "cpu_permille",
-        "working_set_kb", "SystemMetrics", "mem_used_kb", "mem_total_kb", "RecorderStateChanged",
-        "state", "reason", "UserMarker", "code",
+        "seq",
+        "ts_utc_ms",
+        "kind",
+        "ProcessStarted",
+        "key",
+        "pid",
+        "start_time_ms",
+        "exe_name",
+        "parent_pid",
+        "ProcessExited",
+        "exit_code",
+        "ProcessMetrics",
+        "cpu_permille",
+        "working_set_kb",
+        "SystemMetrics",
+        "mem_used_kb",
+        "mem_total_kb",
+        "RecorderStateChanged",
+        "state",
+        "reason",
+        "UserMarker",
+        "code",
     ]
     .into_iter()
     .collect();

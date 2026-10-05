@@ -111,11 +111,7 @@ impl Settings {
         GuardConfig {
             protected_apps: names(&self.protected_apps),
             excluded_apps: names(&self.excluded_apps),
-            partial_exclusions: self
-                .partial_exclusions
-                .iter()
-                .filter_map(|r| ExeName::new(&r.exe).ok().map(|n| (n, r.excluded)))
-                .collect(),
+            partial_exclusions: self.partial_exclusions.iter().filter_map(|r| ExeName::new(&r.exe).ok().map(|n| (n, r.excluded))).collect(),
             excluded_trees: names(&self.excluded_trees),
             stability_window_ms: self.stability_window_ms,
             max_staleness_ms: GuardConfig::default().max_staleness_ms,
@@ -190,7 +186,11 @@ impl Settings {
         };
         // Valores fora do intervalo (banco editado à mão) voltam ao padrão: fail-closed para o Guard.
         let s = s.normalized();
-        if s.validate().is_ok() { s } else { d }
+        if s.validate().is_ok() {
+            s
+        } else {
+            d
+        }
     }
 
     pub fn save(&self, store: &Store) -> Result<(), bb_store::StoreError> {

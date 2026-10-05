@@ -6,8 +6,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use bb_collector::{
-    CollectError, ContextSource, CrashKind, CrashRecord, CrashSource, MetricsConfig, ProcessSample,
-    ProcessSource, SystemSample,
+    CollectError, ContextSource, CrashKind, CrashRecord, CrashSource, MetricsConfig, ProcessSample, ProcessSource, SystemSample,
 };
 use bb_core::{ExeName, GuardConfig, Observation, ProcessKey, RecorderState};
 use bb_engine::{Engine, IncidentConfig};
@@ -53,11 +52,7 @@ impl ProcessSource for Procs {
 }
 impl ContextSource for Ctx {
     fn observe(&mut self) -> Observation {
-        Observation {
-            detector_ok: true,
-            session_locked: false,
-            foreground: self.0.borrow().foreground.map(|n| ExeName::new(n).unwrap()),
-        }
+        Observation { detector_ok: true, session_locked: false, foreground: self.0.borrow().foreground.map(|n| ExeName::new(n).unwrap()) }
     }
 }
 
@@ -133,13 +128,8 @@ fn rig_at(dir: tempfile::TempDir) -> Rig {
     gc.excluded_apps.insert(ExeName::new("synth-excluded.exe").unwrap());
     let metrics = MetricsConfig { every_n_ticks: 1, min_cpu_permille: 0, min_working_set_kb: 0 };
     let mut engine = Engine::new(gc, metrics, recorder, Procs(world.clone()), Ctx(world.clone()), 1);
-    let ic = IncidentConfig {
-        pre_window_ms: 5_000,
-        post_window_ms: 3_000,
-        cpu_samples: 3,
-        cooldown_ms: 1_000_000,
-        ..IncidentConfig::default()
-    };
+    let ic =
+        IncidentConfig { pre_window_ms: 5_000, post_window_ms: 3_000, cpu_samples: 3, cooldown_ms: 1_000_000, ..IncidentConfig::default() };
     // Como no app: campos sensíveis do banco cifrados.
     engine.enable_incidents(Store::open_encrypted(dir.path().join("meta.db"), &[9u8; 32]).unwrap(), ic);
     let crashes = FakeCrashes::default();
@@ -408,12 +398,7 @@ fn quick_settings() -> bb_engine::Settings {
 fn lines_with(r: &mut Rig, needle: &str) -> usize {
     r.engine.recorder_mut().seal().unwrap();
     let rec = r.engine.recorder();
-    rec.list_segments()
-        .unwrap()
-        .iter()
-        .flat_map(|s| rec.read_segment(s.index).unwrap())
-        .filter(|l| l.contains(needle))
-        .count()
+    rec.list_segments().unwrap().iter().flat_map(|s| rec.read_segment(s.index).unwrap()).filter(|l| l.contains(needle)).count()
 }
 
 // ---- falha e recuperação (teste 15) ----
@@ -628,11 +613,7 @@ fn a_test_authorization_records_only_the_authorized_browser_while_it_is_in_the_f
         r.tick();
     }
     assert!(lines_with(&mut r, "\"pid\":500") > 0, "the authorized browser's technical events are recorded");
-    assert_eq!(
-        lines_with(&mut r, "\"pid\":100"),
-        editor_events_before,
-        "nothing about other apps while in restricted mode"
-    );
+    assert_eq!(lines_with(&mut r, "\"pid\":100"), editor_events_before, "nothing about other apps while in restricted mode");
     assert_eq!(lines_with(&mut r, "SystemMetrics") > 0, true);
     let sys_before = lines_with(&mut r, "SystemMetrics");
     for _ in 0..4 {
@@ -759,24 +740,13 @@ fn export_json(text: &str) -> serde_json::Value {
 
 /// Tipos de evento exportados de um programa (pelo nome que a exportação mostra).
 fn exported_kinds(v: &serde_json::Value, exe: &str) -> std::collections::BTreeSet<String> {
-    v["events"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|e| e["exeName"] == exe)
-        .map(|e| e["kind"].as_str().unwrap().to_owned())
-        .collect()
+    v["events"].as_array().unwrap().iter().filter(|e| e["exeName"] == exe).map(|e| e["kind"].as_str().unwrap().to_owned()).collect()
 }
 
 fn count_lines_with_both(r: &mut Rig, a: &str, b: &str) -> usize {
     r.engine.recorder_mut().seal().unwrap();
     let rec = r.engine.recorder();
-    rec.list_segments()
-        .unwrap()
-        .iter()
-        .flat_map(|s| rec.read_segment(s.index).unwrap())
-        .filter(|l| l.contains(a) && l.contains(b))
-        .count()
+    rec.list_segments().unwrap().iter().flat_map(|s| rec.read_segment(s.index).unwrap()).filter(|l| l.contains(a) && l.contains(b)).count()
 }
 
 #[test]
@@ -875,9 +845,9 @@ fn partial_rules_are_normalized_validated_and_saved_encrypted() {
     s.partial_exclusions = vec![
         rule(" Partial-Secret-App.EXE ", X::new(false, true, false)),
         rule("partial-secret-app.exe", X::new(false, false, true)), // duplicado: união
-        rule("promoted.exe", X::ALL),                              // tudo -> exclusão total
-        rule("already-full.exe", X::new(false, true, false)),      // já excluído por inteiro: some
-        rule("empty.exe", X::NONE),                                // sem tipos: some
+        rule("promoted.exe", X::ALL),                               // tudo -> exclusão total
+        rule("already-full.exe", X::new(false, true, false)),       // já excluído por inteiro: some
+        rule("empty.exe", X::NONE),                                 // sem tipos: some
     ];
     r.engine.apply_settings(s, 1).unwrap();
     let saved = r.engine.settings().clone();
@@ -922,7 +892,10 @@ fn an_unreadable_partial_rule_in_the_database_fails_closed_to_full_exclusion() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open_encrypted(dir.path().join("meta.db"), &[9u8; 32]).unwrap();
     store
-        .set_setting("partial_exclusions", "good.exe|metrics\nbogus-kind.exe|nonsense\nno-kinds.exe|\nno-separator.exe\nmixed.exe|crashes,nonsense")
+        .set_setting(
+            "partial_exclusions",
+            "good.exe|metrics\nbogus-kind.exe|nonsense\nno-kinds.exe|\nno-separator.exe\nmixed.exe|crashes,nonsense",
+        )
         .unwrap();
     let s = bb_engine::Settings::load(&store);
     assert_eq!(s.partial_exclusions, vec![rule("good.exe", X::new(false, true, false))]);
@@ -943,7 +916,8 @@ fn settings_history_for_partial_rules_records_only_the_key_and_the_kind_of_chang
     r.engine.apply_settings(s, 12).unwrap();
 
     let hist = r.store().config_history(10).unwrap();
-    let changes: Vec<(i64, &str)> = hist.iter().filter(|h| h.key == "partial_exclusions").map(|h| (h.at_utc_ms, h.change.as_str())).collect();
+    let changes: Vec<(i64, &str)> =
+        hist.iter().filter(|h| h.key == "partial_exclusions").map(|h| (h.at_utc_ms, h.change.as_str())).collect();
     assert!(changes.contains(&(10, "added")) && changes.contains(&(11, "changed")) && changes.contains(&(12, "removed")), "{changes:?}");
     let dump = format!("{hist:?}");
     for leak in ["partial-secret-app", "lifecycle", "metrics", "crashes"] {
@@ -994,7 +968,11 @@ fn an_export_reapplies_the_exclusion_of_a_whole_process_tree() {
     assert!(all_pids.contains(&900), "the helper outside the tree is still exported: {all_pids:?}");
     assert!(all_pids.contains(&100), "control: the editor is still exported");
     assert!(res.dropped > 0);
-    assert_eq!(exported_kinds(&v, "synth-editor.exe"), exported_kinds(&export_json(&before), "synth-editor.exe"), "other programs untouched");
+    assert_eq!(
+        exported_kinds(&v, "synth-editor.exe"),
+        exported_kinds(&export_json(&before), "synth-editor.exe"),
+        "other programs untouched"
+    );
 }
 
 // ---- Resumo para relatar um bug (#107): sai da exportação refiltrada, nunca direto dos dados ------------------------
