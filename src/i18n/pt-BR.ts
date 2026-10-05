@@ -170,6 +170,9 @@ export const ptBR: Record<keyof typeof en, string> = {
   "privacy.power": "Registrar energia e bateria",
   "privacy.powerHelp":
     "Vem ligado. Só se o carregador está ligado e a porcentagem de carga. Ao desligar, para na hora.",
+  "privacy.notify": "Avisar quando um incidente abrir sozinho",
+  "privacy.notifyHelp":
+    "Vem desligado. Mostra uma notificação do Windows só com o tipo do incidente (por exemplo, \"uma tela azul foi registrada\"), nunca o nome de um programa nem qualquer dado gravado. Enquanto um navegador ou gerenciador de senhas está em primeiro plano, o aviso espera até ele sair, e nada é mostrado com a gravação pausada. Clicar nele não abre o app: abra a aba Incidentes você mesmo.",
   "privacy.autoStartHelp":
     "Desligado por padrão: sem isso, o app abre pausado e só grava depois que você clicar em \"Retomar gravação\".",
   "privacy.apply": "Aplicar",
@@ -447,6 +450,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "configKey.health_log_enabled": "Eventos de saúde do Windows",
   "configKey.inventory_enabled": "Inventário da máquina",
   "configKey.power_enabled": "Energia e bateria",
+  "configKey.notify_incidents": "Avisos de incidentes",
   "configKey.retention_max_mb": "Limite de armazenamento",
   "configKey.retention_max_hours": "Retenção",
   "configKey.authorizations": "Autorizações de teste",
@@ -499,7 +503,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "guide.news.health.b2": "Uma tela azul, um desligamento inesperado, um erro de hardware ou uma redução de desempenho por calor prolongada agora abre um incidente sozinha, com as evidências de antes e depois. Só números e códigos são gravados, nunca textos de mensagens, números de série ou nomes. Os contadores de desempenho vêm ligados e você pode desligá-los na aba Privacidade; a pausa sempre vence.",
   "guide.news.clarity.b2": "A Visão Geral agora mostra as regras em vigor e quantas vezes cada exclusão deixou algo de fora. É só uma contagem, guardada na memória.",
   "guide.news.switches.title": "Um interruptor para cada fonte de saúde",
-  "guide.news.switches.b1": "A aba Privacidade agora tem um interruptor para os eventos de saúde do Windows, um para o inventário da máquina e um para energia e bateria, ao lado dos contadores de desempenho. Desligar um para a fonte na hora, e o que aconteceu enquanto esteve desligado nunca é lido depois.",
+  "guide.news.switches.b1": "A aba Privacidade agora tem um interruptor para os eventos de saúde do Windows, um para o inventário da máquina e um para energia e bateria, ao lado dos contadores de desempenho. Desligar um para a fonte na hora, e o que aconteceu enquanto esteve desligado nunca é lido depois. Há também um aviso opcional, desligado por padrão, que diz só o tipo de um incidente que abriu sozinho.",
   "guide.news.picker.title": "Escolha programas em vez de digitar",
   "guide.news.picker.b1": "Ao excluir um programa, procure pelo nome, escolha na lista ou procure o arquivo dele. A lista também lê os atalhos do Menu Iniciar, então aparecem muito mais programas, com os nomes que você conhece.",
   "guide.news.picker.b2": "A lista é montada no seu PC quando você a abre. Nada dela é guardado nem enviado a lugar nenhum.",

@@ -108,6 +108,33 @@ pub fn tooltip(lang: Lang, state: RecorderState, reason: ReasonCode) -> String {
     format!("Developer Black Box: {}", describe(lang, state, reason))
 }
 
+/// Texto fixo do aviso do sistema para um tipo de incidente (`IncidentKind::as_str()`). Só o TIPO: nunca nome de
+/// programa, número, caminho ou qualquer dado coletado. Tipo desconhecido recebe o texto genérico.
+pub fn incident_notice(lang: Lang, kind_code: &str) -> (&'static str, &'static str) {
+    let pt = lang == Lang::PtBr;
+    let body = match (kind_code, pt) {
+        ("blue_screen", false) => "A blue screen was recorded. Open the app to investigate.",
+        ("blue_screen", true) => "Uma tela azul foi registrada. Abra o app para investigar.",
+        ("unexpected_shutdown", false) => "An unexpected shutdown was recorded. Open the app to investigate.",
+        ("unexpected_shutdown", true) => "Um desligamento inesperado foi registrado. Abra o app para investigar.",
+        ("hardware_error", false) => "A hardware error was recorded. Open the app to investigate.",
+        ("hardware_error", true) => "Um erro de hardware foi registrado. Abra o app para investigar.",
+        ("throttling", false) => "The machine is slowing down from heat. Open the app to see the evidence.",
+        ("throttling", true) => "A máquina está reduzindo o desempenho por calor. Abra o app para ver as evidências.",
+        ("cpu_sustained", false) => "A program kept the CPU high for a long time. Open the app to investigate.",
+        ("cpu_sustained", true) => "Um programa manteve a CPU alta por muito tempo. Abra o app para investigar.",
+        ("memory_high", false) => "A program is using a lot of memory. Open the app to investigate.",
+        ("memory_high", true) => "Um programa está usando muita memória. Abra o app para investigar.",
+        ("unexpected_exit", false) => "A program crashed. Open the app to investigate.",
+        ("unexpected_exit", true) => "Um programa falhou. Abra o app para investigar.",
+        ("app_hang", false) => "A program stopped responding. Open the app to investigate.",
+        ("app_hang", true) => "Um programa parou de responder. Abra o app para investigar.",
+        (_, false) => "A new incident was recorded. Open the app to investigate.",
+        (_, true) => "Um novo incidente foi registrado. Abra o app para investigar.",
+    };
+    ("Developer Black Box", body)
+}
+
 /// Textos fixos do menu de contexto da bandeja.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MenuLabels {
@@ -303,6 +330,44 @@ mod tests {
         let pt = menu_model(Lang::PtBr, RecorderState::ManualPause, ReasonCode::ManualPause, true);
         assert_eq!(en.status, "Status: Paused manually");
         assert_eq!(pt.status, "Status: Pausado manualmente");
+    }
+
+    // ---- aviso de incidente ----
+
+    #[test]
+    fn every_incident_kind_has_its_own_fixed_notice_in_both_languages() {
+        use bb_store::IncidentKind;
+        let kinds = [
+            IncidentKind::CpuSustained,
+            IncidentKind::MemoryHigh,
+            IncidentKind::UnexpectedExit,
+            IncidentKind::AppHang,
+            IncidentKind::UnexpectedShutdown,
+            IncidentKind::BlueScreen,
+            IncidentKind::HardwareError,
+            IncidentKind::Throttling,
+        ];
+        let generic = |lang| incident_notice(lang, "something-new").1;
+        let mut seen = std::collections::HashSet::new();
+        for lang in Lang::ALL {
+            for k in kinds {
+                let (title, body) = incident_notice(lang, k.as_str());
+                assert_eq!(title, "Developer Black Box");
+                assert_ne!(body, generic(lang), "{k:?} has a specific text in {lang:?}");
+                assert!(seen.insert(body), "{k:?} text is not shared with another kind");
+            }
+        }
+        assert_ne!(generic(Lang::En), generic(Lang::PtBr));
+    }
+
+    #[test]
+    fn a_notice_carries_only_fixed_text_never_a_placeholder_or_a_number() {
+        for lang in Lang::ALL {
+            for code in ["blue_screen", "cpu_sustained", "memory_high", "unexpected_exit", "app_hang", "throttling", "hardware_error", "unexpected_shutdown", "x"] {
+                let (_, body) = incident_notice(lang, code);
+                assert!(!body.contains('{') && !body.chars().any(|c| c.is_ascii_digit()), "{code}: {body}");
+            }
+        }
     }
 
     // ---- regras do menu (não dependem do idioma) ----

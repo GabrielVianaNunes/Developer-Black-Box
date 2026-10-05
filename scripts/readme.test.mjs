@@ -96,7 +96,7 @@ test("the README names the switches of the other health sources exactly as the P
   const flat = (s) => s.replace(/\s+/g, " ");
   for (const [file, text] of [["src/i18n/en.ts", flat(en)], ["src/i18n/pt-BR.ts", flat(pt)]]) {
     const src = readFileSync(root + file, "utf8");
-    for (const key of ["privacy.healthLog", "privacy.inventory", "privacy.power"]) {
+    for (const key of ["privacy.healthLog", "privacy.inventory", "privacy.power", "privacy.notify"]) {
       const label = new RegExp(`"${key.replace(".", "\\.")}":\\s*"([^"]+)"`).exec(src)[1];
       assert.ok(text.includes(`"${label}"`), `${file}: README lacks the switch "${label}"`);
     }

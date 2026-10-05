@@ -167,6 +167,9 @@ export const en = {
   "privacy.power": "Record power and battery status",
   "privacy.powerHelp":
     "On by default. Only whether the charger is plugged in and the charge percentage. Turning it off stops it at once.",
+  "privacy.notify": "Notify me when an incident opens by itself",
+  "privacy.notifyHelp":
+    "Off by default. Shows a Windows notification with only the type of the incident (for example \"a blue screen was recorded\"), never a program name or any recorded data. While a browser or password manager is in front, the notice waits until it is gone, and nothing is shown while recording is paused. Clicking it does not open the app: open the Incidents tab yourself.",
   "privacy.autoStartHelp":
     "Off by default: without it the app opens paused and only records after you click \"Resume recording\".",
   "privacy.apply": "Apply",
@@ -443,6 +446,7 @@ export const en = {
   "configKey.health_log_enabled": "Windows health events",
   "configKey.inventory_enabled": "Machine inventory",
   "configKey.power_enabled": "Power and battery",
+  "configKey.notify_incidents": "Incident notifications",
   "configKey.retention_max_mb": "Storage limit",
   "configKey.retention_max_hours": "Retention",
   "configKey.authorizations": "Test authorizations",
@@ -495,7 +499,7 @@ export const en = {
   "guide.news.health.b2": "A blue screen, an unexpected shutdown, a hardware error or sustained thermal throttling now opens an incident on its own, with the evidence from before and after. Only numbers and codes are stored, never message texts, serial numbers or names. The performance counters are on by default and you can turn them off in the Privacy tab; the pause always wins.",
   "guide.news.clarity.b2": "The Overview now shows the rules in effect and how many times each exclusion left something out. It is only a count, kept in memory.",
   "guide.news.switches.title": "A switch for each health source",
-  "guide.news.switches.b1": "The Privacy tab now has a switch for Windows health events, one for machine inventory and one for power and battery, next to the performance counters. Turning one off stops it at once, and what happened while it was off is never read afterwards.",
+  "guide.news.switches.b1": "The Privacy tab now has a switch for Windows health events, one for machine inventory and one for power and battery, next to the performance counters. Turning one off stops it at once, and what happened while it was off is never read afterwards. There is also an optional notification, off by default, that says only the type of an incident that opened by itself.",
   "guide.news.picker.title": "Pick programs instead of typing",
   "guide.news.picker.b1": "When you exclude a program, search for it by name, choose it from the list, or browse for its file. The list also reads your Start Menu shortcuts, so many more programs show up, with the names you know.",
   "guide.news.picker.b2": "The list is built on your PC when you open it. Nothing from it is stored or sent anywhere.",

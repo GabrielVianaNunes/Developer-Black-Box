@@ -22,7 +22,9 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
 - **Privacy Guard:** suspends recording when a browser or password manager is in the foreground, the
   session is locked or the detector is unavailable. The absence of a signal is never treated as "safe".
 - **Incidents:** manual capture, sustained CPU, high memory, crashes and hangs (Windows Event Log),
-  with evidence from the window before and after.
+  with evidence from the window before and after. Optionally (off by default, Privacy tab: **"Notify me when an incident opens by itself"**),
+  a Windows notification says **only the type** of an automatic incident, never a program name or any recorded data; it waits while a browser
+  or password manager is in front, is dropped on a manual pause or after 30 minutes, and clicking it does not open the app.
 - **System health:** a **System health** tab and automatic incidents (blue screen, unexpected shutdown, hardware error, sustained thermal
   throttling), fed by Windows events from a fixed list, inventory changes, power and battery, and performance counters, all **without
   administrator rights** and with numbers and codes only. See [System health](#system-health) for exactly what is read, what is never
@@ -335,7 +337,10 @@ de comando.
 - **Privacy Guard:** suspende a gravação com navegadores e gerenciadores de senha em primeiro plano,
   sessão bloqueada ou detector indisponível. Ausência de sinal nunca é tratada como "seguro".
 - **Incidentes:** captura manual, CPU sustentada, memória alta, falhas e travamentos (Event Log do
-  Windows), com evidências da janela anterior e posterior.
+  Windows), com evidências da janela anterior e posterior. Opcionalmente (desligado por padrão, aba Privacidade: **"Avisar quando um
+  incidente abrir sozinho"**), uma notificação do Windows diz **só o tipo** de um incidente automático, nunca o nome de um programa nem
+  dado gravado; ela espera enquanto um navegador ou gerenciador de senhas está em primeiro plano, é descartada na pausa manual ou depois de
+  30 minutos, e clicar nela não abre o app.
 - **Saúde do sistema:** uma aba **Saúde do sistema** e incidentes automáticos (tela azul, desligamento inesperado, erro de hardware,
   redução de desempenho por calor prolongada), alimentados por eventos do Windows de uma lista fixa, mudanças de inventário, energia e
   bateria e contadores de desempenho, tudo **sem administrador** e só com números e códigos. Veja [Saúde do sistema](#saúde-do-sistema)

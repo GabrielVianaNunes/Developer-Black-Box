@@ -251,6 +251,8 @@ pub struct SettingsDto {
     health_log_enabled: bool,
     inventory_enabled: bool,
     power_enabled: bool,
+    // Idem: sem `default`, para o aviso de incidentes não ser ligado ou desligado em silêncio por um cliente antigo.
+    notify_incidents: bool,
 }
 
 impl From<&Settings> for SettingsDto {
@@ -275,6 +277,7 @@ impl From<&Settings> for SettingsDto {
             health_log_enabled: s.health_log_enabled,
             inventory_enabled: s.inventory_enabled,
             power_enabled: s.power_enabled,
+            notify_incidents: s.notify_incidents,
         }
     }
 }
@@ -299,6 +302,7 @@ impl From<SettingsDto> for Settings {
             health_log_enabled: d.health_log_enabled,
             inventory_enabled: d.inventory_enabled,
             power_enabled: d.power_enabled,
+            notify_incidents: d.notify_incidents,
         }
     }
 }

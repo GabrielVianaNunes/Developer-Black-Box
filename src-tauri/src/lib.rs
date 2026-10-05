@@ -150,6 +150,16 @@ fn apply_window_light(w: &tauri::WebviewWindow, light: Light) {
     let _ = w.set_overlay_icon(Some(Image::new_owned(icon::render_dot(light, size), size, size)));
 }
 
+/// Mostra o aviso do sistema de cada tipo de incidente que o motor liberou (a fila só enche com o aviso ligado). O texto é
+/// fixo e só diz o tipo; falha ao mostrar não afeta nada.
+fn announce(app: &AppHandle, kinds: &[bb_store::IncidentKind], lang: Lang) {
+    use tauri_plugin_notification::NotificationExt;
+    for kind in kinds {
+        let (title, body) = bb_tray::incident_notice(lang, kind.as_str());
+        let _ = app.notification().builder().title(title).body(body).show();
+    }
+}
+
 /// Lê o estado real do engine e atualiza bandeja, ícone da janela e a interface.
 fn refresh(app: &AppHandle) -> StatusDto {
     let rt = app.state::<Arc<Runtime>>();
@@ -405,6 +415,7 @@ pub fn run() {
     tauri::Builder::default()
         // Duas instâncias disputariam o mesmo journal.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        .plugin(tauri_plugin_notification::init())
         .manage(rt.clone())
         .manage(Arc::new(updates::Updates::default()))
         .invoke_handler(tauri::generate_handler![
@@ -473,12 +484,16 @@ pub fn run() {
             let handle = app.handle().clone();
             let worker = rt.clone();
             std::thread::spawn(move || {
+                let mut notices = Vec::new();
                 while !worker.stop.load(Ordering::SeqCst) {
                     {
                         let mut e = worker.engine.lock().expect("engine lock");
                         // Erros viram o estado de falha (ícone vermelho); não há conteúdo a registrar.
                         let _ = e.tick(worker.mono_ms(), utc_ms());
+                        notices = e.take_incident_notices(worker.mono_ms(), utc_ms());
                     }
+                    announce(&handle, &notices, worker.lang());
+                    notices.clear();
                     refresh(&handle);
                     std::thread::sleep(TICK);
                 }
