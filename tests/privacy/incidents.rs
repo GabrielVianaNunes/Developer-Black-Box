@@ -1036,3 +1036,73 @@ fn the_summary_writes_nothing_to_disk() {
     assert!(!r._dir.path().join("exports").exists(), "no export file is created");
     assert_eq!(std::fs::read_dir(r._dir.path()).map(|d| d.count()).unwrap_or(0), before);
 }
+
+// ---- Exportação protegida por senha (#109) --------------------------------------------------------------------------
+
+const PW: &str = "synthetic test password";
+
+fn protected(r: &mut Rig, id: i64) -> std::path::PathBuf {
+    let out = r._dir.path().join("exports");
+    let utc = r.utc();
+    r.engine.export_incident_protected(id, &out, PW, bb_query::protect::KdfParams::FAST_FOR_TESTS, r.now, utc).unwrap().path
+}
+
+#[test]
+fn a_protected_export_is_unreadable_without_the_password_and_identical_to_the_plain_one_with_it() {
+    let (mut r, id) = cpu_incident();
+    let plain = std::fs::read(export(&mut r, id).0.path).unwrap();
+    let file = protected(&mut r, id);
+    assert!(file.file_name().unwrap().to_string_lossy().ends_with(".protected.json"));
+    let text = std::fs::read(&file).unwrap();
+    let as_text = String::from_utf8_lossy(&text);
+    assert!(!as_text.contains("synth-editor") && !as_text.contains("exeName") && !as_text.contains("SystemMetrics"), "{as_text}");
+    assert_eq!(bb_query::protect::open(&text, PW).unwrap(), plain, "same content, same bytes");
+    assert_eq!(bb_query::protect::open(&text, "a different password"), Err(bb_query::protect::OpenError::WrongPasswordOrCorrupt));
+}
+
+#[test]
+fn no_readable_copy_is_left_on_disk_and_only_the_protected_file_is_written() {
+    let (mut r, id) = cpu_incident();
+    let file = protected(&mut r, id);
+    let names: Vec<_> =
+        std::fs::read_dir(file.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    assert!(names[0].ends_with(".protected.json"));
+}
+
+#[test]
+fn a_weak_password_is_refused_before_any_file_or_folder_is_created() {
+    let (mut r, id) = cpu_incident();
+    let out = r._dir.path().join("exports");
+    let utc = r.utc();
+    for (pw, code) in
+        [("", "export.password.short"), ("short", "export.password.short"), ("x".repeat(300).as_str(), "export.password.long")]
+    {
+        let err = r.engine.export_incident_protected(id, &out, pw, bb_query::protect::KdfParams::FAST_FOR_TESTS, r.now, utc).unwrap_err();
+        assert_eq!(err.code(), code);
+        assert!(!out.exists(), "nothing is created for a refused password");
+    }
+}
+
+#[test]
+fn a_protected_export_reapplies_today_s_rules_and_never_has_notes() {
+    let (mut r, id) = cpu_incident();
+    r.store().add_note(id, 5, "synth private note about my customer").unwrap();
+    let mut s = quick_settings();
+    s.excluded_apps = vec!["synth-editor.exe".into()];
+    r.engine.apply_settings(s, 1).unwrap();
+    let file = protected(&mut r, id);
+    let opened = String::from_utf8(bb_query::protect::open(&std::fs::read(file).unwrap(), PW).unwrap()).unwrap();
+    assert!(!opened.contains("synth-editor.exe"), "an app excluded today is not in the protected file either");
+    assert!(!opened.contains("private") && !opened.contains("customer"), "notes are never exported");
+    assert!(opened.contains("\"format\": \"developer-blackbox-export/2\""), "control: it is the normal export inside");
+}
+
+#[test]
+fn a_protected_export_of_an_unknown_incident_fails_like_the_plain_one_and_writes_nothing() {
+    let mut r = rig();
+    let out = r._dir.path().join("exports");
+    let err = r.engine.export_incident_protected(999, &out, PW, bb_query::protect::KdfParams::FAST_FOR_TESTS, 0, 0).unwrap_err();
+    assert_eq!(err.code(), "export.not_found");
+    assert!(!out.exists());
+}

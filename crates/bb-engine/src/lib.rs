@@ -528,6 +528,28 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         Ok(ExportResult { path, events: doc.events.len(), dropped: doc.dropped_events })
     }
 
+    /// Como `export_incident`, mas o arquivo sai PROTEGIDO por senha (AES-256-GCM, chave derivada por Argon2id): o texto
+    /// claro nunca toca o disco. A senha é validada ANTES de qualquer coisa (curta demais não gera nem arquivo), não é
+    /// guardada nem registrada, e os custos de derivação (`kdf`) vêm de quem chama: o app usa `KdfParams::PRODUCTION`.
+    pub fn export_incident_protected(
+        &mut self,
+        id: i64,
+        out_dir: &std::path::Path,
+        password: &str,
+        kdf: bb_query::protect::KdfParams,
+        mono_ms: u64,
+        utc_ms: i64,
+    ) -> Result<ExportResult, EngineError> {
+        bb_query::protect::validate_password(password).map_err(|e| EngineError::Invalid(e.code().into()))?;
+        let doc = self.export_doc(id, mono_ms, utc_ms)?;
+        let json = serde_json::to_vec_pretty(&doc).map_err(|_| EngineError::Invalid("export.write".into()))?;
+        let protected = bb_query::protect::protect(&json, password, kdf).map_err(|e| EngineError::Invalid(e.code().into()))?;
+        std::fs::create_dir_all(out_dir).map_err(|_| EngineError::Invalid("export.folder".into()))?;
+        let path = out_dir.join(format!("incident-{id}-{utc_ms}.protected.json"));
+        std::fs::write(&path, protected).map_err(|_| EngineError::Invalid("export.write".into()))?;
+        Ok(ExportResult { path, events: doc.events.len(), dropped: doc.dropped_events })
+    }
+
     /// Resumo em texto para relatar um bug, montado a partir da MESMA exportação refiltrada (nunca direto dos dados
     /// gravados). O build do Windows só entra se o inventário está ligado e já o leu.
     pub fn bug_report_summary(

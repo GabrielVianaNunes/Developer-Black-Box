@@ -56,6 +56,9 @@ export const deleteIncident = (id: number) => invoke<void>("delete_incident", { 
 export const captureIncident = () => invoke<number>("capture_incident");
 export const getBugReportSummary = (id: number) => invoke<string>("get_bug_report_summary", { id });
 export const exportIncident = (id: number) => invoke<ExportResult>("export_incident", { id });
+/** A senha só vai ao backend nesta chamada; quem chama deve apagá-la da tela em seguida. */
+export const exportIncidentProtected = (id: number, password: string) =>
+  invoke<ExportResult>("export_incident_protected", { id, password });
 
 // Privacidade e armazenamento
 export const getSettings = () => invoke<Settings>("get_settings");
