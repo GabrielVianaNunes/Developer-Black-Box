@@ -20,6 +20,8 @@ const JOURNAL_MAGIC: &[u8; 8] = b"BBWAL001";
 const JOURNAL_HEADER_LEN: usize = 24;
 const NONCE_LEN: usize = 12;
 const PRUNED_LOG: &str = "pruned.log";
+/// Acima deste tamanho o registro de segmentos removidos é compactado (cada linha é só um número).
+const PRUNED_COMPACT_BYTES: u64 = 4096;
 
 #[derive(Clone, Debug)]
 pub struct RecorderConfig {
@@ -317,7 +319,32 @@ impl Recorder {
             }
         }
         self.sealed_bytes = total;
+        if fs::metadata(self.dir.join(PRUNED_LOG)).is_ok_and(|m| m.len() > PRUNED_COMPACT_BYTES) {
+            self.compact_pruned_log()?;
+        }
         Ok(removed)
+    }
+
+    /// Encolhe o registro de segmentos removidos sem mudar nada do que ele garante: a verificação só precisa dos índices
+    /// REMOVIDOS DEPOIS do segmento mais antigo que ainda existe (são as lacunas entre segmentos), e o maior índice
+    /// (índices podados nunca são reutilizados). Sem isto o arquivo crescia uma linha por segmento removido, para sempre.
+    /// Devolve quantas linhas sobraram.
+    pub fn compact_pruned_log(&self) -> Result<usize> {
+        let pruned = self.read_pruned()?;
+        let Some(&max) = pruned.iter().max() else { return Ok(0) };
+        let oldest = self.list_segments()?.first().map(|s| s.index);
+        let mut keep: Vec<u64> = pruned.iter().copied().filter(|i| *i == max || oldest.is_some_and(|o| *i > o)).collect();
+        keep.sort_unstable();
+        let tmp = self.dir.join("pruned.log.tmp");
+        {
+            let mut f = File::create(&tmp)?;
+            for i in &keep {
+                writeln!(f, "{i}")?;
+            }
+            f.sync_data()?;
+        }
+        fs::rename(&tmp, self.dir.join(PRUNED_LOG))?;
+        Ok(keep.len())
     }
 
     /// Exclui segmentos gravados (o journal ativo é selado antes). Evidências preservadas só

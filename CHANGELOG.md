@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- Disk space (#119). The Rust `target` folder reached about 55 GB on the developer's machine. Debug builds now have no debug symbols
+  (each of the ~40 test executables produced a large `.pdb`) and no incremental cache. New `npm run space` (sizes of the project and, read
+  only, of the app data), `npm run clean` (removes `target`, `dist` and dated graph backups) and a guard that runs before `npm run build`
+  and removes `target` when it passes 8 GB (`BB_TARGET_LIMIT_GB`). Measured with a clean `cargo test --workspace --no-run`: 2.22 GB
+  before, 1.71 GB after (-23%). One build is small; the 55 GB came from stale artifacts piling up, which the guard now stops.
+- Nothing the app writes grows without a ceiling any more. Evidence of incidents is limited to 50% of the storage quota: past it the oldest
+  automatic incidents you never touched and that have no note are removed (manual, in-progress, resolved or noted incidents never are).
+  Before this, preserved evidence could fill the quota and the recording would stop. The `exports` folder keeps the 30 newest files and
+  100 MB, the settings change history the last 1,000 changes, and the record of removed segments is compacted.
+
 ### Added
 - Incident detail: **Export with a password**. The same export document is encrypted with a password you choose at that moment (8+ characters,
   typed twice): AES-256-GCM, key from Argon2id (64 MiB, 3 passes), random salt and nonce, format and costs authenticated. The readable text never

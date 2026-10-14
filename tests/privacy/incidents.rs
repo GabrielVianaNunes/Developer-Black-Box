@@ -116,12 +116,16 @@ fn rig() -> Rig {
 
 /// Monta um engine sobre `dir`. Reusar o mesmo diretório simula reabrir o app depois de uma queda.
 fn rig_at(dir: tempfile::TempDir) -> Rig {
+    rig_at_quota(dir, RecorderConfig::default().max_total_bytes)
+}
+
+fn rig_at_quota(dir: tempfile::TempDir, quota: u64) -> Rig {
     let world: Shared = Rc::new(RefCell::new(World {
         foreground: Some("synth-editor.exe"),
         procs: vec![sample(100, "synth-editor.exe", 0)],
         ..World::default()
     }));
-    let rc = RecorderConfig { max_events_per_segment: 4, max_age: None, ..RecorderConfig::default() };
+    let rc = RecorderConfig { max_events_per_segment: 4, max_age: None, max_total_bytes: quota, ..RecorderConfig::default() };
     let recorder = Recorder::open(dir.path().join("rec"), &StaticKey([5u8; 32]), rc).unwrap();
     let mut gc = GuardConfig::default();
     gc.stability_window_ms = 1_000;
@@ -1105,4 +1109,98 @@ fn a_protected_export_of_an_unknown_incident_fails_like_the_plain_one_and_writes
     let err = r.engine.export_incident_protected(999, &out, PW, bb_query::protect::KdfParams::FAST_FOR_TESTS, 0, 0).unwrap_err();
     assert_eq!(err.code(), "export.not_found");
     assert!(!out.exists());
+}
+
+// ---- Limites de espaço: a evidência de incidentes tem teto ----
+
+fn preserved_bytes(r: &Rig) -> u64 {
+    r.engine.recorder().list_segments().unwrap().iter().filter(|s| s.preserved).map(|s| s.size).sum()
+}
+
+/// Abre um incidente automático (falha de um programa de nome próprio) e deixa a captura terminar.
+fn crash_incident(r: &mut Rig, name: &str) -> i64 {
+    let ts = r.utc() + 100;
+    r.crashes.0.lock().unwrap().push(crash(ts, name, CrashKind::Crash));
+    for _ in 0..30 {
+        r.tick();
+    }
+    r.store().list_incidents().unwrap().into_iter().find(|i| i.exe_name.as_deref() == Some(name)).expect("incident opened").id
+}
+
+#[test]
+fn evidence_has_a_budget_so_preserved_segments_never_fill_the_quota_and_stop_recording() {
+    let quota = 24_000u64;
+    let mut r = rig_at_quota(tempfile::tempdir().unwrap(), quota);
+    r.until_recording();
+    for _ in 0..6 {
+        r.tick();
+    }
+    let manual = r.engine.capture_manual(r.utc()).unwrap();
+    for _ in 0..12 {
+        r.tick();
+    }
+    // Um incidente automático com anotação: o usuário o tocou, então nunca sai sozinho.
+    let noted = crash_incident(&mut r, "synth-noted.exe");
+    r.store().add_note(noted, r.utc(), "synthetic note").unwrap();
+    let mut last_auto = 0;
+    for i in 0..14 {
+        last_auto = crash_incident(&mut r, &format!("synth-app-{i}.exe"));
+    }
+    let budget = quota / 100 * bb_engine::space::EVIDENCE_SHARE_PCT;
+    let ids: Vec<i64> = r.store().list_incidents().unwrap().iter().map(|i| i.id).collect();
+    assert!(ids.contains(&manual), "a manual incident is never removed on its own");
+    assert!(ids.contains(&noted), "an incident with a note is never removed on its own");
+    assert!(ids.contains(&last_auto), "the newest incident stays");
+    assert!(ids.len() < 16, "the oldest automatic incidents were removed ({} left)", ids.len());
+    // Dentro do teto, descontado o que é intocável (manual e anotado), que o teste mantém pequeno.
+    let untouchable: u64 = {
+        let segs = r.engine.recorder().list_segments().unwrap();
+        let keep: std::collections::HashSet<u64> =
+            [manual, noted].iter().flat_map(|id| r.store().get_incident(*id).unwrap().unwrap().segments).collect();
+        segs.iter().filter(|s| keep.contains(&s.index)).map(|s| s.size).sum()
+    };
+    let used = preserved_bytes(&r);
+    let newest = r.store().get_incident(last_auto).unwrap().unwrap().segments.len() as u64;
+    assert!(used <= budget.max(untouchable) + newest * 4_000, "evidence {used} B stays near the budget {budget} B");
+    // E o que importa: a gravação continua viva (sem o teto, a cota ficaria cheia de evidência e pararia).
+    let mut persisted = 0;
+    for _ in 0..12 {
+        persisted += r.tick().persisted;
+    }
+    assert!(persisted > 0, "recording must still be persisting events");
+}
+
+#[test]
+fn deleted_incidents_release_their_segments_for_the_normal_retention() {
+    let mut r = rig_at_quota(tempfile::tempdir().unwrap(), 24_000);
+    r.until_recording();
+    for _ in 0..6 {
+        r.tick();
+    }
+    let id = crash_incident(&mut r, "synth-gone.exe");
+    let segs = r.store().get_incident(id).unwrap().unwrap().segments;
+    assert!(!segs.is_empty());
+    assert_eq!(r.engine.enforce_evidence_budget().unwrap(), 0, "under the budget nothing is touched");
+    r.engine.delete_incident(id).unwrap();
+    let listed = r.engine.recorder().list_segments().unwrap();
+    assert!(segs.iter().all(|s| listed.iter().find(|x| x.index == *s).is_none_or(|x| !x.preserved)));
+}
+
+#[test]
+fn the_export_folder_keeps_only_the_newest_files_and_never_touches_other_files() {
+    let mut r = rig_with_two_apps();
+    let id = r.engine.capture_manual(r.utc()).unwrap();
+    let out = r._dir.path().join("exports");
+    std::fs::create_dir_all(&out).unwrap();
+    std::fs::write(out.join("minhas-notas.txt"), b"not an export").unwrap();
+    for i in 0..(bb_engine::space::MAX_EXPORT_FILES + 8) {
+        r.now += 1_000;
+        let utc = r.utc() + i as i64;
+        r.engine.export_incident(id, &out, r.now, utc).unwrap();
+    }
+    let mut names: Vec<String> = std::fs::read_dir(&out).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    names.sort();
+    let exports = names.iter().filter(|n| bb_engine::space::is_export_file(n)).count();
+    assert_eq!(exports, bb_engine::space::MAX_EXPORT_FILES);
+    assert!(names.contains(&"minhas-notas.txt".to_owned()), "files that are not exports are never deleted");
 }
