@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- The release procedure (`RELEASING.md`) now includes updating the bilingual GitHub wiki, and `node scripts/wiki-check.mjs <wiki-folder>
+  [version]` checks it: the version on both home pages, a link to the other language on every page, no broken internal links, no dashes,
+  and nothing about the signing keys or a real user path.
+
 ## [0.6.0] - 2026-10-14
 
 ### Changed
