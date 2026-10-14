@@ -169,6 +169,30 @@ pub fn export_incident(app: AppHandle, id: i64) -> Result<ExportDto, String> {
     })
 }
 
+/// Resumo em texto para relatar um bug, montado a partir da exportação refiltrada pelas regras de agora. Nada é gravado em
+/// disco; quem copia é a interface, por ação da pessoa.
+#[tauri::command]
+pub fn get_bug_report_summary(app: AppHandle, id: i64) -> Result<String, String> {
+    let rt = app.state::<Arc<Runtime>>();
+    let lang = if rt.lang() == Lang::PtBr { bb_query::SummaryLang::PtBr } else { bb_query::SummaryLang::En };
+    let mono = rt.mono_ms();
+    with_engine(&app, |e| e.bug_report_summary(id, env!("CARGO_PKG_VERSION"), lang, mono, utc_ms()).map_err(engine_err))
+}
+
+/// Exportação protegida por senha. A senha só passa por aqui (dentro do processo), é validada e usada uma vez pelo motor;
+/// não é registrada, guardada nem devolvida. Os custos da derivação são SEMPRE os de produção.
+#[tauri::command]
+pub fn export_incident_protected(app: AppHandle, id: i64, password: String) -> Result<ExportDto, String> {
+    let out = crate::data_dir().map_err(|_| "internal".to_string())?.join("exports");
+    let mono = app.state::<Arc<Runtime>>().mono_ms();
+    with_engine(&app, |e| {
+        let r = e
+            .export_incident_protected(id, &out, &password, bb_query::protect::KdfParams::PRODUCTION, mono, utc_ms())
+            .map_err(engine_err)?;
+        Ok(ExportDto { path: r.path.display().to_string(), events: r.events, dropped: r.dropped })
+    })
+}
+
 #[tauri::command]
 pub fn capture_incident(app: AppHandle) -> Result<i64, String> {
     with_engine(&app, |e| e.capture_manual(utc_ms()).map_err(engine_err))
@@ -247,6 +271,12 @@ pub struct SettingsDto {
     // Sem `default`, como os campos acima: um cliente que esqueça este campo é recusado em vez de ligar ou desligar a
     // telemetria em silêncio.
     telemetry_enabled: bool,
+    // Idem para os três interruptores das fontes de saúde: sem `default`, um cliente que os esqueça é recusado.
+    health_log_enabled: bool,
+    inventory_enabled: bool,
+    power_enabled: bool,
+    // Idem: sem `default`, para o aviso de incidentes não ser ligado ou desligado em silêncio por um cliente antigo.
+    notify_incidents: bool,
 }
 
 impl From<&Settings> for SettingsDto {
@@ -268,6 +298,10 @@ impl From<&Settings> for SettingsDto {
             retention_max_mb: s.retention_max_mb,
             retention_max_hours: s.retention_max_hours,
             telemetry_enabled: s.telemetry_enabled,
+            health_log_enabled: s.health_log_enabled,
+            inventory_enabled: s.inventory_enabled,
+            power_enabled: s.power_enabled,
+            notify_incidents: s.notify_incidents,
         }
     }
 }
@@ -289,6 +323,10 @@ impl From<SettingsDto> for Settings {
             retention_max_mb: d.retention_max_mb,
             retention_max_hours: d.retention_max_hours,
             telemetry_enabled: d.telemetry_enabled,
+            health_log_enabled: d.health_log_enabled,
+            inventory_enabled: d.inventory_enabled,
+            power_enabled: d.power_enabled,
+            notify_incidents: d.notify_incidents,
         }
     }
 }
@@ -363,17 +401,9 @@ pub fn list_authorizations(app: AppHandle) -> Result<Vec<AuthorizationDto>, Stri
 }
 
 #[tauri::command]
-pub fn authorize_app(
-    app: AppHandle,
-    exe: String,
-    minutes: u64,
-    allow_metrics: bool,
-    allow_crashes: bool,
-) -> Result<(), String> {
+pub fn authorize_app(app: AppHandle, exe: String, minutes: u64, allow_metrics: bool, allow_crashes: bool) -> Result<(), String> {
     let mono = app.state::<Arc<Runtime>>().mono_ms();
-    with_engine(&app, |e| {
-        e.authorize_app(&exe, minutes, allow_metrics, allow_crashes, mono, utc_ms()).map_err(engine_err)
-    })?;
+    with_engine(&app, |e| e.authorize_app(&exe, minutes, allow_metrics, allow_crashes, mono, utc_ms()).map_err(engine_err))?;
     refresh(&app);
     Ok(())
 }

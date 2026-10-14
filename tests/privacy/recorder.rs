@@ -14,11 +14,7 @@ fn keys() -> StaticKey {
 
 fn recording_guard() -> (PrivacyGuard, u64) {
     let mut g = PrivacyGuard::new(GuardConfig::default());
-    let obs = Observation {
-        detector_ok: true,
-        session_locked: false,
-        foreground: Some(ExeName::new("synth-editor.exe").unwrap()),
-    };
+    let obs = Observation { detector_ok: true, session_locked: false, foreground: Some(ExeName::new("synth-editor.exe").unwrap()) };
     g.observe(0, obs.clone());
     g.observe(6_000, obs);
     (g, 6_000)
@@ -30,11 +26,7 @@ fn events(n: usize) -> Vec<ValidatedEvent> {
     (0..n)
         .map(|i| {
             let key = ProcessKey { pid: i as u32 + 1, start_time_ms: 1 };
-            let kind = EventKind::ProcessStarted {
-                key,
-                exe_name: ExeName::new(MARKER).unwrap(),
-                parent_pid: 0,
-            };
+            let kind = EventKind::ProcessStarted { key, exe_name: ExeName::new(MARKER).unwrap(), parent_pid: 0 };
             g.admit(t, i as i64, kind).expect("guard admits synthetic event")
         })
         .collect()
@@ -273,26 +265,90 @@ fn retention_removes_oldest_unpreserved_and_keeps_preserved() {
     assert!(r.verify().is_ok(), "gaps from retention must not break verification");
 }
 
+#[test]
+fn the_pruned_log_is_compacted_without_losing_what_verification_and_indexes_need() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = RecorderConfig { max_total_bytes: 900, ..small_cfg() };
+    let mut r = Recorder::open(dir.path(), &keys(), cfg.clone()).unwrap();
+    let evs = events(3);
+    for _ in 0..40 {
+        for e in &evs {
+            r.append(e).unwrap();
+        }
+    }
+    r.seal().unwrap();
+    let log = dir.path().join("pruned.log");
+    let before = fs::read_to_string(&log).unwrap().lines().count();
+    assert!(before > 5, "the quota removed many segments ({before})");
+    let kept = r.compact_pruned_log().unwrap();
+    let after = fs::read_to_string(&log).unwrap().lines().count();
+    assert_eq!(kept, after);
+    assert!(after < before, "{after} < {before}");
+    assert!(!dir.path().join("pruned.log.tmp").exists());
+    assert!(r.verify().is_ok(), "gaps between existing segments must still be explained");
+    // Reabrir continua sem reaproveitar índices já removidos.
+    let newest_before = r.list_segments().unwrap().last().unwrap().index;
+    drop(r);
+    let mut r = Recorder::open(dir.path(), &keys(), cfg).unwrap();
+    for e in &evs {
+        r.append(e).unwrap();
+    }
+    r.seal().unwrap();
+    assert!(r.list_segments().unwrap().last().unwrap().index > newest_before);
+    assert!(r.verify().is_ok());
+}
+
+#[test]
+fn compaction_keeps_the_highest_removed_index_even_when_no_segment_is_left() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut r = Recorder::open(dir.path(), &keys(), small_cfg()).unwrap();
+    let evs = events(3);
+    for _ in 0..4 {
+        for e in &evs {
+            r.append(e).unwrap();
+        }
+    }
+    r.seal().unwrap();
+    let newest = r.list_segments().unwrap().last().unwrap().index;
+    r.delete_segments(true).unwrap();
+    assert!(r.list_segments().unwrap().is_empty());
+    r.compact_pruned_log().unwrap();
+    drop(r);
+    let mut r = Recorder::open(dir.path(), &keys(), small_cfg()).unwrap();
+    for e in &evs {
+        r.append(e).unwrap();
+    }
+    r.seal().unwrap();
+    assert!(r.list_segments().unwrap().first().unwrap().index > newest, "an index that was removed is never reused");
+}
+
 /// Pacotes do grafo de dependências (build + normais) de `pkg` no alvo Windows.
 /// O `Cargo.lock` é multiplataforma e lista crates de outros sistemas, então não serve aqui.
 fn windows_closure(pkg: &str) -> std::collections::BTreeSet<String> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let out = std::process::Command::new(cargo)
-        .args(["tree", "-p", pkg, "--target", "x86_64-pc-windows-msvc", "--prefix", "none", "-e", "normal,build", "--offline", "--manifest-path"])
+        .args([
+            "tree",
+            "-p",
+            pkg,
+            "--target",
+            "x86_64-pc-windows-msvc",
+            "--prefix",
+            "none",
+            "-e",
+            "normal,build",
+            "--offline",
+            "--manifest-path",
+        ])
         .arg(&manifest)
         .output()
         .expect("run cargo tree");
     assert!(out.status.success(), "cargo tree failed: {}", String::from_utf8_lossy(&out.stderr));
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|l| l.split_whitespace().next())
-        .map(str::to_owned)
-        .collect()
+    String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.split_whitespace().next()).map(str::to_owned).collect()
 }
 
-const HTTP_TLS_CLIENTS: [&str; 9] =
-    ["reqwest", "hyper", "ureq", "curl", "isahc", "surf", "native-tls", "openssl", "rustls"];
+const HTTP_TLS_CLIENTS: [&str; 9] = ["reqwest", "hyper", "ureq", "curl", "isahc", "surf", "native-tls", "openssl", "rustls"];
 const SOCKET_STACKS: [&str; 4] = ["tokio", "mio", "socket2", "h2"];
 
 // O núcleo não depende de nenhuma biblioteca de rede ou de sockets.

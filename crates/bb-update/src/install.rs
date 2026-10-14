@@ -9,7 +9,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::verify::{trusted_keys, verify_release, sha256_hex};
+use crate::verify::{sha256_hex, trusted_keys, verify_release};
 use crate::{Downloader, UpdateError, Version, OWNER, REPO};
 
 pub const DOWNLOAD_HOST: &str = "github.com";
@@ -43,7 +43,11 @@ fn clean(dir: &Path) {
 }
 
 fn status_error(status: u16, not_found: UpdateError) -> UpdateError {
-    if status == 404 { not_found } else { UpdateError::Status(status) }
+    if status == 404 {
+        not_found
+    } else {
+        UpdateError::Status(status)
+    }
 }
 
 /// Baixa `version` para `dir`, verifica e devolve o caminho do instalador já verificado.
@@ -213,8 +217,22 @@ mod tests {
         prepare_with(&[&pub_hex(&k)], &v("0.2.0"), dir.path(), &f).unwrap();
         let asked = f.asked.borrow();
         assert_eq!(asked.len(), 2);
-        assert_eq!(asked[0], ("github.com".into(), "/GabrielVianaNunes/Developer-Black-Box/releases/download/v0.2.0/Developer-Black-Box_0.2.0_x64-setup.exe.sig".into(), MAX_SIGNATURE));
-        assert_eq!(asked[1], ("github.com".into(), "/GabrielVianaNunes/Developer-Black-Box/releases/download/v0.2.0/Developer-Black-Box_0.2.0_x64-setup.exe".into(), MAX_INSTALLER));
+        assert_eq!(
+            asked[0],
+            (
+                "github.com".into(),
+                "/GabrielVianaNunes/Developer-Black-Box/releases/download/v0.2.0/Developer-Black-Box_0.2.0_x64-setup.exe.sig".into(),
+                MAX_SIGNATURE
+            )
+        );
+        assert_eq!(
+            asked[1],
+            (
+                "github.com".into(),
+                "/GabrielVianaNunes/Developer-Black-Box/releases/download/v0.2.0/Developer-Black-Box_0.2.0_x64-setup.exe".into(),
+                MAX_INSTALLER
+            )
+        );
     }
 
     #[test]
@@ -258,7 +276,10 @@ mod tests {
         assert_eq!(prepare_with(&[&pub_hex(&key())], &v("0.2.0"), dir.path(), &f), Err(UpdateError::Verify(crate::VerifyError::Mismatch)));
         // Um instalador antigo e legítimo (assinado como 0.1.0) não passa por 0.2.0.
         let replay = Fake::release("0.2.0", EXE, &sig_for(&key(), "0.1.0", EXE));
-        assert_eq!(prepare_with(&[&pub_hex(&key())], &v("0.2.0"), dir.path(), &replay), Err(UpdateError::Verify(crate::VerifyError::Mismatch)));
+        assert_eq!(
+            prepare_with(&[&pub_hex(&key())], &v("0.2.0"), dir.path(), &replay),
+            Err(UpdateError::Verify(crate::VerifyError::Mismatch))
+        );
         assert!(files_in(dir.path()).is_empty());
     }
 

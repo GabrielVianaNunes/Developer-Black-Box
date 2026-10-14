@@ -20,6 +20,8 @@ const JOURNAL_MAGIC: &[u8; 8] = b"BBWAL001";
 const JOURNAL_HEADER_LEN: usize = 24;
 const NONCE_LEN: usize = 12;
 const PRUNED_LOG: &str = "pruned.log";
+/// Acima deste tamanho o registro de segmentos removidos é compactado (cada linha é só um número).
+const PRUNED_COMPACT_BYTES: u64 = 4096;
 
 #[derive(Clone, Debug)]
 pub struct RecorderConfig {
@@ -105,17 +107,8 @@ impl Recorder {
         let cipher = Aes256Gcm::new_from_slice(&keys.key()?).map_err(|_| RecorderError::Crypto)?;
         let mut session_id = [0u8; 16];
         OsRng.fill_bytes(&mut session_id);
-        let mut r = Recorder {
-            dir,
-            cipher,
-            cfg,
-            session_id,
-            journal: None,
-            next_index: 0,
-            last_hash: [0; 32],
-            sealed_bytes: 0,
-            recovery: None,
-        };
+        let mut r =
+            Recorder { dir, cipher, cfg, session_id, journal: None, next_index: 0, last_hash: [0; 32], sealed_bytes: 0, recovery: None };
         r.scan_sealed()?;
         r.recover_journal()?;
         Ok(r)
@@ -161,10 +154,7 @@ impl Recorder {
         };
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let aad = frame_aad(&header, n);
-        let ct = self
-            .cipher
-            .encrypt(&nonce, Payload { msg: line.as_bytes(), aad: &aad })
-            .map_err(|_| RecorderError::Crypto)?;
+        let ct = self.cipher.encrypt(&nonce, Payload { msg: line.as_bytes(), aad: &aad }).map_err(|_| RecorderError::Crypto)?;
         let mut frame = Vec::with_capacity(4 + NONCE_LEN + ct.len());
         frame.extend_from_slice(&(ct.len() as u32).to_le_bytes());
         frame.extend_from_slice(&nonce);
@@ -209,11 +199,7 @@ impl Recorder {
             let name = e.file_name();
             if let Some(index) = name.to_str().and_then(parse_index) {
                 if e.file_type()?.is_file() {
-                    v.push(SegmentInfo {
-                        index,
-                        size: e.metadata()?.len(),
-                        preserved: keep_path(&self.dir, index).exists(),
-                    });
+                    v.push(SegmentInfo { index, size: e.metadata()?.len(), preserved: keep_path(&self.dir, index).exists() });
                 }
             }
         }
@@ -230,8 +216,7 @@ impl Recorder {
     pub fn time_range(&self, index: u64) -> Result<Option<(i64, i64)>> {
         let mut range: Option<(i64, i64)> = None;
         for line in self.read_segment(index)? {
-            let v: serde_json::Value =
-                serde_json::from_str(&line).map_err(|_| RecorderError::Corrupt("bad event json"))?;
+            let v: serde_json::Value = serde_json::from_str(&line).map_err(|_| RecorderError::Corrupt("bad event json"))?;
             if let Some(ts) = v.get("ts_utc_ms").and_then(|t| t.as_i64()) {
                 range = Some(match range {
                     Some((lo, hi)) => (lo.min(ts), hi.max(ts)),
@@ -334,7 +319,32 @@ impl Recorder {
             }
         }
         self.sealed_bytes = total;
+        if fs::metadata(self.dir.join(PRUNED_LOG)).is_ok_and(|m| m.len() > PRUNED_COMPACT_BYTES) {
+            self.compact_pruned_log()?;
+        }
         Ok(removed)
+    }
+
+    /// Encolhe o registro de segmentos removidos sem mudar nada do que ele garante: a verificação só precisa dos índices
+    /// REMOVIDOS DEPOIS do segmento mais antigo que ainda existe (são as lacunas entre segmentos), e o maior índice
+    /// (índices podados nunca são reutilizados). Sem isto o arquivo crescia uma linha por segmento removido, para sempre.
+    /// Devolve quantas linhas sobraram.
+    pub fn compact_pruned_log(&self) -> Result<usize> {
+        let pruned = self.read_pruned()?;
+        let Some(&max) = pruned.iter().max() else { return Ok(0) };
+        let oldest = self.list_segments()?.first().map(|s| s.index);
+        let mut keep: Vec<u64> = pruned.iter().copied().filter(|i| *i == max || oldest.is_some_and(|o| *i > o)).collect();
+        keep.sort_unstable();
+        let tmp = self.dir.join("pruned.log.tmp");
+        {
+            let mut f = File::create(&tmp)?;
+            for i in &keep {
+                writeln!(f, "{i}")?;
+            }
+            f.sync_data()?;
+        }
+        fs::rename(&tmp, self.dir.join(PRUNED_LOG))?;
+        Ok(keep.len())
     }
 
     /// Exclui segmentos gravados (o journal ativo é selado antes). Evidências preservadas só
@@ -376,10 +386,7 @@ impl Recorder {
             let mut header = [0u8; JOURNAL_HEADER_LEN];
             header[0..8].copy_from_slice(JOURNAL_MAGIC);
             header[8..24].copy_from_slice(&self.session_id);
-            let mut file = OpenOptions::new()
-                .create_new(true)
-                .append(true)
-                .open(self.dir.join(JOURNAL_NAME))?;
+            let mut file = OpenOptions::new().create_new(true).append(true).open(self.dir.join(JOURNAL_NAME))?;
             file.write_all(&header)?;
             self.journal = Some(Journal { file, frames: 0, bytes: JOURNAL_HEADER_LEN as u64, header });
         }

@@ -6,12 +6,16 @@ import {
   captureIncident,
   deleteIncident,
   exportIncident,
+  exportIncidentProtected,
+  getBugReportSummary,
   getIncident,
   listIncidents,
   setIncidentState,
 } from "../../services/backend";
 
 const STATES = ["new", "investigating", "resolved", "dismissed"];
+/** Mesmo mínimo do backend (que recusa de novo): só evita um clique inútil. */
+const MIN_PASSWORD_CHARS = 8;
 
 export function IncidentsView() {
   const { t, f, errorText, incidentKindLabel, severityLabel, investigationLabel } = useI18n();
@@ -83,6 +87,11 @@ function IncidentDetailPanel({ id, onChanged, onDeleted }: { id: number; onChang
   const { data: d, error, reload } = usePolling(() => getIncident(id), 3000, [id]);
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  // O texto gerado fica na tela para a pessoa conferir antes de colar em qualquer lugar.
+  const [summary, setSummary] = useState<{ id: number; text: string } | null>(null);
+  // A senha da exportação protegida só vive nestes dois campos e é apagada assim que o pedido sai (dê certo ou não).
+  const [password, setPassword] = useState("");
+  const [repeat, setRepeat] = useState("");
 
   if (error) return <p className="notice">{errorText(error)}</p>;
   if (!d) return <p className="muted">{t("app.loading")}</p>;
@@ -205,6 +214,57 @@ function IncidentDetailPanel({ id, onChanged, onDeleted }: { id: number; onChang
       >
         {t("incidents.exportButton")}
       </button>
+      <h3>{t("incidents.exportProtectedTitle")}</h3>
+      <p className="muted small">{t("incidents.exportProtectedHelp")}</p>
+      <div className="filters">
+        <label>
+          {t("incidents.password")}
+          <input type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+        <label>
+          {t("incidents.passwordRepeat")}
+          <input type="password" autoComplete="off" value={repeat} onChange={(e) => setRepeat(e.target.value)} />
+        </label>
+        <button
+          disabled={[...password].length < MIN_PASSWORD_CHARS || password !== repeat}
+          onClick={() => {
+            const pw = password;
+            setPassword("");
+            setRepeat("");
+            void run(async () => {
+              const r = await exportIncidentProtected(inc.id, pw);
+              setMsg(t("incidents.exported", { path: r.path, events: r.events, dropped: r.dropped }));
+            });
+          }}
+        >
+          {t("incidents.exportProtectedButton")}
+        </button>
+      </div>
+      {password.length > 0 && [...password].length < MIN_PASSWORD_CHARS && (
+        <p className="muted small">{t("incidents.passwordShort", { n: MIN_PASSWORD_CHARS })}</p>
+      )}
+      {repeat.length > 0 && password !== repeat && <p className="muted small">{t("incidents.passwordMismatch")}</p>}
+      <h3>{t("incidents.summaryTitle")}</h3>
+      <p className="muted small">{t("incidents.summaryHelp")}</p>
+      <button
+        onClick={() =>
+          run(async () => {
+            const text = await getBugReportSummary(inc.id);
+            setSummary({ id: inc.id, text });
+            try {
+              await navigator.clipboard.writeText(text);
+              setMsg(t("incidents.summaryCopied"));
+            } catch {
+              setMsg(t("incidents.summaryNotCopied"));
+            }
+          })
+        }
+      >
+        {t("incidents.summaryButton")}
+      </button>
+      {summary && summary.id === inc.id && (
+        <textarea className="summary-text" readOnly rows={12} value={summary.text} aria-label={t("incidents.summaryTitle")} />
+      )}
       <div className="row danger-zone">
         <button
           className="danger"

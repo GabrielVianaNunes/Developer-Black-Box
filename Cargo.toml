@@ -14,7 +14,7 @@ members = [
 
 [workspace.package]
 # Única fonte da versão do app (veja scripts/version.mjs).
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 license-file = "LICENSE"
 publish = false
@@ -22,3 +22,9 @@ publish = false
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Tamanho de `target/`: sem simbolos de depuracao (cada executavel de teste ganhava um .pdb de dezenas de MB, e sao ~40) e sem
+# cache incremental (cresce sem limite). A pasta chegou a ~55 GB; `npm run space` mede e `npm run build` limpa acima de 8 GB.
+[profile.dev]
+debug = false
+incremental = false

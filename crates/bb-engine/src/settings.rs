@@ -33,6 +33,16 @@ pub struct Settings {
     /// Telemetria contínua de desempenho do sistema (contadores PDH, ~1 amostra a cada 30 s). Ligada por padrão; é
     /// a chave para desligar na aba Privacidade.
     pub telemetry_enabled: bool,
+    /// Leitura dos eventos de saúde do Windows (Event Log). Ligada por padrão; desligada, nada é lido nem gravado e o
+    /// período desligado nunca é lido depois.
+    pub health_log_enabled: bool,
+    /// Leitura do inventário da máquina (BIOS, firmware, Secure Boot, build, drivers). Mesmas regras.
+    pub inventory_enabled: bool,
+    /// Leitura de energia e bateria. Mesmas regras.
+    pub power_enabled: bool,
+    /// Aviso do sistema (notificação) quando um incidente automático abre. DESLIGADO por padrão; só leva o tipo do
+    /// incidente. Valor ilegível = desligado.
+    pub notify_incidents: bool,
 }
 
 impl Default for Settings {
@@ -50,6 +60,10 @@ impl Default for Settings {
             retention_max_mb: 256,
             retention_max_hours: 24,
             telemetry_enabled: true,
+            health_log_enabled: true,
+            inventory_enabled: true,
+            power_enabled: true,
+            notify_incidents: false,
         }
     }
 }
@@ -97,11 +111,7 @@ impl Settings {
         GuardConfig {
             protected_apps: names(&self.protected_apps),
             excluded_apps: names(&self.excluded_apps),
-            partial_exclusions: self
-                .partial_exclusions
-                .iter()
-                .filter_map(|r| ExeName::new(&r.exe).ok().map(|n| (n, r.excluded)))
-                .collect(),
+            partial_exclusions: self.partial_exclusions.iter().filter_map(|r| ExeName::new(&r.exe).ok().map(|n| (n, r.excluded))).collect(),
             excluded_trees: names(&self.excluded_trees),
             stability_window_ms: self.stability_window_ms,
             max_staleness_ms: GuardConfig::default().max_staleness_ms,
@@ -152,6 +162,11 @@ impl Settings {
             Ok(Some(v)) => v.lines().map(str::to_owned).filter(|s| !s.is_empty()).collect(),
             _ => dflt.clone(),
         };
+        let switch = |k: &str, dflt: bool| match store.get_setting(k) {
+            Ok(None) => dflt,
+            Ok(Some(v)) => v == "true",
+            Err(_) => false,
+        };
         let num = |k: &str, dflt: u64| store.get_setting(k).ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(dflt);
         let s = Settings {
             protected_apps: list("protected_apps", &d.protected_apps),
@@ -162,16 +177,20 @@ impl Settings {
             auto_start: store.get_setting("auto_start").ok().flatten().map_or(d.auto_start, |v| v == "true"),
             retention_max_mb: num("retention_max_mb", d.retention_max_mb),
             retention_max_hours: num("retention_max_hours", d.retention_max_hours),
-            // Ausente = padrão (ligada). Valor ilegível ou diferente de "true" = DESLIGADA: na dúvida, não coleta.
-            telemetry_enabled: match store.get_setting("telemetry_enabled") {
-                Ok(None) => d.telemetry_enabled,
-                Ok(Some(v)) => v == "true",
-                Err(_) => false,
-            },
+            // Interruptores: ausente = padrão (ligado). Valor ilegível ou diferente de "true" = DESLIGADO: na dúvida, não coleta.
+            telemetry_enabled: switch("telemetry_enabled", d.telemetry_enabled),
+            health_log_enabled: switch("health_log_enabled", d.health_log_enabled),
+            inventory_enabled: switch("inventory_enabled", d.inventory_enabled),
+            power_enabled: switch("power_enabled", d.power_enabled),
+            notify_incidents: switch("notify_incidents", d.notify_incidents),
         };
         // Valores fora do intervalo (banco editado à mão) voltam ao padrão: fail-closed para o Guard.
         let s = s.normalized();
-        if s.validate().is_ok() { s } else { d }
+        if s.validate().is_ok() {
+            s
+        } else {
+            d
+        }
     }
 
     pub fn save(&self, store: &Store) -> Result<(), bb_store::StoreError> {
@@ -182,7 +201,15 @@ impl Settings {
         store.set_setting("stability_window_ms", &self.stability_window_ms.to_string())?;
         store.set_setting("auto_start", if self.auto_start { "true" } else { "false" })?;
         store.set_setting("retention_max_mb", &self.retention_max_mb.to_string())?;
-        store.set_setting("telemetry_enabled", if self.telemetry_enabled { "true" } else { "false" })?;
+        for (k, on) in [
+            ("telemetry_enabled", self.telemetry_enabled),
+            ("health_log_enabled", self.health_log_enabled),
+            ("inventory_enabled", self.inventory_enabled),
+            ("power_enabled", self.power_enabled),
+            ("notify_incidents", self.notify_incidents),
+        ] {
+            store.set_setting(k, if on { "true" } else { "false" })?;
+        }
         store.set_setting("retention_max_hours", &self.retention_max_hours.to_string())
     }
 
@@ -231,6 +258,18 @@ impl Settings {
         }
         if self.telemetry_enabled != new.telemetry_enabled {
             out.push(("telemetry_enabled", "changed"));
+        }
+        if self.health_log_enabled != new.health_log_enabled {
+            out.push(("health_log_enabled", "changed"));
+        }
+        if self.inventory_enabled != new.inventory_enabled {
+            out.push(("inventory_enabled", "changed"));
+        }
+        if self.power_enabled != new.power_enabled {
+            out.push(("power_enabled", "changed"));
+        }
+        if self.notify_incidents != new.notify_incidents {
+            out.push(("notify_incidents", "changed"));
         }
         out
     }
@@ -396,6 +435,42 @@ mod tests {
         after.telemetry_enabled = false;
         assert_eq!(before.diff(&after), vec![("telemetry_enabled", "changed")]);
         assert!(before.diff(&before).is_empty());
+    }
+
+    #[test]
+    fn the_health_source_switches_default_on_round_trip_and_unclear_means_off() {
+        let store = Store::open_in_memory().unwrap();
+        let d = Settings::default();
+        assert!(d.health_log_enabled && d.inventory_enabled && d.power_enabled);
+        assert!(!d.notify_incidents, "the incident notice is opt-in");
+        assert!(!Settings::load(&store).notify_incidents, "nothing saved yet = default (off)");
+        let mut on = d.clone();
+        on.notify_incidents = true;
+        on.save(&store).unwrap();
+        assert!(Settings::load(&store).notify_incidents);
+        let l = Settings::load(&store);
+        assert!(l.health_log_enabled && l.inventory_enabled && l.power_enabled, "nothing saved yet = default (on)");
+        let mut s = d.clone();
+        s.health_log_enabled = false;
+        s.power_enabled = false;
+        s.save(&store).unwrap();
+        let l = Settings::load(&store);
+        assert!(!l.health_log_enabled && l.inventory_enabled && !l.power_enabled, "each one is stored on its own");
+        for key in ["health_log_enabled", "inventory_enabled", "power_enabled", "notify_incidents"] {
+            store.set_setting(key, "maybe").unwrap();
+        }
+        let l = Settings::load(&store);
+        assert!(!l.health_log_enabled && !l.inventory_enabled && !l.power_enabled, "when in doubt, do not collect");
+        assert!(!l.notify_incidents, "when in doubt, do not notify");
+        let mut after = d.clone();
+        after.inventory_enabled = false;
+        assert_eq!(d.diff(&after), vec![("inventory_enabled", "changed")]);
+        after.health_log_enabled = false;
+        after.power_enabled = false;
+        assert_eq!(d.diff(&after).len(), 3);
+        let mut notify = d.clone();
+        notify.notify_incidents = true;
+        assert_eq!(d.diff(&notify), vec![("notify_incidents", "changed")]);
     }
 
     #[test]

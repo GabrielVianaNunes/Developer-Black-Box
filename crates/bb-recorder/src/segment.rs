@@ -60,26 +60,12 @@ pub fn hash(bytes: &[u8]) -> Hash {
 }
 
 /// Comprime e cifra `lines` (uma por evento) num arquivo de segmento completo.
-pub fn seal(
-    cipher: &Aes256Gcm,
-    index: u64,
-    session_id: [u8; 16],
-    prev_hash: Hash,
-    lines: &[String],
-) -> Result<Vec<u8>> {
+pub fn seal(cipher: &Aes256Gcm, index: u64, session_id: [u8; 16], prev_hash: Hash, lines: &[String]) -> Result<Vec<u8>> {
     let compressed = zstd::encode_all(lines.join("\n").as_bytes(), 3)?;
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let header = SegmentHeader {
-        index,
-        session_id,
-        prev_hash,
-        event_count: lines.len() as u32,
-        nonce: nonce.into(),
-    };
+    let header = SegmentHeader { index, session_id, prev_hash, event_count: lines.len() as u32, nonce: nonce.into() };
     let head = header.encode();
-    let ct = cipher
-        .encrypt(&nonce, Payload { msg: &compressed, aad: &head })
-        .map_err(|_| RecorderError::Crypto)?;
+    let ct = cipher.encrypt(&nonce, Payload { msg: &compressed, aad: &head }).map_err(|_| RecorderError::Crypto)?;
     let mut out = Vec::with_capacity(HEADER_LEN + ct.len());
     out.extend_from_slice(&head);
     out.extend_from_slice(&ct);
@@ -90,16 +76,10 @@ pub fn seal(
 pub fn open(cipher: &Aes256Gcm, bytes: &[u8]) -> Result<(SegmentHeader, Vec<String>)> {
     let header = SegmentHeader::decode(bytes)?;
     let (head, ct) = bytes.split_at(HEADER_LEN);
-    let compressed = cipher
-        .decrypt(Nonce::from_slice(&header.nonce), Payload { msg: ct, aad: head })
-        .map_err(|_| RecorderError::Crypto)?;
+    let compressed = cipher.decrypt(Nonce::from_slice(&header.nonce), Payload { msg: ct, aad: head }).map_err(|_| RecorderError::Crypto)?;
     let plain = zstd::decode_all(&compressed[..])?;
     let text = String::from_utf8(plain).map_err(|_| RecorderError::Corrupt("non-utf8 payload"))?;
-    let lines: Vec<String> = if text.is_empty() {
-        Vec::new()
-    } else {
-        text.split('\n').map(str::to_owned).collect()
-    };
+    let lines: Vec<String> = if text.is_empty() { Vec::new() } else { text.split('\n').map(str::to_owned).collect() };
     if lines.len() as u32 != header.event_count {
         return Err(RecorderError::Corrupt("event count mismatch"));
     }

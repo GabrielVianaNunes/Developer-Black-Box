@@ -1,8 +1,8 @@
 //! Exclusão por tipo de evento no Guard. Somente dados sintéticos.
 
 use bb_core::{
-    AuthError, EventKind, ExclusionKind, ExclusionSet, ExeName, GuardConfig, Observation, PrivacyGuard, ProcessKey,
-    ReasonCode, RecorderState,
+    AuthError, EventKind, ExclusionKind, ExclusionSet, ExeName, GuardConfig, Observation, PrivacyGuard, ProcessKey, ReasonCode,
+    RecorderState,
 };
 
 const WINDOW: u64 = 5_000;

@@ -8,8 +8,8 @@ use std::path::Path;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
+    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
+    KEY_QUERY_VALUE, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
 };
 
 use crate::sample::CollectError;
@@ -44,7 +44,17 @@ fn open_key(subkey: &str, create: bool) -> Result<Option<Key>, CollectError> {
     // SAFETY: `path` é terminado em NUL e vive durante a chamada; `h` recebe um handle válido se houver êxito.
     let status = unsafe {
         if create {
-            RegCreateKeyExW(HKEY_CURRENT_USER, PCWSTR(path.as_ptr()), None, PCWSTR::null(), REG_OPTION_NON_VOLATILE, access, None, &mut h, None)
+            RegCreateKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(path.as_ptr()),
+                None,
+                PCWSTR::null(),
+                REG_OPTION_NON_VOLATILE,
+                access,
+                None,
+                &mut h,
+                None,
+            )
         } else {
             RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(path.as_ptr()), None, access, &mut h)
         }
@@ -119,11 +129,9 @@ impl StartupEntry {
         }
         let mut buf = vec![0u8; len as usize];
         // SAFETY: `buf` tem `len` bytes.
-        unsafe {
-            RegQueryValueExW(key.0, PCWSTR(name.as_ptr()), None, Some(&mut kind), Some(buf.as_mut_ptr()), Some(&mut len))
-        }
-        .ok()
-        .ok()?;
+        unsafe { RegQueryValueExW(key.0, PCWSTR(name.as_ptr()), None, Some(&mut kind), Some(buf.as_mut_ptr()), Some(&mut len)) }
+            .ok()
+            .ok()?;
         let units: Vec<u16> = buf[..len as usize].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
         let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
         Some(String::from_utf16_lossy(&units[..end]))

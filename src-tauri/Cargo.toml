@@ -23,6 +23,7 @@ bb-tray = { path = "../crates/bb-tray" }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
 serde.workspace = true
 bb-core = { path = "../crates/bb-core" }
 bb-collector = { path = "../crates/bb-collector" }

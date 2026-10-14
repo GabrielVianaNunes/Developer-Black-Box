@@ -1,9 +1,6 @@
 //! Testes de privacidade do Guard. Somente dados sintéticos.
 
-use bb_core::{
-    EventKind, ExeName, GuardConfig, Observation, PrivacyGuard, ProcessKey, ReasonCode,
-    RecorderState,
-};
+use bb_core::{EventKind, ExeName, GuardConfig, Observation, PrivacyGuard, ProcessKey, ReasonCode, RecorderState};
 
 const WINDOW: u64 = 5_000;
 

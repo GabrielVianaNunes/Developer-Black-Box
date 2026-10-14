@@ -6,6 +6,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-14
+
+### Changed
+- Disk space (#119). The Rust `target` folder reached about 55 GB on the developer's machine. Debug builds now have no debug symbols
+  (each of the ~40 test executables produced a large `.pdb`) and no incremental cache. New `npm run space` (sizes of the project and, read
+  only, of the app data), `npm run clean` (removes `target`, `dist` and dated graph backups) and a guard that runs before `npm run build`
+  and removes `target` when it passes 8 GB (`BB_TARGET_LIMIT_GB`). Measured with a clean `cargo test --workspace --no-run`: 2.22 GB
+  before, 1.71 GB after (-23%). One build is small; the 55 GB came from stale artifacts piling up, which the guard now stops.
+- Nothing the app writes grows without a ceiling any more. Evidence of incidents is limited to 50% of the storage quota: past it the oldest
+  automatic incidents you never touched and that have no note are removed (manual, in-progress, resolved or noted incidents never are).
+  Before this, preserved evidence could fill the quota and the recording would stop. The `exports` folder keeps the 30 newest files and
+  100 MB, the settings change history the last 1,000 changes, and the record of removed segments is compacted.
+- The welcome guide is shorter: the first-run tour went from 8 steps to 6 (the "starts paused" step now sits with the recording light, and
+  "language and updates" and "you are ready" became one closing step) and each step is one or two paragraphs, keeping the same facts. The
+  "What's new" text of 0.5.0 went from three paragraphs to two.
+- The buttons of the welcome guide and of the "What's new" window (Skip, Back, Next) are smaller and lighter. The rest of the app keeps its buttons.
+
+### Added
+- Incident detail: **Export with a password**. The same export document is encrypted with a password you choose at that moment (8+ characters,
+  typed twice): AES-256-GCM, key from Argon2id (64 MiB, 3 passes), random salt and nonce, format and costs authenticated. The readable text never
+  touches the disk and the file is `incident-<id>-<time>.protected.json`. There is no recovery: the app does not keep the password anywhere. A
+  wrong password and a damaged file give the same error; costs read from a file are bounded. The plain export keeps working and is still labelled
+  as not encrypted. New dependency: `argon2` (RustCrypto, no network code); the key derivation is checked against the Argon2 reference
+  implementation. (#109)
+- Privacy tab: individual switches for the Windows health events, the machine inventory and the power and battery sources (all on by default),
+  next to the existing one for the performance counters. Turning a source off stops it at once and what happened while it was off is never
+  read afterwards: the event log drops its pending interval (even across a restart), the inventory forgets its last known values so turning
+  it on again starts a fresh baseline instead of recording what changed meanwhile, and the power source records the state of that moment.
+  A setting that cannot be read back counts as off. The System health tab shows a switched-off source as "off". (#105)
+- Optional notification when an incident opens by itself (Privacy tab, **off by default**). It carries only the type of the incident from a
+  fixed text, never a program name or recorded data. It is not shown for the manual capture, waits while a browser or password manager is in
+  front, is dropped on a manual pause, when the switch is turned off or after 30 minutes, and clicking it does not open the app. New
+  dependency in the app: `tauri-plugin-notification` (no network library). (#106)
+- Incident detail: **Copy summary**, a short text for a bug report (type, time, app version, Windows build, the nearest machine health events and
+  the last performance sample before the incident). It is built from the same export document, with today's privacy rules applied again, never
+  from the recorded data directly: no notes, no user or computer names, no paths or message texts, and the program name only if the export
+  would include it. The text is copied and also shown, read-only, for you to check; nothing is written to disk or sent. (#107)
+
+### Tests
+- Rust code is now formatted with `rustfmt` (`rustfmt.toml`: 140 columns, short lists on one line, to stay close to the existing style) and CI
+  fails if `cargo fmt --all -- --check` finds a difference. The formatting commit changes no logic: all 527 tests pass before and after. (#108)
+- Interface tests in a real browser (`npm run build && npm run test:ui`, also in CI): the welcome guide (steps, skipping, Esc, keyboard focus kept
+  inside, the smaller buttons), the System health tab, the Privacy tab (switches, unsaved-changes bar, Apply and Discard) and the language switch,
+  against a simulated backend with made-up data only. Dev dependency added: `playwright-core` (it uses the Chrome already installed; nothing is
+  downloaded). (#108)
+- The two `apps::` tests that failed on Linux now pass (they built folder paths with `\`); the timing checks of the Windows program listing use
+  the fastest of three runs, so a load spike no longer fails them while a real slowdown still does. (#108)
+
 ## [0.5.0] - 2026-10-03
 
 ### Changed

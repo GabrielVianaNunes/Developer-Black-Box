@@ -7,16 +7,18 @@
 //!   intervalo nunca é reconstruído ao retomar.
 
 pub mod health;
-pub mod inventory;
 pub mod incidents;
+pub mod inventory;
 pub mod settings;
+pub mod space;
 pub mod throttle;
 
 use std::fmt;
 use std::time::Duration;
 
 use bb_collector::{
-    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, PowerSource, ProcessSource, TelemetrySource,
+    CollectError, ContextSource, CrashKind, CrashSource, Differ, HealthSource, InventorySource, MetricsConfig, PowerSource, ProcessSource,
+    TelemetrySource,
 };
 use bb_core::{AuthError, EventKind, ExeName, GuardConfig, PrivacyGuard, ProcessRef, ReasonCode, RecorderState};
 use bb_recorder::{Recorder, RecorderError};
@@ -168,6 +170,8 @@ pub struct Engine<P: ProcessSource, C: ContextSource> {
     shutting_down: bool,
     inventory: Option<Box<dyn InventorySource + Send>>,
     inventory_base: inventory::Baseline,
+    /// Tipos de incidente automático à espera de aviso ao usuário (hora UTC de abertura). Só o tipo, nada mais.
+    notices: Vec<(IncidentKind, i64)>,
     /// Próxima leitura do inventário (relógio monotônico). `None` = ler assim que a saúde puder ser lida.
     inventory_next_mono: Option<u64>,
     inventory_unavailable: bool,
@@ -196,6 +200,8 @@ pub struct Engine<P: ProcessSource, C: ContextSource> {
 const HEALTH_CURSOR_KEY: &str = "health.cursor";
 const HEALTH_ACTIVE_KEY: &str = "health.active";
 /// Referência do inventário (números por item, cifrada no armazenamento).
+/// Um aviso que esperou mais que isto (por exemplo, durante um bloqueio de privacidade) já não serve e é descartado.
+const NOTICE_MAX_AGE_MS: i64 = 30 * 60_000;
 const INVENTORY_KEY: &str = "health.inventory";
 /// Intervalo entre leituras do inventário (relógio monotônico): detecta, por exemplo, um dispositivo que passou a falhar.
 const INVENTORY_INTERVAL_MS: u64 = 10 * 60_000;
@@ -222,14 +228,7 @@ struct CrashState {
 const CRASH_OVERLAP_MS: i64 = 3_000;
 
 impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
-    pub fn new(
-        guard_cfg: GuardConfig,
-        metrics: MetricsConfig,
-        recorder: Recorder,
-        procs: P,
-        ctx: C,
-        ncpu: usize,
-    ) -> Self {
+    pub fn new(guard_cfg: GuardConfig, metrics: MetricsConfig, recorder: Recorder, procs: P, ctx: C, ncpu: usize) -> Self {
         Self {
             guard: PrivacyGuard::new(guard_cfg),
             recorder,
@@ -252,6 +251,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             shutting_down: false,
             inventory: None,
             inventory_base: inventory::Baseline::default(),
+            notices: Vec::new(),
             inventory_next_mono: None,
             inventory_unavailable: false,
             power: None,
@@ -330,7 +330,11 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             } else if !enabled {
                 SourceState::Off
             } else if !allowed {
-                if self.guard.is_manually_paused() { SourceState::Paused } else { SourceState::Waiting }
+                if self.guard.is_manually_paused() {
+                    SourceState::Paused
+                } else {
+                    SourceState::Waiting
+                }
             } else if unavailable {
                 SourceState::Unavailable
             } else if !read_ok {
@@ -346,12 +350,33 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             .power_last
             .is_some_and(|p| p.ac == Some(bb_core::AcLine::Offline) && p.charge_percent.is_some_and(|c| c <= LOW_BATTERY_PCT));
         vec![
-            (HealthSourceId::EventLog, state(self.health.is_some(), true, self.health_unavailable, self.health_read_ok, false)),
-            (HealthSourceId::Inventory, state(self.inventory.is_some(), true, self.inventory_unavailable, self.inventory_read_ok, devices_with_problem)),
-            (HealthSourceId::Power, state(self.power.is_some(), true, self.power_unavailable, self.power_read_ok, battery_low)),
+            (
+                HealthSourceId::EventLog,
+                state(self.health.is_some(), self.settings.health_log_enabled, self.health_unavailable, self.health_read_ok, false),
+            ),
+            (
+                HealthSourceId::Inventory,
+                state(
+                    self.inventory.is_some(),
+                    self.settings.inventory_enabled,
+                    self.inventory_unavailable,
+                    self.inventory_read_ok,
+                    devices_with_problem,
+                ),
+            ),
+            (
+                HealthSourceId::Power,
+                state(self.power.is_some(), self.settings.power_enabled, self.power_unavailable, self.power_read_ok, battery_low),
+            ),
             (
                 HealthSourceId::Telemetry,
-                state(self.telemetry.is_some(), self.settings.telemetry_enabled, self.telemetry_unavailable, self.telemetry_read_ok, self.throttle.sustained()),
+                state(
+                    self.telemetry.is_some(),
+                    self.settings.telemetry_enabled,
+                    self.telemetry_unavailable,
+                    self.telemetry_read_ok,
+                    self.throttle.sustained(),
+                ),
             ),
         ]
     }
@@ -391,21 +416,18 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         mono_ms: u64,
         utc_ms: i64,
     ) -> Result<(), EngineError> {
-        let name = ExeName::new(exe.trim().to_lowercase().as_str())
-            .map_err(|_| EngineError::Invalid("auth.bad_name".into()))?;
-        self.guard
-            .authorize(mono_ms, name, minutes.saturating_mul(60_000), allow_metrics, allow_crashes)
-            .map_err(|e| {
-                EngineError::Invalid(
-                    match e {
-                        AuthError::NotProtectedApp => "auth.not_protected",
-                        AuthError::ExcludedApp => "auth.excluded",
-                        AuthError::BadDuration => "auth.bad_duration",
-                        AuthError::NoSource => "auth.no_source",
-                    }
-                    .into(),
-                )
-            })?;
+        let name = ExeName::new(exe.trim().to_lowercase().as_str()).map_err(|_| EngineError::Invalid("auth.bad_name".into()))?;
+        self.guard.authorize(mono_ms, name, minutes.saturating_mul(60_000), allow_metrics, allow_crashes).map_err(|e| {
+            EngineError::Invalid(
+                match e {
+                    AuthError::NotProtectedApp => "auth.not_protected",
+                    AuthError::ExcludedApp => "auth.excluded",
+                    AuthError::BadDuration => "auth.bad_duration",
+                    AuthError::NoSource => "auth.no_source",
+                }
+                .into(),
+            )
+        })?;
         self.log_authorization_change(utc_ms, "added")
     }
 
@@ -475,16 +497,8 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         Ok(())
     }
 
-    /// Exporta um incidente para `out_dir` (criada se preciso), refiltrando pelas regras de
-    /// privacidade de AGORA. O arquivo sai da cifra; o nome é gerado (id e horário), nunca
-    /// derivado de dados do incidente. Devolve o caminho e quantos eventos a filtragem removeu.
-    pub fn export_incident(
-        &mut self,
-        id: i64,
-        out_dir: &std::path::Path,
-        mono_ms: u64,
-        utc_ms: i64,
-    ) -> Result<ExportResult, EngineError> {
+    /// A exportação de um incidente já refiltrada pelas regras de privacidade de AGORA (em memória; nada é escrito).
+    fn export_doc(&self, id: i64, mono_ms: u64, utc_ms: i64) -> Result<bb_query::ExportDoc, EngineError> {
         let Some(inc) = self.incidents.as_ref() else {
             return Err(EngineError::Invalid("store.unavailable".into()));
         };
@@ -499,13 +513,59 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             // As amostras de contadores só saem se a telemetria está LIGADA agora: desligou depois de gravar, não saem.
             include_samples: self.settings.telemetry_enabled,
         };
-        let doc = bb_query::export_incident(&self.recorder, &inc.store, id, &rules, utc_ms)
-            .ok_or_else(|| EngineError::Invalid("export.not_found".into()))?;
+        bb_query::export_incident(&self.recorder, &inc.store, id, &rules, utc_ms)
+            .ok_or_else(|| EngineError::Invalid("export.not_found".into()))
+    }
+
+    /// Exporta um incidente para `out_dir` (criada se preciso), refiltrando pelas regras de
+    /// privacidade de AGORA. O arquivo sai da cifra; o nome é gerado (id e horário), nunca
+    /// derivado de dados do incidente. Devolve o caminho e quantos eventos a filtragem removeu.
+    pub fn export_incident(&mut self, id: i64, out_dir: &std::path::Path, mono_ms: u64, utc_ms: i64) -> Result<ExportResult, EngineError> {
+        let doc = self.export_doc(id, mono_ms, utc_ms)?;
         std::fs::create_dir_all(out_dir).map_err(|_| EngineError::Invalid("export.folder".into()))?;
         let path = out_dir.join(format!("incident-{id}-{utc_ms}.json"));
         let json = serde_json::to_vec_pretty(&doc).map_err(|_| EngineError::Invalid("export.write".into()))?;
         std::fs::write(&path, json).map_err(|_| EngineError::Invalid("export.write".into()))?;
+        space::prune_exports(out_dir, &path, space::MAX_EXPORT_FILES, space::MAX_EXPORT_BYTES);
         Ok(ExportResult { path, events: doc.events.len(), dropped: doc.dropped_events })
+    }
+
+    /// Como `export_incident`, mas o arquivo sai PROTEGIDO por senha (AES-256-GCM, chave derivada por Argon2id): o texto
+    /// claro nunca toca o disco. A senha é validada ANTES de qualquer coisa (curta demais não gera nem arquivo), não é
+    /// guardada nem registrada, e os custos de derivação (`kdf`) vêm de quem chama: o app usa `KdfParams::PRODUCTION`.
+    pub fn export_incident_protected(
+        &mut self,
+        id: i64,
+        out_dir: &std::path::Path,
+        password: &str,
+        kdf: bb_query::protect::KdfParams,
+        mono_ms: u64,
+        utc_ms: i64,
+    ) -> Result<ExportResult, EngineError> {
+        bb_query::protect::validate_password(password).map_err(|e| EngineError::Invalid(e.code().into()))?;
+        let doc = self.export_doc(id, mono_ms, utc_ms)?;
+        let json = serde_json::to_vec_pretty(&doc).map_err(|_| EngineError::Invalid("export.write".into()))?;
+        let protected = bb_query::protect::protect(&json, password, kdf).map_err(|e| EngineError::Invalid(e.code().into()))?;
+        std::fs::create_dir_all(out_dir).map_err(|_| EngineError::Invalid("export.folder".into()))?;
+        let path = out_dir.join(format!("incident-{id}-{utc_ms}.protected.json"));
+        std::fs::write(&path, protected).map_err(|_| EngineError::Invalid("export.write".into()))?;
+        space::prune_exports(out_dir, &path, space::MAX_EXPORT_FILES, space::MAX_EXPORT_BYTES);
+        Ok(ExportResult { path, events: doc.events.len(), dropped: doc.dropped_events })
+    }
+
+    /// Resumo em texto para relatar um bug, montado a partir da MESMA exportação refiltrada (nunca direto dos dados
+    /// gravados). O build do Windows só entra se o inventário está ligado e já o leu.
+    pub fn bug_report_summary(
+        &self,
+        id: i64,
+        app_version: &str,
+        lang: bb_query::SummaryLang,
+        mono_ms: u64,
+        utc_ms: i64,
+    ) -> Result<String, EngineError> {
+        let doc = self.export_doc(id, mono_ms, utc_ms)?;
+        let os_build = if self.settings.inventory_enabled { self.inventory_base.get(bb_core::InventoryItem::OsBuild) } else { None };
+        Ok(bb_query::bug_report_summary(&doc, app_version, os_build, lang))
     }
 
     /// Exclui atividade gravada. As evidências de incidentes só saem com `include_preserved`,
@@ -573,6 +633,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
             summary,
             post_until_utc_ms: utc_ms + cfg.post_window_ms,
         })?;
+        self.queue_notice(kind, utc_ms);
         // Preserva já a janela anterior, para a retenção não removê-la antes do fim da captura.
         self.recorder.seal()?;
         let segs = self.recorder.segments_overlapping(utc_ms - cfg.pre_window_ms, utc_ms)?;
@@ -582,17 +643,44 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         if let Some(inc) = self.incidents.as_ref() {
             inc.store.set_segments(id, &segs)?;
         }
+        let _ = self.enforce_evidence_budget();
         Ok(id)
+    }
+
+    /// Guarda o tipo de um incidente automático para o aviso ao usuário, se ele ligou o aviso. A captura manual não avisa
+    /// (foi a própria pessoa que pediu) e um tipo já à espera não se repete.
+    fn queue_notice(&mut self, kind: IncidentKind, utc_ms: i64) {
+        if !self.settings.notify_incidents || kind == IncidentKind::Manual || self.notices.iter().any(|(k, _)| *k == kind) {
+            return;
+        }
+        self.notices.push((kind, utc_ms));
+    }
+
+    /// Tipos de incidente a avisar AGORA, uma vez cada. Só avisa quando a gravação está de fato ativa: durante um bloqueio
+    /// de privacidade (um navegador ou gerenciador de senhas na frente) o aviso espera, para não aparecer por cima dele;
+    /// pausa manual ou aviso desligado descartam o que estava na fila; o que esperou mais de `NOTICE_MAX_AGE_MS` também.
+    pub fn take_incident_notices(&mut self, mono_ms: u64, utc_ms: i64) -> Vec<IncidentKind> {
+        if !self.settings.notify_incidents || self.guard.is_manually_paused() {
+            self.notices.clear();
+            return Vec::new();
+        }
+        self.notices.retain(|(_, at)| utc_ms.saturating_sub(*at) <= NOTICE_MAX_AGE_MS);
+        if self.state(mono_ms).0 != RecorderState::Recording {
+            return Vec::new();
+        }
+        std::mem::take(&mut self.notices).into_iter().map(|(k, _)| k).collect()
     }
 
     /// Conclui capturas cuja janela posterior venceu (ou todas, se `force`).
     fn finalize_captures(&mut self, utc_ms: i64, force: bool) -> Result<(), EngineError> {
         let Some(inc) = self.incidents.as_ref() else { return Ok(()) };
         let pre = inc.detector.config().pre_window_ms;
+        let mut finalized = false;
         for pending in inc.store.pending_captures()? {
             if !force && utc_ms < pending.post_until_utc_ms {
                 continue;
             }
+            finalized = true;
             self.recorder.seal()?;
             let to = pending.post_until_utc_ms.min(utc_ms);
             let segs = self.recorder.segments_overlapping(pending.created_utc_ms - pre, to)?;
@@ -604,7 +692,38 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
                 inc.store.set_capture_state(pending.id, CaptureState::Preserved)?;
             }
         }
+        if finalized {
+            // Falha ao enxugar não pode derrubar o ciclo: a próxima captura tenta de novo.
+            let _ = self.enforce_evidence_budget();
+        }
         Ok(())
+    }
+
+    /// Teto da evidência de incidentes: no máximo `EVIDENCE_SHARE_PCT` da cota. Passou, remove os incidentes AUTOMÁTICOS
+    /// mais antigos que a pessoa nunca tocou e sem anotações (ver `space::EvidenceItem::removable`); o resto nunca sai
+    /// sozinho. Devolve quantos removeu.
+    pub fn enforce_evidence_budget(&mut self) -> Result<usize, EngineError> {
+        let Some(inc) = self.incidents.as_ref() else { return Ok(0) };
+        let budget = self.recorder.config().max_total_bytes / 100 * space::EVIDENCE_SHARE_PCT;
+        let sizes: std::collections::HashMap<u64, u64> = self.recorder.list_segments()?.iter().map(|s| (s.index, s.size)).collect();
+        let mut items = Vec::new();
+        for i in inc.store.list_incidents()? {
+            let has_notes = !inc.store.list_notes(i.id)?.is_empty();
+            items.push(space::EvidenceItem {
+                id: i.id,
+                created_utc_ms: i.created_utc_ms,
+                kind: i.kind,
+                state: i.state,
+                capture: i.capture,
+                has_notes,
+                segments: i.segments,
+            });
+        }
+        let remove = space::evidence_to_remove(&items, &sizes, budget);
+        for id in &remove {
+            self.delete_incident(*id)?;
+        }
+        Ok(remove.len())
     }
 
     /// Estado real. Uma falha de coleta/gravação sobrepõe `Recording` (o ícone não fica
@@ -802,6 +921,14 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         if self.power.is_none() {
             return Ok(0);
         }
+        if !self.settings.power_enabled {
+            // Desligada pela pessoa: nada é lido, e ao ligar de novo a primeira leitura é a de agora.
+            self.power_next_mono = None;
+            self.power_tracker.reset();
+            self.power_last = None;
+            self.power_read_ok = false;
+            return Ok(0);
+        }
         if !self.guard.health_allowed(mono_ms) {
             self.power_next_mono = None; // depois de uma pausa, a primeira leitura volta a ser gravada
             self.power_tracker.reset();
@@ -837,6 +964,19 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
     /// manual, encerramento e modo restrito param a leitura. Devolve quantos eventos foram gravados.
     fn inventory_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
         if self.inventory.is_none() {
+            return Ok(0);
+        }
+        if !self.settings.inventory_enabled {
+            // Desligado pela pessoa: nada é lido e a referência é esquecida, para que ligar de novo comece uma referência
+            // nova em vez de gravar como "mudança" o que aconteceu enquanto estava desligado.
+            self.inventory_next_mono = None;
+            self.inventory_read_ok = false;
+            if self.inventory_base != inventory::Baseline::default() {
+                self.inventory_base = inventory::Baseline::default();
+                if let Some(i) = self.incidents.as_ref() {
+                    let _ = i.store.set_setting(INVENTORY_KEY, ""); // melhor esforço
+                }
+            }
             return Ok(0);
         }
         if !self.guard.health_allowed(mono_ms) {
@@ -878,6 +1018,15 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
     /// Lê e grava os eventos de saúde do ciclo. Devolve quantos foram gravados.
     fn health_tick(&mut self, mono_ms: u64, utc_ms: i64) -> Result<usize, EngineError> {
         if self.health.is_none() {
+            return Ok(0);
+        }
+        if !self.settings.health_log_enabled {
+            // Desligado pela pessoa: também descarta o atraso da execução anterior, que não deve ser lido depois.
+            if self.health_win.discard() && !self.shutting_down {
+                self.save_health_marks(false, None);
+            }
+            self.health_last_poll_mono = None;
+            self.health_read_ok = false;
             return Ok(0);
         }
         if !self.guard.health_allowed(mono_ms) {
@@ -928,7 +1077,8 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         self.finalize_captures(utc_ms, false)?;
         // A saúde da máquina não depende do app em primeiro plano: segue mesmo com bloqueio de privacidade.
         // A pausa manual (e o modo restrito) a param no próprio Guard.
-        let health_persisted = self.health_tick(mono_ms, utc_ms)? + self.inventory_tick(mono_ms, utc_ms)?
+        let health_persisted = self.health_tick(mono_ms, utc_ms)?
+            + self.inventory_tick(mono_ms, utc_ms)?
             + self.power_tick(mono_ms, utc_ms)?
             + self.telemetry_tick(mono_ms, utc_ms)?;
         if !state.is_recording() {
@@ -947,10 +1097,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         let samples = self.procs.processes()?;
         // A árvore de processos dos programas excluídos (com a opção dos filhos) vem do instantâneo completo, antes dos
         // eventos do ciclo: nada disto é gravado.
-        let refs: Vec<ProcessRef> = samples
-            .iter()
-            .map(|p| ProcessRef { key: p.key, exe: &p.exe_name, parent_pid: p.parent_pid })
-            .collect();
+        let refs: Vec<ProcessRef> = samples.iter().map(|p| ProcessRef { key: p.key, exe: &p.exe_name, parent_pid: p.parent_pid }).collect();
         self.guard.observe_processes(&refs);
         let mut kinds = self.differ.tick(&samples, mono_ms, silent_from);
         let sys = self.procs.system()?;

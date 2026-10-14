@@ -30,6 +30,8 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - uses: swatinem/rust-cache@v2
 
@@ -39,12 +41,21 @@ jobs:
       - name: Type-check and build the interface
         run: npm run build
 
+      - name: Rust formatting (rustfmt.toml)
+        run: cargo fmt --all -- --check
+
       - name: Rust tests (unit and privacy)
         # --locked: falha se o Cargo.lock estiver desatualizado em relação aos Cargo.toml.
         run: cargo test --workspace --locked
 
       - name: JavaScript tests (i18n, versioning, signing, repository safety)
         run: npm test
+
+      - name: Interface tests (real browser, simulated backend)
+        # O Chrome já vem nos runners do Windows; sem ele, o teste falha em vez de ser pulado (BB_UI_REQUIRE).
+        run: npm run test:ui
+        env:
+          BB_UI_REQUIRE: "1"
 
       - name: Repository safety checks
         run: npm run check:repo

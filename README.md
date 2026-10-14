@@ -22,7 +22,13 @@ captures passwords, typed text, page content, window titles, URLs, file paths or
 - **Privacy Guard:** suspends recording when a browser or password manager is in the foreground, the
   session is locked or the detector is unavailable. The absence of a signal is never treated as "safe".
 - **Incidents:** manual capture, sustained CPU, high memory, crashes and hangs (Windows Event Log),
-  with evidence from the window before and after.
+  with evidence from the window before and after. Optionally (off by default, Privacy tab: **"Notify me when an incident opens by itself"**),
+  a Windows notification says **only the type** of an automatic incident, never a program name or any recorded data; it waits while a browser
+  or password manager is in front, is dropped on a manual pause or after 30 minutes, and clicking it does not open the app.
+  In the incident detail, **Copy summary** puts a short text on the clipboard (and shows it for you to check) to paste into a bug report: type,
+  time, app and Windows build, nearby machine health events and the last performance sample. It is built from the same export, with today's
+  privacy rules applied again, so it never has your notes, user or computer names, paths or message texts, and it names the program only if
+  the export would.
 - **System health:** a **System health** tab and automatic incidents (blue screen, unexpected shutdown, hardware error, sustained thermal
   throttling), fed by Windows events from a fixed list, inventory changes, power and battery, and performance counters, all **without
   administrator rights** and with numbers and codes only. See [System health](#system-health) for exactly what is read, what is never
@@ -104,10 +110,15 @@ The first time you build the installer, Tauri downloads the NSIS tooling (from G
 ### Tests
 
 ```bash
+cargo fmt --all -- --check   # formatting (rustfmt.toml: 140 columns); `cargo fmt --all` fixes it
 cargo test --workspace   # all Rust tests, including tests/privacy/
 npm test                 # tests for the repository safety scripts
 npm run check:repo       # no sensitive files tracked + secret scanner
+npm run build && npm run test:ui   # interface tests in a real browser, with a simulated backend
 ```
+
+`test:ui` opens the built interface (`dist/`) in Chrome with a fake backend and only made-up data. Point `BB_UI_BROWSER` at a browser
+executable if Chrome is not installed; without any browser the tests are skipped, unless `BB_UI_REQUIRE=1` (set in CI) makes that a failure.
 
 The privacy tests use **synthetic data only** and cover, among other things: manual pause, resume that
 respects the Guard, excluded apps, temporary authorizations, encryption on disk, export with
@@ -184,8 +195,12 @@ test data.
   interval (up to 7 days) is read once at the next start, so an unexpected shutdown logged on the next boot is not lost.
 - **Performance counters** have their own switch: Privacy tab, **"Record system performance counters"** (on by default). Turning it off stops
   reading the counters at once; if the setting cannot be read back, they stay off.
-- The event log, inventory and power sources have **no separate switch**: pause recording to stop all of them, and use **Storage > Delete
-  activity** to remove what was recorded. While **test mode** (a temporary authorization for a browser) is collecting because the authorized program is in front,
+- The other three sources have their own switches too, in the Privacy tab (all on by default): **"Read Windows health events (shutdowns, blue
+  screens, hardware errors)"**, **"Record machine inventory changes (BIOS, Secure Boot, Windows build, drivers)"** and **"Record power and
+  battery status"**. Turning one off stops it at once and **what happened while it was off is never read afterwards**: the event log drops the
+  pending interval (even after a restart), the inventory forgets its last known values (so turning it on again starts a fresh baseline instead
+  of recording what changed meanwhile) and the power source records the state of that moment. Turning a switch off does not delete what was
+  already recorded: use **Storage > Delete activity** for that, and pause recording to stop all sources. While **test mode** (a temporary authorization for a browser) is collecting because the authorized program is in front,
   health collection waits too, because in that mode nothing outside the authorized program is collected; it resumes when you leave it.
 - Exporting an incident includes the health data of its window, checked again against today's rules (see [Export format](#export-format)).
 
@@ -222,6 +237,23 @@ shows as unavailable instead of inventing a value.
 Measured with the real recorder and one day of pseudo-random synthetic samples (every 30 s): about **0.115 MB per day** once sealed, and up
 to about **1 MB per day** while the current journal is still open. The storage limit and retention of the Storage tab apply as usual.
 
+### Space limits
+
+Nothing the app writes grows without a ceiling:
+
+| What | Limit |
+|---|---|
+| Recorded activity | Storage quota and maximum age (Storage tab; default 256 MB and 24 h, up to 10 GB and 30 days) |
+| Evidence of incidents | At most **50% of the quota**; past it, the oldest **automatic** incidents that you never touched (still "new" or "dismissed") and have no note are removed. Manual incidents, incidents under investigation or resolved, and any incident with a note are never removed on their own |
+| Exported files | The 30 newest files and 100 MB in the `exports` folder; only files named `incident-*.json` are ever considered |
+| Settings change history | The last 1,000 changes (only the key and the kind of change) |
+| Record of removed segments (`pruned.log`) | Compacted automatically |
+| Downloaded updates | Only the installer being installed is kept |
+
+For people who build the project: the Rust `target` folder is rebuildable and can grow by tens of GB. Debug builds have no debug
+symbols and no incremental cache, `npm run space` shows the sizes, `npm run clean` removes `target`, `dist` and old graph backups, and
+`npm run build` removes `target` by itself when it passes 8 GB (`BB_TARGET_LIMIT_GB` changes the limit).
+
 ## How privacy is guaranteed
 
 ![Privacy tab with example exclusion rules](assets/readme-images/privacy-rules.png)
@@ -237,7 +269,7 @@ to about **1 MB per day** while the current journal is still open. The storage l
 - **Encryption at rest:** events and the sensitive database fields use AES-256-GCM, with a key protected
   by DPAPI (tied to your Windows account). Deleted content is overwritten in the file.
 - **Re-filtered export:** it applies today's privacy rules again and never includes notes. It also carries the **machine health around the
-  incident** (see "Export format" below). The exported file is **not encrypted**.
+  incident** (see "Export format" below). The exported file is **not encrypted** unless you export **with a password** (below).
 - **No cloud and no telemetry.** The core does not depend on any network library.
   The only network access is the optional update feature, off by default: one HTTPS request to the GitHub Releases
   of this project (app name and version only) tells you a newer version exists. Nothing is downloaded until you
@@ -264,13 +296,26 @@ else a number (or null) within its range; anything else is dropped. There is no 
 identifier can be in it. Performance samples are included **only if the counters are on at the moment of the export**. The file is plain
 JSON and **not encrypted**: the app says so before you export.
 
+#### Export with a password (optional)
+
+In the incident detail, **Export with a password** writes the same document encrypted with a password you choose at that moment (at least 8
+characters, typed twice): `incident-<id>-<time>.protected.json`. The readable text never touches the disk. It uses only standard primitives:
+the 256-bit key comes from the password through **Argon2id** (64 MiB, 3 passes, 1 lane, random 16-byte salt) and the content is encrypted and
+authenticated with **AES-256-GCM** (random 12-byte nonce). The file is a small JSON envelope with `format`
+(`developer-blackbox-export-protected/1`), `kdf`, the Argon2id costs, `salt`, `nonce` and `ciphertext` (hex); the format and costs are part of the
+authenticated data, so changing any of them makes opening fail. **There is no recovery**: the app does not keep the password anywhere (not in the
+database, a log or the settings), so a forgotten password means nobody can open the file. A wrong password and a damaged file give the same
+error on purpose. Argon2id costs read from a file are limited (at most 256 MiB, 10 passes, 4 lanes) so a hostile file cannot make a reader
+spend gigabytes. The password is used as typed (UTF-8, no Unicode normalization), so the same password typed on a keyboard that composes
+characters differently may not open the file.
+
 ## Limitations
 
 - A power loss or a Windows crash can lose the last events still in the disk cache (a crash of the app
   process alone loses nothing).
 - Protected or elevated processes are not seen.
 - Protection depends on your Windows account: whoever uses your signed-in account can use the key.
-- The export file is **not encrypted** (the interface warns about it).
+- The export file is **not encrypted** unless you choose **Export with a password**; there is no recovery for a forgotten password.
 - The system health data does not include what needs administrator rights (disk SMART/NVMe, TPM, the WHEA Operational channel, per-core
   temperature, fans, voltages, battery wear); see [System health](#system-health). Only some of its Windows event IDs have been seen on a real
   machine; see [System health](#system-health).
@@ -331,7 +376,14 @@ de comando.
 - **Privacy Guard:** suspende a gravação com navegadores e gerenciadores de senha em primeiro plano,
   sessão bloqueada ou detector indisponível. Ausência de sinal nunca é tratada como "seguro".
 - **Incidentes:** captura manual, CPU sustentada, memória alta, falhas e travamentos (Event Log do
-  Windows), com evidências da janela anterior e posterior.
+  Windows), com evidências da janela anterior e posterior. Opcionalmente (desligado por padrão, aba Privacidade: **"Avisar quando um
+  incidente abrir sozinho"**), uma notificação do Windows diz **só o tipo** de um incidente automático, nunca o nome de um programa nem
+  dado gravado; ela espera enquanto um navegador ou gerenciador de senhas está em primeiro plano, é descartada na pausa manual ou depois de
+  30 minutos, e clicar nela não abre o app.
+  No detalhe do incidente, **Copiar resumo** coloca na área de transferência (e mostra para você conferir) um texto curto para colar num
+  relato de bug: tipo, horário, versão do app e build do Windows, eventos de saúde da máquina por perto e a última amostra de desempenho. Ele
+  sai da mesma exportação, com as regras de privacidade de hoje aplicadas de novo, então nunca tem as suas anotações, nomes de usuário ou de
+  computador, caminhos nem textos de mensagens, e cita o programa só se a exportação citaria.
 - **Saúde do sistema:** uma aba **Saúde do sistema** e incidentes automáticos (tela azul, desligamento inesperado, erro de hardware,
   redução de desempenho por calor prolongada), alimentados por eventos do Windows de uma lista fixa, mudanças de inventário, energia e
   bateria e contadores de desempenho, tudo **sem administrador** e só com números e códigos. Veja [Saúde do sistema](#saúde-do-sistema)
@@ -415,10 +467,16 @@ A primeira vez que você gera o instalador, o Tauri baixa as ferramentas do NSIS
 ### Testes
 
 ```bash
+cargo fmt --all -- --check   # formatação (rustfmt.toml: 140 colunas); `cargo fmt --all` corrige
 cargo test --workspace   # todos os testes de Rust, incluindo tests/privacy/
 npm test                 # testes dos scripts de segurança do repositório
 npm run check:repo       # nenhum arquivo sensível rastreado + scanner de segredos
+npm run build && npm run test:ui   # testes da interface num navegador real, com backend simulado
 ```
+
+O `test:ui` abre a interface compilada (`dist/`) no Chrome com um backend de mentira e só dados inventados. Aponte `BB_UI_BROWSER` para o
+executável de um navegador se o Chrome não estiver instalado; sem nenhum navegador os testes são pulados, a menos que `BB_UI_REQUIRE=1`
+(definido no CI) torne isso uma falha.
 
 Os testes de privacidade usam **somente dados sintéticos** e cobrem, entre outros: pausa manual, retomada
 que respeita o Guard, apps excluídos, autorizações temporárias, cifra em disco, exportação com nova
@@ -497,8 +555,13 @@ dados de teste inventados.
   registrado no boot.
 - Os **contadores de desempenho** têm chave própria: aba Privacidade, **"Gravar contadores de desempenho do sistema"** (ligada por padrão).
   Desligar para a leitura dos contadores na hora; se a configuração não puder ser lida de volta, ficam desligados.
-- As fontes de log de eventos, inventário e energia **não têm chave separada**: pause a gravação para parar todas, e use **Armazenamento >
-  Excluir atividade** para apagar o que foi gravado. Enquanto o **modo de teste** (autorização temporária para um navegador) está coletando porque o programa autorizado está em primeiro
+- As outras três fontes também têm interruptor próprio na aba Privacidade (todos ligados por padrão): **"Ler eventos de saúde do Windows
+  (desligamentos, telas azuis, erros de hardware)"**, **"Registrar mudanças no inventário da máquina (BIOS, Secure Boot, build do Windows,
+  drivers)"** e **"Registrar energia e bateria"**. Desligar um para a fonte na hora e **o que aconteceu enquanto esteve desligado nunca é lido
+  depois**: o log de eventos descarta o intervalo pendente (mesmo após reiniciar), o inventário esquece os últimos valores conhecidos (ao ligar
+  de novo começa uma referência nova, em vez de gravar o que mudou nesse meio-tempo) e a energia grava o estado daquele momento. Desligar um
+  interruptor não apaga o que já foi gravado: use **Armazenamento > Excluir atividade** para isso, e pause a gravação para parar todas as
+  fontes. Enquanto o **modo de teste** (autorização temporária para um navegador) está coletando porque o programa autorizado está em primeiro
   plano, a coleta de saúde também espera, porque nesse modo nada fora do programa autorizado é coletado; ela volta quando você sai dele.
 - Exportar um incidente inclui os dados de saúde da janela dele, conferidos de novo contra as regras de agora (veja
   [Formato da exportação](#formato-da-exportação)).
@@ -537,6 +600,23 @@ Medido com o gravador real e um dia de amostras sintéticas pseudoaleatórias (a
 até cerca de **1 MB por dia** enquanto o journal atual ainda está aberto. O limite de armazenamento e a retenção da aba Armazenamento valem
 como sempre.
 
+### Limites de espaço
+
+Nada do que o app grava cresce sem teto:
+
+| O quê | Limite |
+|---|---|
+| Atividade gravada | Cota de armazenamento e idade máxima (aba Armazenamento; padrão 256 MB e 24 h, até 10 GB e 30 dias) |
+| Evidência de incidentes | No máximo **50% da cota**; passou disso, saem os incidentes **automáticos** mais antigos que você nunca tocou (ainda "novo" ou "descartado") e sem anotação. Incidentes manuais, em investigação ou resolvidos, e qualquer incidente com anotação nunca saem sozinhos |
+| Arquivos exportados | Os 30 arquivos mais novos e 100 MB na pasta `exports`; só arquivos chamados `incident-*.json` são considerados |
+| Histórico de mudanças de configuração | As últimas 1.000 mudanças (só a chave e o tipo de mudança) |
+| Registro de segmentos removidos (`pruned.log`) | Compactado automaticamente |
+| Atualizações baixadas | Só fica o instalador que está sendo instalado |
+
+Para quem compila o projeto: a pasta `target` do Rust pode ser recriada e chegar a dezenas de GB. As compilações de depuração não têm
+símbolos de depuração nem cache incremental, `npm run space` mostra os tamanhos, `npm run clean` apaga `target`, `dist` e backups antigos do
+grafo, e `npm run build` apaga `target` sozinho quando passa de 8 GB (`BB_TARGET_LIMIT_GB` muda o limite).
+
 ## Como a privacidade é garantida
 
 ![Aba Privacidade com regras de exclusão de exemplo](assets/readme-images/privacy-rules.png)
@@ -552,7 +632,7 @@ como sempre.
 - **Cifra em repouso:** eventos e campos sensíveis do banco em AES-256-GCM, com chave protegida por
   DPAPI (ligada à sua conta do Windows). Conteúdo apagado é sobrescrito no arquivo.
 - **Exportação refiltrada:** aplica de novo as regras de privacidade de agora e nunca inclui anotações. Também traz a **saúde da máquina em torno do
-  incidente** (veja "Formato da exportação" abaixo). O arquivo exportado **não é cifrado**.
+  incidente** (veja "Formato da exportação" abaixo). O arquivo exportado **não é cifrado**, a menos que você exporte **com senha** (abaixo).
 - **Sem nuvem e sem telemetria.** O núcleo não depende de nenhuma biblioteca de rede.
   O único acesso à rede é o recurso opcional de atualização, desligado por padrão: uma requisição HTTPS às Releases
   deste projeto no GitHub (só o nome e a versão do app) avisa que existe versão nova. Nada é baixado até você clicar
@@ -579,13 +659,26 @@ fixas, todo o resto número (ou nulo) dentro da faixa; qualquer outra coisa é d
 mensagem, nome ou identificador pode estar ali. As amostras de desempenho entram **só se os contadores estiverem ligados no momento da
 exportação**. O arquivo é JSON puro e **não é cifrado**: o app avisa antes de exportar.
 
+#### Exportar com senha (opcional)
+
+No detalhe do incidente, **Exportar com senha** grava o mesmo documento cifrado com uma senha que você escolhe naquele momento (no mínimo 8
+caracteres, digitada duas vezes): `incident-<id>-<hora>.protected.json`. O texto legível nunca toca o disco. Só primitivas padrão: a chave de
+256 bits sai da senha por **Argon2id** (64 MiB, 3 passadas, 1 faixa, sal aleatório de 16 bytes) e o conteúdo é cifrado e autenticado com
+**AES-256-GCM** (nonce aleatório de 12 bytes). O arquivo é um envelope JSON pequeno com `format` (`developer-blackbox-export-protected/1`),
+`kdf`, os custos do Argon2id, `salt`, `nonce` e `ciphertext` (hexadecimal); o formato e os custos fazem parte dos dados autenticados, então
+mudar qualquer um deles faz a abertura falhar. **Não há recuperação**: o app não guarda a senha em lugar nenhum (nem no banco, nem em log, nem
+nas configurações), então senha esquecida significa que ninguém abre o arquivo. Senha errada e arquivo danificado dão o mesmo erro, de
+propósito. Os custos do Argon2id lidos de um arquivo são limitados (no máximo 256 MiB, 10 passadas, 4 faixas) para um arquivo hostil não fazer
+quem o lê gastar gigabytes. A senha é usada como digitada (UTF-8, sem normalização Unicode), então a mesma senha digitada num teclado que compõe
+caracteres de outro jeito pode não abrir o arquivo.
+
 ## Limitações
 
 - Uma queda de energia ou do Windows pode perder os últimos eventos ainda no cache do disco (queda só
   do processo não perde nada).
 - Processos protegidos ou elevados não são vistos.
 - A proteção depende da conta do Windows: quem usa a sua conta aberta consegue usar a chave.
-- O arquivo de exportação **não é cifrado** (a interface avisa).
+- O arquivo de exportação **não é cifrado**, a menos que você escolha **Exportar com senha**; não há recuperação para uma senha esquecida.
 - Os dados de saúde do sistema não incluem o que exige administrador (SMART/NVMe do disco, TPM, o canal WHEA Operational, temperatura por núcleo,
   ventoinhas, tensões, desgaste da bateria); veja [Saúde do sistema](#saúde-do-sistema). Só alguns dos IDs de eventos do Windows foram vistos numa
   máquina real; veja [Saúde do sistema](#saúde-do-sistema).

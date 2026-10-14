@@ -9,8 +9,8 @@
 
 use windows::core::{w, PCWSTR};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
-    CM_Get_DevNode_Status, SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, CM_DEVNODE_STATUS_FLAGS,
-    CM_PROB, CR_SUCCESS, DIGCF_ALLCLASSES, DIGCF_PRESENT, DN_HAS_PROBLEM, SP_DEVINFO_DATA,
+    CM_Get_DevNode_Status, SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, CM_DEVNODE_STATUS_FLAGS, CM_PROB,
+    CR_SUCCESS, DIGCF_ALLCLASSES, DIGCF_PRESENT, DN_HAS_PROBLEM, SP_DEVINFO_DATA,
 };
 use windows::Win32::System::Registry::{
     RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, REG_DWORD, REG_SZ, REG_VALUE_TYPE,

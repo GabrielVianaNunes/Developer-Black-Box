@@ -7,3 +7,6 @@ publish.workspace = true
 
 [dependencies]
 bb-core = { path = "../bb-core" }
+
+[dev-dependencies]
+bb-store = { path = "../bb-store" }

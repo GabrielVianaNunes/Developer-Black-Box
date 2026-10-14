@@ -58,10 +58,7 @@ pub async fn detect_foreground_app(delay_ms: u64) -> Result<DetectionDto, String
     tauri::async_runtime::spawn_blocking(move || {
         std::thread::sleep(Duration::from_millis(delay));
         let found = bb_collector::current_foreground_exe();
-        let own = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()))
-            .unwrap_or_default();
+        let own = std::env::current_exe().ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase())).unwrap_or_default();
         classify_detection(found.as_ref().map(|e| e.as_str()), &own)
     })
     .await
@@ -104,8 +101,7 @@ fn open_dialog(owner: Option<isize>, title: &str, filter_label: &str) -> Result<
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Controls::Dialogs::{
-        GetOpenFileNameW, OFN_EXPLORER, OFN_FILEMUSTEXIST, OFN_HIDEREADONLY, OFN_NOCHANGEDIR, OFN_PATHMUSTEXIST,
-        OPENFILENAMEW,
+        GetOpenFileNameW, OFN_EXPLORER, OFN_FILEMUSTEXIST, OFN_HIDEREADONLY, OFN_NOCHANGEDIR, OFN_PATHMUSTEXIST, OPENFILENAMEW,
     };
 
     // Só texto simples nos rótulos (eles vêm da interface): sem caracteres de controle e com tamanho limitado.

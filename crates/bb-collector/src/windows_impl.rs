@@ -11,13 +11,10 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
-use windows::Win32::System::StationsAndDesktops::{
-    CloseDesktop, OpenInputDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_SWITCHDESKTOP,
-};
+use windows::Win32::System::StationsAndDesktops::{CloseDesktop, OpenInputDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_SWITCHDESKTOP};
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 use windows::Win32::System::Threading::{
-    GetProcessTimes, GetSystemTimes, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-    PROCESS_QUERY_LIMITED_INFORMATION,
+    GetProcessTimes, GetSystemTimes, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::WindowsAndMessaging::{EnumChildWindows, GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId};
 
@@ -80,8 +77,7 @@ impl ProcessSource for WindowsProcessSource {
     fn processes(&mut self) -> Result<Vec<ProcessSample>, CollectError> {
         // SAFETY: APIs Win32 com buffers próprios e handles fechados por RAII.
         unsafe {
-            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-                .map_err(|e| CollectError(format!("snapshot: {e}")))?;
+            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).map_err(|e| CollectError(format!("snapshot: {e}")))?;
             let _guard = Handle(snap);
             let mut entry = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
             let mut out = Vec::new();
@@ -109,7 +105,11 @@ impl ProcessSource for WindowsProcessSource {
                 Some((pi, pk, pu)) => {
                     let total = now.1.saturating_sub(pk) + now.2.saturating_sub(pu);
                     let idle_d = now.0.saturating_sub(pi);
-                    if total == 0 { 0 } else { ((total.saturating_sub(idle_d)) * 1000 / total).min(1000) as u16 }
+                    if total == 0 {
+                        0
+                    } else {
+                        ((total.saturating_sub(idle_d)) * 1000 / total).min(1000) as u16
+                    }
                 }
                 None => 0,
             };

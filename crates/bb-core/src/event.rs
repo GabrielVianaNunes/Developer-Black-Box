@@ -139,28 +139,64 @@ impl HealthSample {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum EventKind {
-    ProcessStarted { key: ProcessKey, exe_name: ExeName, parent_pid: u32 },
-    ProcessExited { key: ProcessKey, exit_code: Option<i32> },
-    ProcessMetrics { key: ProcessKey, cpu_permille: u16, working_set_kb: u64 },
-    SystemMetrics { cpu_permille: u16, mem_used_kb: u64, mem_total_kb: u64 },
+    ProcessStarted {
+        key: ProcessKey,
+        exe_name: ExeName,
+        parent_pid: u32,
+    },
+    ProcessExited {
+        key: ProcessKey,
+        exit_code: Option<i32>,
+    },
+    ProcessMetrics {
+        key: ProcessKey,
+        cpu_permille: u16,
+        working_set_kb: u64,
+    },
+    SystemMetrics {
+        cpu_permille: u16,
+        mem_used_kb: u64,
+        mem_total_kb: u64,
+    },
     /// Falha de aplicativo registrada pelo Windows (Event Log, ID 1000). Só o nome do
     /// executável e o código de exceção numérico; nunca o texto da mensagem.
-    AppCrash { exe_name: ExeName, exception_code: u32 },
+    AppCrash {
+        exe_name: ExeName,
+        exception_code: u32,
+    },
     /// Aplicativo que deixou de responder (Event Log, ID 1002).
-    AppHang { exe_name: ExeName },
-    RecorderStateChanged { state: RecorderState, reason: ReasonCode },
+    AppHang {
+        exe_name: ExeName,
+    },
+    RecorderStateChanged {
+        state: RecorderState,
+        reason: ReasonCode,
+    },
     /// Marcador pré-definido pelo usuário; sem texto.
-    UserMarker { code: u16 },
+    UserMarker {
+        code: u16,
+    },
     /// Evento de saúde da máquina vindo do Event Log `System`. Só a categoria, o ID do evento (de uma lista fixa) e
     /// um número opcional (ex. o código da tela azul); nunca o texto da mensagem, nomes de serviço, caminhos ou usuários.
     /// Só `PrivacyGuard::admit_health` cria este evento, porque ele não depende do app em primeiro plano.
-    HealthEvent { category: HealthCategory, event_id: u16, code: Option<u32> },
+    HealthEvent {
+        category: HealthCategory,
+        event_id: u16,
+        code: Option<u32>,
+    },
     /// Mudança de inventário entre duas leituras: valor anterior e novo (números; `None` = não lido). Nunca número de
     /// série, UUID, nome do computador ou qualquer identificador. Mesma porta do evento de saúde (`admit_health`).
-    InventoryChange { item: InventoryItem, previous: Option<u64>, current: Option<u64> },
+    InventoryChange {
+        item: InventoryItem,
+        previous: Option<u64>,
+        current: Option<u64>,
+    },
     /// Energia: tomada ligada ou não e carga da bateria em porcentagem (0 a 100). Só números e dois estados; nada de
     /// localização, rede ou identificador. Mesma porta do evento de saúde (`admit_health`).
-    PowerStatus { ac: Option<AcLine>, charge_percent: Option<u8> },
+    PowerStatus {
+        ac: Option<AcLine>,
+        charge_percent: Option<u8>,
+    },
     /// Amostra de contadores de desempenho do sistema (PDH), a cada ~30 s. Só números agregados.
     HealthSample(HealthSample),
 }

@@ -101,13 +101,7 @@ mod tests {
     use super::*;
 
     fn base() -> RecorderInputs {
-        RecorderInputs {
-            starting: false,
-            shutting_down: false,
-            manual_paused: false,
-            privacy: PrivacyContext::Safe,
-            guard_healthy: true,
-        }
+        RecorderInputs { starting: false, shutting_down: false, manual_paused: false, privacy: PrivacyContext::Safe, guard_healthy: true }
     }
 
     #[test]
@@ -152,11 +146,7 @@ mod tests {
 
     #[test]
     fn sensitive_context_reports_privacy_block() {
-        let i = RecorderInputs {
-            privacy: PrivacyContext::Sensitive(SensitiveReason::SessionLocked),
-            guard_healthy: false,
-            ..base()
-        };
+        let i = RecorderInputs { privacy: PrivacyContext::Sensitive(SensitiveReason::SessionLocked), guard_healthy: false, ..base() };
         assert_eq!(derive(i), (RecorderState::PrivacyBlocked, ReasonCode::SessionLocked));
     }
 

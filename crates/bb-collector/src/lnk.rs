@@ -146,11 +146,16 @@ fn exe_name_in_id_list(list: &[u8]) -> Option<String> {
     for start in 0..item.len().saturating_sub(9) {
         let tail = &item[start..start + 10.min(item.len() - start)];
         let is_ext = tail.len() >= 10
-            && tail[0] == b'.' && tail[1] == 0
-            && tail[2].eq_ignore_ascii_case(&b'e') && tail[3] == 0
-            && tail[4].eq_ignore_ascii_case(&b'x') && tail[5] == 0
-            && tail[6].eq_ignore_ascii_case(&b'e') && tail[7] == 0
-            && tail[8] == 0 && tail[9] == 0;
+            && tail[0] == b'.'
+            && tail[1] == 0
+            && tail[2].eq_ignore_ascii_case(&b'e')
+            && tail[3] == 0
+            && tail[4].eq_ignore_ascii_case(&b'x')
+            && tail[5] == 0
+            && tail[6].eq_ignore_ascii_case(&b'e')
+            && tail[7] == 0
+            && tail[8] == 0
+            && tail[9] == 0;
         if !is_ext {
             continue;
         }
@@ -202,10 +207,7 @@ fn link_info_target(b: &Bytes, at: usize, size: usize) -> Option<String> {
     let ansi_base = within(b.u32(at + 16)?).and_then(|p| b.ansi_z(p));
     let ansi_suffix = within(b.u32(at + 24)?).and_then(|p| b.ansi_z(p)).unwrap_or_default();
     let (unicode_base, unicode_suffix) = if header >= 0x24 {
-        (
-            within(b.u32(at + 28)?).and_then(|p| b.utf16_z(p)),
-            within(b.u32(at + 32)?).and_then(|p| b.utf16_z(p)).unwrap_or_default(),
-        )
+        (within(b.u32(at + 28)?).and_then(|p| b.utf16_z(p)), within(b.u32(at + 32)?).and_then(|p| b.utf16_z(p)).unwrap_or_default())
     } else {
         (None, String::new())
     };
@@ -254,11 +256,21 @@ pub(crate) mod fixtures {
         pub fn build(&self) -> Vec<u8> {
             let has_info = self.base_ansi.is_some() || self.base_unicode.is_some();
             let mut flags = 0u32;
-            if self.id_list.is_some() { flags |= HAS_LINK_TARGET_ID_LIST; }
-            if has_info { flags |= HAS_LINK_INFO; }
-            if self.name.is_some() { flags |= HAS_NAME; }
-            if self.arguments.is_some() { flags |= HAS_ARGUMENTS; }
-            if self.unicode_strings { flags |= IS_UNICODE; }
+            if self.id_list.is_some() {
+                flags |= HAS_LINK_TARGET_ID_LIST;
+            }
+            if has_info {
+                flags |= HAS_LINK_INFO;
+            }
+            if self.name.is_some() {
+                flags |= HAS_NAME;
+            }
+            if self.arguments.is_some() {
+                flags |= HAS_ARGUMENTS;
+            }
+            if self.unicode_strings {
+                flags |= IS_UNICODE;
+            }
 
             let mut v = Vec::new();
             put_u32(&mut v, HEADER_SIZE as u32);
@@ -285,10 +297,14 @@ pub(crate) mod fixtures {
                 body.push(0);
                 let (ub, us) = if unicode {
                     let b = off(&body);
-                    for u in self.base_unicode.clone().unwrap_or_default().encode_utf16() { put_u16(&mut body, u); }
+                    for u in self.base_unicode.clone().unwrap_or_default().encode_utf16() {
+                        put_u16(&mut body, u);
+                    }
                     put_u16(&mut body, 0);
                     let s = off(&body);
-                    for u in self.suffix_unicode.encode_utf16() { put_u16(&mut body, u); }
+                    for u in self.suffix_unicode.encode_utf16() {
+                        put_u16(&mut body, u);
+                    }
                     put_u16(&mut body, 0);
                     (b, s)
                 } else {
@@ -312,14 +328,20 @@ pub(crate) mod fixtures {
             let text = |v: &mut Vec<u8>, s: &str| {
                 if self.unicode_strings {
                     put_u16(v, s.encode_utf16().count() as u16);
-                    for u in s.encode_utf16() { put_u16(v, u); }
+                    for u in s.encode_utf16() {
+                        put_u16(v, u);
+                    }
                 } else {
                     put_u16(v, s.len() as u16);
                     v.extend_from_slice(s.as_bytes());
                 }
             };
-            if let Some(n) = &self.name { text(&mut v, n); }
-            if let Some(a) = &self.arguments { text(&mut v, a); }
+            if let Some(n) = &self.name {
+                text(&mut v, n);
+            }
+            if let Some(a) = &self.arguments {
+                text(&mut v, a);
+            }
 
             if let Some(target) = &self.env_target {
                 put_u32(&mut v, ENV_BLOCK_SIZE as u32);
@@ -410,7 +432,14 @@ mod tests {
     fn truncated_and_corrupted_files_never_panic() {
         let samples = [
             Lnk::local("C:\\Program Files\\App\\app.exe").build(),
-            Lnk { base_unicode: Some("C:\\Café\\café.exe".into()), base_ansi: Some("C:\\Caf?\\caf?.exe".into()), name: Some("n".into()), unicode_strings: true, ..Lnk::default() }.build(),
+            Lnk {
+                base_unicode: Some("C:\\Café\\café.exe".into()),
+                base_ansi: Some("C:\\Caf?\\caf?.exe".into()),
+                name: Some("n".into()),
+                unicode_strings: true,
+                ..Lnk::default()
+            }
+            .build(),
             Lnk { env_target: Some("%windir%\\notepad.exe".into()), id_list: Some(vec![9; 20]), ..Lnk::default() }.build(),
         ];
         for sample in samples {
@@ -487,13 +516,18 @@ mod tests {
 
     #[test]
     fn a_path_in_the_link_info_wins_over_the_id_list() {
-        let l = Lnk { id_list: Some(id_list(&[file_item("X~1.EXE", "from-id-list.exe")])), base_ansi: Some("C:\\x\\from-link-info.exe".into()), ..Lnk::default() };
+        let l = Lnk {
+            id_list: Some(id_list(&[file_item("X~1.EXE", "from-id-list.exe")])),
+            base_ansi: Some("C:\\x\\from-link-info.exe".into()),
+            ..Lnk::default()
+        };
         assert_eq!(exe_of(&l.build()).as_deref(), Some("from-link-info.exe"));
     }
 
     #[test]
     fn malformed_id_lists_never_panic() {
-        let good = Lnk { id_list: Some(id_list(&[file_item("A~1", "folder"), file_item("B~1.EXE", "real.exe")])), ..Lnk::default() }.build();
+        let good =
+            Lnk { id_list: Some(id_list(&[file_item("A~1", "folder"), file_item("B~1.EXE", "real.exe")])), ..Lnk::default() }.build();
         for cut in 0..=good.len() {
             let _ = exe_of(&good[..cut]);
         }

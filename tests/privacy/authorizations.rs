@@ -3,9 +3,7 @@
 //! Regras: autorização temporária, específica, revogável, só de dados técnicos, e em modo
 //! restrito só o app autorizado é gravado.
 
-use bb_core::{
-    AuthError, EventKind, ExeName, GuardConfig, Observation, PrivacyGuard, ProcessKey, ReasonCode, RecorderState,
-};
+use bb_core::{AuthError, EventKind, ExeName, GuardConfig, Observation, PrivacyGuard, ProcessKey, ReasonCode, RecorderState};
 
 const WINDOW: u64 = 5_000;
 const MINUTE: u64 = 60_000;
@@ -186,10 +184,7 @@ fn an_exclusion_rule_beats_an_authorization() {
     g.observe(t + 2, obs("synth-editor.exe"));
     g.observe(t + 2 + WINDOW, obs("synth-editor.exe"));
     assert!(g.admit(t + 2 + WINDOW, 2, metrics(1)).is_none());
-    assert_eq!(
-        g.authorize(t + 2 + WINDOW, exe("chrome.exe"), MINUTE, true, true),
-        Err(AuthError::ExcludedApp)
-    );
+    assert_eq!(g.authorize(t + 2 + WINDOW, exe("chrome.exe"), MINUTE, true, true), Err(AuthError::ExcludedApp));
 }
 
 #[test]

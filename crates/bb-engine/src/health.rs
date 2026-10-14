@@ -69,6 +69,15 @@ impl HealthWindow {
         self.open_from.take().is_some()
     }
 
+    /// A pessoa desligou a leitura: some o intervalo aberto E o atraso da execução anterior, para que ligar de novo
+    /// comece de agora e nunca leia o período desligado. Devolve se havia algo a descartar.
+    pub fn discard(&mut self) -> bool {
+        let was_open = self.deactivate();
+        let had_backlog = !self.backlog.is_empty();
+        self.backlog.clear();
+        was_open || had_backlog
+    }
+
     /// Menor instante a pedir ao Event Log (`None` = nada a ler).
     pub fn since(&self) -> Option<i64> {
         self.backlog.iter().map(|(from, _)| *from).chain(self.open_from).min()
@@ -146,7 +155,7 @@ mod tests {
         assert!(!w.deactivate(), "second deactivate reports nothing active");
         assert_eq!(w.since(), None, "no polling while paused");
         w.activate(100_000); // retomada
-        // evento da pausa (50_000) pedido por uma fonte mal comportada: rejeitado; o novo (100_500), aceito
+                             // evento da pausa (50_000) pedido por uma fonte mal comportada: rejeitado; o novo (100_500), aceito
         let got = w.accept(vec![rec(50_000, 51, None), rec(100_500, 51, None)]);
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].ts_utc_ms, 100_500);
@@ -167,8 +176,8 @@ mod tests {
         assert_eq!(w.since(), Some(1_000));
         w.activate(500_000); // o usuário só retoma em 500_000
         let got = w.accept(vec![
-            rec(2_000, 6008, None),   // no atraso: aceito (o app estava fechado)
-            rec(300_000, 51, None),   // durante a pausa desta execução: rejeitado
+            rec(2_000, 6008, None),    // no atraso: aceito (o app estava fechado)
+            rec(300_000, 51, None),    // durante a pausa desta execução: rejeitado
             rec(500_001, 51, Some(2)), // depois de retomar: aceito
         ]);
         assert_eq!(got.iter().map(|r| r.ts_utc_ms).collect::<Vec<_>>(), vec![2_000, 500_001]);

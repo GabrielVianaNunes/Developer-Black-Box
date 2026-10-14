@@ -9,7 +9,19 @@ fn windows_closure(pkg: &str) -> std::collections::BTreeSet<String> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let out = std::process::Command::new(cargo)
-        .args(["tree", "-p", pkg, "--target", "x86_64-pc-windows-msvc", "--prefix", "none", "-e", "normal,build", "--offline", "--manifest-path"])
+        .args([
+            "tree",
+            "-p",
+            pkg,
+            "--target",
+            "x86_64-pc-windows-msvc",
+            "--prefix",
+            "none",
+            "-e",
+            "normal,build",
+            "--offline",
+            "--manifest-path",
+        ])
         .arg(&manifest)
         .output()
         .expect("run cargo tree");
@@ -17,8 +29,7 @@ fn windows_closure(pkg: &str) -> std::collections::BTreeSet<String> {
     String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.split_whitespace().next()).map(str::to_owned).collect()
 }
 
-const HTTP_TLS_CLIENTS: [&str; 9] =
-    ["reqwest", "hyper", "ureq", "curl", "isahc", "surf", "native-tls", "openssl", "rustls"];
+const HTTP_TLS_CLIENTS: [&str; 9] = ["reqwest", "hyper", "ureq", "curl", "isahc", "surf", "native-tls", "openssl", "rustls"];
 const SOCKET_STACKS: [&str; 4] = ["tokio", "mio", "socket2", "h2"];
 
 // A verificação de atualizações é a única rede do app, isolada em `bb-update`: o núcleo não depende dela
@@ -72,7 +83,6 @@ fn update_check_talks_only_to_the_projects_github_releases() {
     assert_eq!(url, "https://github.com/GabrielVianaNunes/Developer-Black-Box/releases/tag/v1.2.3");
 }
 
-
 // Os ganchos de teste de ponta a ponta (servidor local sem TLS e chave pública extra) só existem com a
 // feature `e2e`, que nunca é padrão nem é usada pelo workflow de release.
 #[test]
@@ -81,7 +91,10 @@ fn e2e_test_hooks_never_ship_in_release_builds() {
     for manifest in ["crates/bb-update/Cargo.toml", "src-tauri/Cargo.toml"] {
         let text = fs::read_to_string(root.join(manifest)).unwrap();
         assert!(text.contains("e2e"), "{manifest} should declare the e2e feature");
-        assert!(!text.lines().any(|l| l.trim_start().starts_with("default") && l.contains("e2e")), "{manifest}: e2e must not be a default feature");
+        assert!(
+            !text.lines().any(|l| l.trim_start().starts_with("default") && l.contains("e2e")),
+            "{manifest}: e2e must not be a default feature"
+        );
     }
     for file in [".github/workflows/release.yml", "src-tauri/tauri.conf.json", "package.json"] {
         assert!(!fs::read_to_string(root.join(file)).unwrap().contains("e2e"), "{file} must not enable e2e");

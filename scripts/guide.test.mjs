@@ -12,8 +12,8 @@ const read = (p) => readFileSync(root + p, "utf8");
 const guideFiles = readdirSync(root + "src/guide").filter((f) => /[.]tsx?$/.test(f));
 
 test("the tour has the planned steps, in order, each with a title and at least one paragraph", () => {
-  assert.deepEqual(TOUR.map((s) => s.id), ["welcome", "light", "paused", "privacy", "incidents", "rules", "extras", "done"]);
-  for (const s of TOUR) assert.ok(s.body.length >= 1, s.id);
+  assert.deepEqual(TOUR.map((s) => s.id), ["welcome", "light", "privacy", "incidents", "rules", "extras"]);
+  for (const s of TOUR) assert.ok(s.body.length >= 1 && s.body.length <= 2, s.id);
 });
 
 test("every text of the tour exists in English and in Portuguese, and is not a placeholder", () => {

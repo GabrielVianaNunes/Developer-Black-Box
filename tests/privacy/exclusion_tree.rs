@@ -6,9 +6,7 @@
 //! herda a exclusão; um filho que perdeu o pai continua excluído; regra aplicada ou removida com processos já em
 //! execução vale na hora; e a opção só vale para exclusão por INTEIRO.
 
-use bb_core::{
-    EventKind, ExclusionSet, ExeName, GuardConfig, Observation, PrivacyGuard, ProcessKey, ProcessRef, RecorderState,
-};
+use bb_core::{EventKind, ExclusionSet, ExeName, GuardConfig, Observation, PrivacyGuard, ProcessKey, ProcessRef, RecorderState};
 
 const WINDOW: u64 = 5_000;
 const ROOT: &str = "synth-root.exe";

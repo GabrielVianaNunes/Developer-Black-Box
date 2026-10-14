@@ -6,8 +6,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use bb_collector::{
-    CollectError, ContextSource, CrashKind, CrashRecord, CrashSource, MetricsConfig, ProcessSample,
-    ProcessSource, SystemSample,
+    CollectError, ContextSource, CrashKind, CrashRecord, CrashSource, MetricsConfig, ProcessSample, ProcessSource, SystemSample,
 };
 use bb_core::{ExeName, GuardConfig, Observation, ProcessKey, RecorderState};
 use bb_engine::{Engine, IncidentConfig};
@@ -53,11 +52,7 @@ impl ProcessSource for Procs {
 }
 impl ContextSource for Ctx {
     fn observe(&mut self) -> Observation {
-        Observation {
-            detector_ok: true,
-            session_locked: false,
-            foreground: self.0.borrow().foreground.map(|n| ExeName::new(n).unwrap()),
-        }
+        Observation { detector_ok: true, session_locked: false, foreground: self.0.borrow().foreground.map(|n| ExeName::new(n).unwrap()) }
     }
 }
 
@@ -121,25 +116,24 @@ fn rig() -> Rig {
 
 /// Monta um engine sobre `dir`. Reusar o mesmo diretório simula reabrir o app depois de uma queda.
 fn rig_at(dir: tempfile::TempDir) -> Rig {
+    rig_at_quota(dir, RecorderConfig::default().max_total_bytes)
+}
+
+fn rig_at_quota(dir: tempfile::TempDir, quota: u64) -> Rig {
     let world: Shared = Rc::new(RefCell::new(World {
         foreground: Some("synth-editor.exe"),
         procs: vec![sample(100, "synth-editor.exe", 0)],
         ..World::default()
     }));
-    let rc = RecorderConfig { max_events_per_segment: 4, max_age: None, ..RecorderConfig::default() };
+    let rc = RecorderConfig { max_events_per_segment: 4, max_age: None, max_total_bytes: quota, ..RecorderConfig::default() };
     let recorder = Recorder::open(dir.path().join("rec"), &StaticKey([5u8; 32]), rc).unwrap();
     let mut gc = GuardConfig::default();
     gc.stability_window_ms = 1_000;
     gc.excluded_apps.insert(ExeName::new("synth-excluded.exe").unwrap());
     let metrics = MetricsConfig { every_n_ticks: 1, min_cpu_permille: 0, min_working_set_kb: 0 };
     let mut engine = Engine::new(gc, metrics, recorder, Procs(world.clone()), Ctx(world.clone()), 1);
-    let ic = IncidentConfig {
-        pre_window_ms: 5_000,
-        post_window_ms: 3_000,
-        cpu_samples: 3,
-        cooldown_ms: 1_000_000,
-        ..IncidentConfig::default()
-    };
+    let ic =
+        IncidentConfig { pre_window_ms: 5_000, post_window_ms: 3_000, cpu_samples: 3, cooldown_ms: 1_000_000, ..IncidentConfig::default() };
     // Como no app: campos sensíveis do banco cifrados.
     engine.enable_incidents(Store::open_encrypted(dir.path().join("meta.db"), &[9u8; 32]).unwrap(), ic);
     let crashes = FakeCrashes::default();
@@ -408,12 +402,7 @@ fn quick_settings() -> bb_engine::Settings {
 fn lines_with(r: &mut Rig, needle: &str) -> usize {
     r.engine.recorder_mut().seal().unwrap();
     let rec = r.engine.recorder();
-    rec.list_segments()
-        .unwrap()
-        .iter()
-        .flat_map(|s| rec.read_segment(s.index).unwrap())
-        .filter(|l| l.contains(needle))
-        .count()
+    rec.list_segments().unwrap().iter().flat_map(|s| rec.read_segment(s.index).unwrap()).filter(|l| l.contains(needle)).count()
 }
 
 // ---- falha e recuperação (teste 15) ----
@@ -628,11 +617,7 @@ fn a_test_authorization_records_only_the_authorized_browser_while_it_is_in_the_f
         r.tick();
     }
     assert!(lines_with(&mut r, "\"pid\":500") > 0, "the authorized browser's technical events are recorded");
-    assert_eq!(
-        lines_with(&mut r, "\"pid\":100"),
-        editor_events_before,
-        "nothing about other apps while in restricted mode"
-    );
+    assert_eq!(lines_with(&mut r, "\"pid\":100"), editor_events_before, "nothing about other apps while in restricted mode");
     assert_eq!(lines_with(&mut r, "SystemMetrics") > 0, true);
     let sys_before = lines_with(&mut r, "SystemMetrics");
     for _ in 0..4 {
@@ -759,24 +744,13 @@ fn export_json(text: &str) -> serde_json::Value {
 
 /// Tipos de evento exportados de um programa (pelo nome que a exportação mostra).
 fn exported_kinds(v: &serde_json::Value, exe: &str) -> std::collections::BTreeSet<String> {
-    v["events"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|e| e["exeName"] == exe)
-        .map(|e| e["kind"].as_str().unwrap().to_owned())
-        .collect()
+    v["events"].as_array().unwrap().iter().filter(|e| e["exeName"] == exe).map(|e| e["kind"].as_str().unwrap().to_owned()).collect()
 }
 
 fn count_lines_with_both(r: &mut Rig, a: &str, b: &str) -> usize {
     r.engine.recorder_mut().seal().unwrap();
     let rec = r.engine.recorder();
-    rec.list_segments()
-        .unwrap()
-        .iter()
-        .flat_map(|s| rec.read_segment(s.index).unwrap())
-        .filter(|l| l.contains(a) && l.contains(b))
-        .count()
+    rec.list_segments().unwrap().iter().flat_map(|s| rec.read_segment(s.index).unwrap()).filter(|l| l.contains(a) && l.contains(b)).count()
 }
 
 #[test]
@@ -875,9 +849,9 @@ fn partial_rules_are_normalized_validated_and_saved_encrypted() {
     s.partial_exclusions = vec![
         rule(" Partial-Secret-App.EXE ", X::new(false, true, false)),
         rule("partial-secret-app.exe", X::new(false, false, true)), // duplicado: união
-        rule("promoted.exe", X::ALL),                              // tudo -> exclusão total
-        rule("already-full.exe", X::new(false, true, false)),      // já excluído por inteiro: some
-        rule("empty.exe", X::NONE),                                // sem tipos: some
+        rule("promoted.exe", X::ALL),                               // tudo -> exclusão total
+        rule("already-full.exe", X::new(false, true, false)),       // já excluído por inteiro: some
+        rule("empty.exe", X::NONE),                                 // sem tipos: some
     ];
     r.engine.apply_settings(s, 1).unwrap();
     let saved = r.engine.settings().clone();
@@ -922,7 +896,10 @@ fn an_unreadable_partial_rule_in_the_database_fails_closed_to_full_exclusion() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open_encrypted(dir.path().join("meta.db"), &[9u8; 32]).unwrap();
     store
-        .set_setting("partial_exclusions", "good.exe|metrics\nbogus-kind.exe|nonsense\nno-kinds.exe|\nno-separator.exe\nmixed.exe|crashes,nonsense")
+        .set_setting(
+            "partial_exclusions",
+            "good.exe|metrics\nbogus-kind.exe|nonsense\nno-kinds.exe|\nno-separator.exe\nmixed.exe|crashes,nonsense",
+        )
         .unwrap();
     let s = bb_engine::Settings::load(&store);
     assert_eq!(s.partial_exclusions, vec![rule("good.exe", X::new(false, true, false))]);
@@ -943,7 +920,8 @@ fn settings_history_for_partial_rules_records_only_the_key_and_the_kind_of_chang
     r.engine.apply_settings(s, 12).unwrap();
 
     let hist = r.store().config_history(10).unwrap();
-    let changes: Vec<(i64, &str)> = hist.iter().filter(|h| h.key == "partial_exclusions").map(|h| (h.at_utc_ms, h.change.as_str())).collect();
+    let changes: Vec<(i64, &str)> =
+        hist.iter().filter(|h| h.key == "partial_exclusions").map(|h| (h.at_utc_ms, h.change.as_str())).collect();
     assert!(changes.contains(&(10, "added")) && changes.contains(&(11, "changed")) && changes.contains(&(12, "removed")), "{changes:?}");
     let dump = format!("{hist:?}");
     for leak in ["partial-secret-app", "lifecycle", "metrics", "crashes"] {
@@ -994,5 +972,235 @@ fn an_export_reapplies_the_exclusion_of_a_whole_process_tree() {
     assert!(all_pids.contains(&900), "the helper outside the tree is still exported: {all_pids:?}");
     assert!(all_pids.contains(&100), "control: the editor is still exported");
     assert!(res.dropped > 0);
-    assert_eq!(exported_kinds(&v, "synth-editor.exe"), exported_kinds(&export_json(&before), "synth-editor.exe"), "other programs untouched");
+    assert_eq!(
+        exported_kinds(&v, "synth-editor.exe"),
+        exported_kinds(&export_json(&before), "synth-editor.exe"),
+        "other programs untouched"
+    );
+}
+
+// ---- Resumo para relatar um bug (#107): sai da exportação refiltrada, nunca direto dos dados ------------------------
+
+fn cpu_incident() -> (Rig, i64) {
+    let mut r = rig();
+    r.until_recording();
+    for _ in 0..8 {
+        r.burn(100);
+        r.tick();
+    }
+    let id = r.store().list_incidents().unwrap().remove(0).id;
+    (r, id)
+}
+
+fn summary(r: &mut Rig, id: i64) -> String {
+    let utc = r.utc();
+    r.engine.bug_report_summary(id, "0.5.0", bb_query::SummaryLang::En, r.now, utc).unwrap()
+}
+
+#[test]
+fn the_summary_names_the_program_only_while_the_export_would() {
+    let (mut r, id) = cpu_incident();
+    let text = summary(&mut r, id);
+    assert!(text.contains("Sustained high CPU") && text.contains("Program: synth-editor.exe"), "control: {text}");
+
+    let mut s = quick_settings();
+    s.excluded_apps = vec!["synth-editor.exe".into()];
+    r.engine.apply_settings(s, 1).unwrap();
+    let text = summary(&mut r, id);
+    assert!(!text.contains("synth-editor.exe") && !text.contains("Program:"), "excluded today: {text}");
+
+    let mut s = quick_settings();
+    s.partial_exclusions = vec![rule("synth-editor.exe", X::new(false, false, true))];
+    r.engine.apply_settings(s, 2).unwrap();
+    let text = summary(&mut r, id);
+    assert!(!text.contains("synth-editor.exe"), "any partial rule hides the name, as in the export: {text}");
+}
+
+#[test]
+fn the_summary_never_carries_notes_or_the_internal_summary() {
+    let (mut r, id) = cpu_incident();
+    r.store().add_note(id, 5, "synth private note about my customer").unwrap();
+    let text = summary(&mut r, id);
+    assert!(!text.contains("private") && !text.contains("customer") && !text.contains("cpu_sustained|"), "{text}");
+    assert!(text.contains("Incident:") && text.contains("When:") && text.contains("App version: 0.5.0"), "control: {text}");
+}
+
+#[test]
+fn the_summary_of_an_unknown_incident_fails_like_the_export() {
+    let mut r = rig();
+    let err = r.engine.bug_report_summary(999, "0.5.0", bb_query::SummaryLang::En, 0, 0).unwrap_err();
+    assert_eq!(err.code(), "export.not_found");
+}
+
+#[test]
+fn the_summary_writes_nothing_to_disk() {
+    let (mut r, id) = cpu_incident();
+    let before = std::fs::read_dir(r._dir.path()).map(|d| d.count()).unwrap_or(0);
+    let _ = summary(&mut r, id);
+    assert!(!r._dir.path().join("exports").exists(), "no export file is created");
+    assert_eq!(std::fs::read_dir(r._dir.path()).map(|d| d.count()).unwrap_or(0), before);
+}
+
+// ---- Exportação protegida por senha (#109) --------------------------------------------------------------------------
+
+const PW: &str = "synthetic test password";
+
+fn protected(r: &mut Rig, id: i64) -> std::path::PathBuf {
+    let out = r._dir.path().join("exports");
+    let utc = r.utc();
+    r.engine.export_incident_protected(id, &out, PW, bb_query::protect::KdfParams::FAST_FOR_TESTS, r.now, utc).unwrap().path
+}
+
+#[test]
+fn a_protected_export_is_unreadable_without_the_password_and_identical_to_the_plain_one_with_it() {
+    let (mut r, id) = cpu_incident();
+    let plain = std::fs::read(export(&mut r, id).0.path).unwrap();
+    let file = protected(&mut r, id);
+    assert!(file.file_name().unwrap().to_string_lossy().ends_with(".protected.json"));
+    let text = std::fs::read(&file).unwrap();
+    let as_text = String::from_utf8_lossy(&text);
+    assert!(!as_text.contains("synth-editor") && !as_text.contains("exeName") && !as_text.contains("SystemMetrics"), "{as_text}");
+    assert_eq!(bb_query::protect::open(&text, PW).unwrap(), plain, "same content, same bytes");
+    assert_eq!(bb_query::protect::open(&text, "a different password"), Err(bb_query::protect::OpenError::WrongPasswordOrCorrupt));
+}
+
+#[test]
+fn no_readable_copy_is_left_on_disk_and_only_the_protected_file_is_written() {
+    let (mut r, id) = cpu_incident();
+    let file = protected(&mut r, id);
+    let names: Vec<_> =
+        std::fs::read_dir(file.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    assert!(names[0].ends_with(".protected.json"));
+}
+
+#[test]
+fn a_weak_password_is_refused_before_any_file_or_folder_is_created() {
+    let (mut r, id) = cpu_incident();
+    let out = r._dir.path().join("exports");
+    let utc = r.utc();
+    for (pw, code) in
+        [("", "export.password.short"), ("short", "export.password.short"), ("x".repeat(300).as_str(), "export.password.long")]
+    {
+        let err = r.engine.export_incident_protected(id, &out, pw, bb_query::protect::KdfParams::FAST_FOR_TESTS, r.now, utc).unwrap_err();
+        assert_eq!(err.code(), code);
+        assert!(!out.exists(), "nothing is created for a refused password");
+    }
+}
+
+#[test]
+fn a_protected_export_reapplies_today_s_rules_and_never_has_notes() {
+    let (mut r, id) = cpu_incident();
+    r.store().add_note(id, 5, "synth private note about my customer").unwrap();
+    let mut s = quick_settings();
+    s.excluded_apps = vec!["synth-editor.exe".into()];
+    r.engine.apply_settings(s, 1).unwrap();
+    let file = protected(&mut r, id);
+    let opened = String::from_utf8(bb_query::protect::open(&std::fs::read(file).unwrap(), PW).unwrap()).unwrap();
+    assert!(!opened.contains("synth-editor.exe"), "an app excluded today is not in the protected file either");
+    assert!(!opened.contains("private") && !opened.contains("customer"), "notes are never exported");
+    assert!(opened.contains("\"format\": \"developer-blackbox-export/2\""), "control: it is the normal export inside");
+}
+
+#[test]
+fn a_protected_export_of_an_unknown_incident_fails_like_the_plain_one_and_writes_nothing() {
+    let mut r = rig();
+    let out = r._dir.path().join("exports");
+    let err = r.engine.export_incident_protected(999, &out, PW, bb_query::protect::KdfParams::FAST_FOR_TESTS, 0, 0).unwrap_err();
+    assert_eq!(err.code(), "export.not_found");
+    assert!(!out.exists());
+}
+
+// ---- Limites de espaço: a evidência de incidentes tem teto ----
+
+fn preserved_bytes(r: &Rig) -> u64 {
+    r.engine.recorder().list_segments().unwrap().iter().filter(|s| s.preserved).map(|s| s.size).sum()
+}
+
+/// Abre um incidente automático (falha de um programa de nome próprio) e deixa a captura terminar.
+fn crash_incident(r: &mut Rig, name: &str) -> i64 {
+    let ts = r.utc() + 100;
+    r.crashes.0.lock().unwrap().push(crash(ts, name, CrashKind::Crash));
+    for _ in 0..30 {
+        r.tick();
+    }
+    r.store().list_incidents().unwrap().into_iter().find(|i| i.exe_name.as_deref() == Some(name)).expect("incident opened").id
+}
+
+#[test]
+fn evidence_has_a_budget_so_preserved_segments_never_fill_the_quota_and_stop_recording() {
+    let quota = 24_000u64;
+    let mut r = rig_at_quota(tempfile::tempdir().unwrap(), quota);
+    r.until_recording();
+    for _ in 0..6 {
+        r.tick();
+    }
+    let manual = r.engine.capture_manual(r.utc()).unwrap();
+    for _ in 0..12 {
+        r.tick();
+    }
+    // Um incidente automático com anotação: o usuário o tocou, então nunca sai sozinho.
+    let noted = crash_incident(&mut r, "synth-noted.exe");
+    r.store().add_note(noted, r.utc(), "synthetic note").unwrap();
+    let mut last_auto = 0;
+    for i in 0..14 {
+        last_auto = crash_incident(&mut r, &format!("synth-app-{i}.exe"));
+    }
+    let budget = quota / 100 * bb_engine::space::EVIDENCE_SHARE_PCT;
+    let ids: Vec<i64> = r.store().list_incidents().unwrap().iter().map(|i| i.id).collect();
+    assert!(ids.contains(&manual), "a manual incident is never removed on its own");
+    assert!(ids.contains(&noted), "an incident with a note is never removed on its own");
+    assert!(ids.contains(&last_auto), "the newest incident stays");
+    assert!(ids.len() < 16, "the oldest automatic incidents were removed ({} left)", ids.len());
+    // Dentro do teto, descontado o que é intocável (manual e anotado), que o teste mantém pequeno.
+    let untouchable: u64 = {
+        let segs = r.engine.recorder().list_segments().unwrap();
+        let keep: std::collections::HashSet<u64> =
+            [manual, noted].iter().flat_map(|id| r.store().get_incident(*id).unwrap().unwrap().segments).collect();
+        segs.iter().filter(|s| keep.contains(&s.index)).map(|s| s.size).sum()
+    };
+    let used = preserved_bytes(&r);
+    let newest = r.store().get_incident(last_auto).unwrap().unwrap().segments.len() as u64;
+    assert!(used <= budget.max(untouchable) + newest * 4_000, "evidence {used} B stays near the budget {budget} B");
+    // E o que importa: a gravação continua viva (sem o teto, a cota ficaria cheia de evidência e pararia).
+    let mut persisted = 0;
+    for _ in 0..12 {
+        persisted += r.tick().persisted;
+    }
+    assert!(persisted > 0, "recording must still be persisting events");
+}
+
+#[test]
+fn deleted_incidents_release_their_segments_for_the_normal_retention() {
+    let mut r = rig_at_quota(tempfile::tempdir().unwrap(), 24_000);
+    r.until_recording();
+    for _ in 0..6 {
+        r.tick();
+    }
+    let id = crash_incident(&mut r, "synth-gone.exe");
+    let segs = r.store().get_incident(id).unwrap().unwrap().segments;
+    assert!(!segs.is_empty());
+    assert_eq!(r.engine.enforce_evidence_budget().unwrap(), 0, "under the budget nothing is touched");
+    r.engine.delete_incident(id).unwrap();
+    let listed = r.engine.recorder().list_segments().unwrap();
+    assert!(segs.iter().all(|s| listed.iter().find(|x| x.index == *s).is_none_or(|x| !x.preserved)));
+}
+
+#[test]
+fn the_export_folder_keeps_only_the_newest_files_and_never_touches_other_files() {
+    let mut r = rig_with_two_apps();
+    let id = r.engine.capture_manual(r.utc()).unwrap();
+    let out = r._dir.path().join("exports");
+    std::fs::create_dir_all(&out).unwrap();
+    std::fs::write(out.join("minhas-notas.txt"), b"not an export").unwrap();
+    for i in 0..(bb_engine::space::MAX_EXPORT_FILES + 8) {
+        r.now += 1_000;
+        let utc = r.utc() + i as i64;
+        r.engine.export_incident(id, &out, r.now, utc).unwrap();
+    }
+    let mut names: Vec<String> = std::fs::read_dir(&out).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    names.sort();
+    let exports = names.iter().filter(|n| bb_engine::space::is_export_file(n)).count();
+    assert_eq!(exports, bb_engine::space::MAX_EXPORT_FILES);
+    assert!(names.contains(&"minhas-notas.txt".to_owned()), "files that are not exports are never deleted");
 }

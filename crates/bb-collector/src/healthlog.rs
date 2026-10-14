@@ -156,7 +156,8 @@ mod tests {
 
     #[test]
     fn kernel_power_41_keeps_the_bugcheck_code() {
-        let r = rec("Microsoft-Windows-Kernel-Power", 41, "<Data Name='BugcheckCode'>209</Data><Data Name='PowerButtonTimestamp'>0</Data>").unwrap();
+        let r = rec("Microsoft-Windows-Kernel-Power", 41, "<Data Name='BugcheckCode'>209</Data><Data Name='PowerButtonTimestamp'>0</Data>")
+            .unwrap();
         assert_eq!(r, HealthRecord { ts_utc_ms: TS, category: HealthCategory::UnexpectedShutdown, event_id: 41, code: Some(209) });
     }
 
@@ -231,7 +232,12 @@ mod tests {
 
     #[test]
     fn sleep_keeps_only_the_target_state_and_resume_keeps_nothing() {
-        let r = rec("Microsoft-Windows-Kernel-Power", 42, "<Data Name='TargetState'>4</Data><Data Name='EffectiveState'>4</Data><Data Name='Reason'>0</Data>").unwrap();
+        let r = rec(
+            "Microsoft-Windows-Kernel-Power",
+            42,
+            "<Data Name='TargetState'>4</Data><Data Name='EffectiveState'>4</Data><Data Name='Reason'>0</Data>",
+        )
+        .unwrap();
         assert_eq!((r.category, r.event_id, r.code), (HealthCategory::SleepEntered, 42, Some(4)));
         let r = rec("Microsoft-Windows-Kernel-Power", 107, "<Data Name='TargetState'>3</Data><Data Name='ResumeTime'>x</Data>").unwrap();
         assert_eq!((r.category, r.event_id, r.code), (HealthCategory::Resumed, 107, None));

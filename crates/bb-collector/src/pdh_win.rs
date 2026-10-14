@@ -7,8 +7,8 @@
 
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::System::Performance::{
-    PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterArrayW, PdhGetFormattedCounterValue,
-    PdhOpenQueryW, PDH_FMT_COUNTERVALUE, PDH_HCOUNTER, PDH_HQUERY, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_MORE_DATA,
+    PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterArrayW, PdhGetFormattedCounterValue, PdhOpenQueryW,
+    PDH_FMT_COUNTERVALUE, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY, PDH_MORE_DATA,
 };
 
 use crate::sample::CollectError;

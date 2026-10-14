@@ -16,7 +16,9 @@ mod version;
 mod winhttp;
 
 pub use install::{installer_name, prepare, reverify, DOWNLOAD_HOST, INSTALLER_ARGS, MAX_INSTALLER, MAX_SIGNATURE};
-pub use verify::{sha256_hex, signed_message, trusted_keys, verify_installer, verify_release, VerifyError, MESSAGE_PREFIX, TRUSTED_PUBLIC_KEYS};
+pub use verify::{
+    sha256_hex, signed_message, trusted_keys, verify_installer, verify_release, VerifyError, MESSAGE_PREFIX, TRUSTED_PUBLIC_KEYS,
+};
 pub use version::{Channel, Version};
 #[cfg(windows)]
 pub use winhttp::WinHttpFetcher;
@@ -185,11 +187,8 @@ mod tests {
 
     #[test]
     fn drafts_and_prereleases_are_never_offered() {
-        for body in [
-            r#"{"tag_name":"v9.0.0","draft":true}"#,
-            r#"{"tag_name":"v9.0.0","prerelease":true}"#,
-            r#"{"tag_name":"v9.0.0-rc.1"}"#,
-        ] {
+        for body in [r#"{"tag_name":"v9.0.0","draft":true}"#, r#"{"tag_name":"v9.0.0","prerelease":true}"#, r#"{"tag_name":"v9.0.0-rc.1"}"#]
+        {
             assert_eq!(check(&v("0.1.0"), &Fake::ok(200, body)), Ok(Outcome::UpToDate), "{body}");
         }
     }
@@ -202,7 +201,9 @@ mod tests {
 
     #[test]
     fn bad_responses_are_errors_not_updates() {
-        for body in ["", "not json", "{}", r#"{"tag_name":7}"#, r#"{"tag_name":"0.2.0"}"#, r#"{"tag_name":"v0.2"}"#, r#"{"tag_name":"latest"}"#] {
+        for body in
+            ["", "not json", "{}", r#"{"tag_name":7}"#, r#"{"tag_name":"0.2.0"}"#, r#"{"tag_name":"v0.2"}"#, r#"{"tag_name":"latest"}"#]
+        {
             assert_eq!(check(&v("0.1.0"), &Fake::ok(200, body)), Err(UpdateError::BadResponse), "{body:?}");
         }
     }
