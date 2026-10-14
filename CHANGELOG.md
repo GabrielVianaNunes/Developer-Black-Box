@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-14
+
 ### Changed
 - Disk space (#119). The Rust `target` folder reached about 55 GB on the developer's machine. Debug builds now have no debug symbols
   (each of the ~40 test executables produced a large `.pdb`) and no incremental cache. New `npm run space` (sizes of the project and, read
@@ -16,6 +18,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   automatic incidents you never touched and that have no note are removed (manual, in-progress, resolved or noted incidents never are).
   Before this, preserved evidence could fill the quota and the recording would stop. The `exports` folder keeps the 30 newest files and
   100 MB, the settings change history the last 1,000 changes, and the record of removed segments is compacted.
+- The welcome guide is shorter: the first-run tour went from 8 steps to 6 (the "starts paused" step now sits with the recording light, and
+  "language and updates" and "you are ready" became one closing step) and each step is one or two paragraphs, keeping the same facts. The
+  "What's new" text of 0.5.0 went from three paragraphs to two.
+- The buttons of the welcome guide and of the "What's new" window (Skip, Back, Next) are smaller and lighter. The rest of the app keeps its buttons.
 
 ### Added
 - Incident detail: **Export with a password**. The same export document is encrypted with a password you choose at that moment (8+ characters,
@@ -24,18 +30,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   wrong password and a damaged file give the same error; costs read from a file are bounded. The plain export keeps working and is still labelled
   as not encrypted. New dependency: `argon2` (RustCrypto, no network code); the key derivation is checked against the Argon2 reference
   implementation. (#109)
-
-### Tests
-- Rust code is now formatted with `rustfmt` (`rustfmt.toml`: 140 columns, short lists on one line, to stay close to the existing style) and CI
-  fails if `cargo fmt --all -- --check` finds a difference. The formatting commit changes no logic: all 527 tests pass before and after. (#108)
-- Interface tests in a real browser (`npm run build && npm run test:ui`, also in CI): the welcome guide (steps, skipping, Esc, keyboard focus kept
-  inside, the smaller buttons), the System health tab, the Privacy tab (switches, unsaved-changes bar, Apply and Discard) and the language switch,
-  against a simulated backend with made-up data only. Dev dependency added: `playwright-core` (it uses the Chrome already installed; nothing is
-  downloaded). (#108)
-- The two `apps::` tests that failed on Linux now pass (they built folder paths with `\`); the timing checks of the Windows program listing use
-  the fastest of three runs, so a load spike no longer fails them while a real slowdown still does. (#108)
-
-### Added
 - Privacy tab: individual switches for the Windows health events, the machine inventory and the power and battery sources (all on by default),
   next to the existing one for the performance counters. Turning a source off stops it at once and what happened while it was off is never
   read afterwards: the event log drops its pending interval (even across a restart), the inventory forgets its last known values so turning
@@ -50,11 +44,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   from the recorded data directly: no notes, no user or computer names, no paths or message texts, and the program name only if the export
   would include it. The text is copied and also shown, read-only, for you to check; nothing is written to disk or sent. (#107)
 
-### Changed
-- The welcome guide is shorter: the first-run tour went from 8 steps to 6 (the "starts paused" step now sits with the recording light, and
-  "language and updates" and "you are ready" became one closing step) and each step is one or two paragraphs, keeping the same facts. The
-  "What's new" text of 0.5.0 went from three paragraphs to two.
-- The buttons of the welcome guide and of the "What's new" window (Skip, Back, Next) are smaller and lighter. The rest of the app keeps its buttons.
+### Tests
+- Rust code is now formatted with `rustfmt` (`rustfmt.toml`: 140 columns, short lists on one line, to stay close to the existing style) and CI
+  fails if `cargo fmt --all -- --check` finds a difference. The formatting commit changes no logic: all 527 tests pass before and after. (#108)
+- Interface tests in a real browser (`npm run build && npm run test:ui`, also in CI): the welcome guide (steps, skipping, Esc, keyboard focus kept
+  inside, the smaller buttons), the System health tab, the Privacy tab (switches, unsaved-changes bar, Apply and Discard) and the language switch,
+  against a simulated backend with made-up data only. Dev dependency added: `playwright-core` (it uses the Chrome already installed; nothing is
+  downloaded). (#108)
+- The two `apps::` tests that failed on Linux now pass (they built folder paths with `\`); the timing checks of the Windows program listing use
+  the fastest of three runs, so a load spike no longer fails them while a real slowdown still does. (#108)
 
 ## [0.5.0] - 2026-10-03
 
