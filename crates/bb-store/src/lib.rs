@@ -117,6 +117,9 @@ pub struct ConfigChange {
     pub change: String,
 }
 
+/// Quantas mudanças de configuração o histórico guarda (as mais recentes).
+pub const MAX_CONFIG_HISTORY: usize = 1_000;
+
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -356,6 +359,11 @@ impl Store {
 
     pub fn log_config_change(&self, at_utc_ms: i64, key: &str, change: &str) -> Result<()> {
         self.conn.execute("INSERT INTO config_history (at_utc_ms, key, change) VALUES (?1, ?2, ?3)", params![at_utc_ms, key, change])?;
+        // Teto: só as `MAX_CONFIG_HISTORY` mudanças mais recentes ficam (cada linha é só chave + tipo de mudança).
+        self.conn.execute(
+            "DELETE FROM config_history WHERE id <= (SELECT MAX(id) FROM config_history) - ?1",
+            params![MAX_CONFIG_HISTORY as i64],
+        )?;
         Ok(())
     }
 
@@ -434,6 +442,19 @@ mod tests {
         s.set_setting("k", "1").unwrap();
         s.set_setting("k", "2").unwrap();
         assert_eq!(s.get_setting("k").unwrap().as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn config_history_never_grows_past_its_cap_and_keeps_the_newest() {
+        let s = Store::open_in_memory().unwrap();
+        let total = MAX_CONFIG_HISTORY + 25;
+        for i in 0..total {
+            s.log_config_change(i as i64, "synth_key", "changed").unwrap();
+        }
+        let h = s.config_history(usize::MAX >> 1).unwrap();
+        assert_eq!(h.len(), MAX_CONFIG_HISTORY);
+        assert_eq!(h[0].at_utc_ms, (total - 1) as i64, "newest first");
+        assert_eq!(h.last().unwrap().at_utc_ms, 25, "the 25 oldest were dropped");
     }
 
     #[test]

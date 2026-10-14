@@ -265,6 +265,63 @@ fn retention_removes_oldest_unpreserved_and_keeps_preserved() {
     assert!(r.verify().is_ok(), "gaps from retention must not break verification");
 }
 
+#[test]
+fn the_pruned_log_is_compacted_without_losing_what_verification_and_indexes_need() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = RecorderConfig { max_total_bytes: 900, ..small_cfg() };
+    let mut r = Recorder::open(dir.path(), &keys(), cfg.clone()).unwrap();
+    let evs = events(3);
+    for _ in 0..40 {
+        for e in &evs {
+            r.append(e).unwrap();
+        }
+    }
+    r.seal().unwrap();
+    let log = dir.path().join("pruned.log");
+    let before = fs::read_to_string(&log).unwrap().lines().count();
+    assert!(before > 5, "the quota removed many segments ({before})");
+    let kept = r.compact_pruned_log().unwrap();
+    let after = fs::read_to_string(&log).unwrap().lines().count();
+    assert_eq!(kept, after);
+    assert!(after < before, "{after} < {before}");
+    assert!(!dir.path().join("pruned.log.tmp").exists());
+    assert!(r.verify().is_ok(), "gaps between existing segments must still be explained");
+    // Reabrir continua sem reaproveitar índices já removidos.
+    let newest_before = r.list_segments().unwrap().last().unwrap().index;
+    drop(r);
+    let mut r = Recorder::open(dir.path(), &keys(), cfg).unwrap();
+    for e in &evs {
+        r.append(e).unwrap();
+    }
+    r.seal().unwrap();
+    assert!(r.list_segments().unwrap().last().unwrap().index > newest_before);
+    assert!(r.verify().is_ok());
+}
+
+#[test]
+fn compaction_keeps_the_highest_removed_index_even_when_no_segment_is_left() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut r = Recorder::open(dir.path(), &keys(), small_cfg()).unwrap();
+    let evs = events(3);
+    for _ in 0..4 {
+        for e in &evs {
+            r.append(e).unwrap();
+        }
+    }
+    r.seal().unwrap();
+    let newest = r.list_segments().unwrap().last().unwrap().index;
+    r.delete_segments(true).unwrap();
+    assert!(r.list_segments().unwrap().is_empty());
+    r.compact_pruned_log().unwrap();
+    drop(r);
+    let mut r = Recorder::open(dir.path(), &keys(), small_cfg()).unwrap();
+    for e in &evs {
+        r.append(e).unwrap();
+    }
+    r.seal().unwrap();
+    assert!(r.list_segments().unwrap().first().unwrap().index > newest, "an index that was removed is never reused");
+}
+
 /// Pacotes do grafo de dependências (build + normais) de `pkg` no alvo Windows.
 /// O `Cargo.lock` é multiplataforma e lista crates de outros sistemas, então não serve aqui.
 fn windows_closure(pkg: &str) -> std::collections::BTreeSet<String> {

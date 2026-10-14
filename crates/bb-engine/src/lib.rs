@@ -10,6 +10,7 @@ pub mod health;
 pub mod incidents;
 pub mod inventory;
 pub mod settings;
+pub mod space;
 pub mod throttle;
 
 use std::fmt;
@@ -525,6 +526,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         let path = out_dir.join(format!("incident-{id}-{utc_ms}.json"));
         let json = serde_json::to_vec_pretty(&doc).map_err(|_| EngineError::Invalid("export.write".into()))?;
         std::fs::write(&path, json).map_err(|_| EngineError::Invalid("export.write".into()))?;
+        space::prune_exports(out_dir, &path, space::MAX_EXPORT_FILES, space::MAX_EXPORT_BYTES);
         Ok(ExportResult { path, events: doc.events.len(), dropped: doc.dropped_events })
     }
 
@@ -547,6 +549,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         std::fs::create_dir_all(out_dir).map_err(|_| EngineError::Invalid("export.folder".into()))?;
         let path = out_dir.join(format!("incident-{id}-{utc_ms}.protected.json"));
         std::fs::write(&path, protected).map_err(|_| EngineError::Invalid("export.write".into()))?;
+        space::prune_exports(out_dir, &path, space::MAX_EXPORT_FILES, space::MAX_EXPORT_BYTES);
         Ok(ExportResult { path, events: doc.events.len(), dropped: doc.dropped_events })
     }
 
@@ -640,6 +643,7 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
         if let Some(inc) = self.incidents.as_ref() {
             inc.store.set_segments(id, &segs)?;
         }
+        let _ = self.enforce_evidence_budget();
         Ok(id)
     }
 
@@ -671,10 +675,12 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
     fn finalize_captures(&mut self, utc_ms: i64, force: bool) -> Result<(), EngineError> {
         let Some(inc) = self.incidents.as_ref() else { return Ok(()) };
         let pre = inc.detector.config().pre_window_ms;
+        let mut finalized = false;
         for pending in inc.store.pending_captures()? {
             if !force && utc_ms < pending.post_until_utc_ms {
                 continue;
             }
+            finalized = true;
             self.recorder.seal()?;
             let to = pending.post_until_utc_ms.min(utc_ms);
             let segs = self.recorder.segments_overlapping(pending.created_utc_ms - pre, to)?;
@@ -686,7 +692,38 @@ impl<P: ProcessSource, C: ContextSource> Engine<P, C> {
                 inc.store.set_capture_state(pending.id, CaptureState::Preserved)?;
             }
         }
+        if finalized {
+            // Falha ao enxugar não pode derrubar o ciclo: a próxima captura tenta de novo.
+            let _ = self.enforce_evidence_budget();
+        }
         Ok(())
+    }
+
+    /// Teto da evidência de incidentes: no máximo `EVIDENCE_SHARE_PCT` da cota. Passou, remove os incidentes AUTOMÁTICOS
+    /// mais antigos que a pessoa nunca tocou e sem anotações (ver `space::EvidenceItem::removable`); o resto nunca sai
+    /// sozinho. Devolve quantos removeu.
+    pub fn enforce_evidence_budget(&mut self) -> Result<usize, EngineError> {
+        let Some(inc) = self.incidents.as_ref() else { return Ok(0) };
+        let budget = self.recorder.config().max_total_bytes / 100 * space::EVIDENCE_SHARE_PCT;
+        let sizes: std::collections::HashMap<u64, u64> = self.recorder.list_segments()?.iter().map(|s| (s.index, s.size)).collect();
+        let mut items = Vec::new();
+        for i in inc.store.list_incidents()? {
+            let has_notes = !inc.store.list_notes(i.id)?.is_empty();
+            items.push(space::EvidenceItem {
+                id: i.id,
+                created_utc_ms: i.created_utc_ms,
+                kind: i.kind,
+                state: i.state,
+                capture: i.capture,
+                has_notes,
+                segments: i.segments,
+            });
+        }
+        let remove = space::evidence_to_remove(&items, &sizes, budget);
+        for id in &remove {
+            self.delete_incident(*id)?;
+        }
+        Ok(remove.len())
     }
 
     /// Estado real. Uma falha de coleta/gravação sobrepõe `Recording` (o ícone não fica

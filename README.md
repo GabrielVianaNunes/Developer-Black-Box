@@ -237,6 +237,23 @@ shows as unavailable instead of inventing a value.
 Measured with the real recorder and one day of pseudo-random synthetic samples (every 30 s): about **0.115 MB per day** once sealed, and up
 to about **1 MB per day** while the current journal is still open. The storage limit and retention of the Storage tab apply as usual.
 
+### Space limits
+
+Nothing the app writes grows without a ceiling:
+
+| What | Limit |
+|---|---|
+| Recorded activity | Storage quota and maximum age (Storage tab; default 256 MB and 24 h, up to 10 GB and 30 days) |
+| Evidence of incidents | At most **50% of the quota**; past it, the oldest **automatic** incidents that you never touched (still "new" or "dismissed") and have no note are removed. Manual incidents, incidents under investigation or resolved, and any incident with a note are never removed on their own |
+| Exported files | The 30 newest files and 100 MB in the `exports` folder; only files named `incident-*.json` are ever considered |
+| Settings change history | The last 1,000 changes (only the key and the kind of change) |
+| Record of removed segments (`pruned.log`) | Compacted automatically |
+| Downloaded updates | Only the installer being installed is kept |
+
+For people who build the project: the Rust `target` folder is rebuildable and can grow by tens of GB. Debug builds have no debug
+symbols and no incremental cache, `npm run space` shows the sizes, `npm run clean` removes `target`, `dist` and old graph backups, and
+`npm run build` removes `target` by itself when it passes 8 GB (`BB_TARGET_LIMIT_GB` changes the limit).
+
 ## How privacy is guaranteed
 
 ![Privacy tab with example exclusion rules](assets/readme-images/privacy-rules.png)
@@ -582,6 +599,23 @@ como esperado aparece como indisponível, em vez de inventar um valor.
 Medido com o gravador real e um dia de amostras sintéticas pseudoaleatórias (a cada 30 s): cerca de **0,115 MB por dia** depois de selado, e
 até cerca de **1 MB por dia** enquanto o journal atual ainda está aberto. O limite de armazenamento e a retenção da aba Armazenamento valem
 como sempre.
+
+### Limites de espaço
+
+Nada do que o app grava cresce sem teto:
+
+| O quê | Limite |
+|---|---|
+| Atividade gravada | Cota de armazenamento e idade máxima (aba Armazenamento; padrão 256 MB e 24 h, até 10 GB e 30 dias) |
+| Evidência de incidentes | No máximo **50% da cota**; passou disso, saem os incidentes **automáticos** mais antigos que você nunca tocou (ainda "novo" ou "descartado") e sem anotação. Incidentes manuais, em investigação ou resolvidos, e qualquer incidente com anotação nunca saem sozinhos |
+| Arquivos exportados | Os 30 arquivos mais novos e 100 MB na pasta `exports`; só arquivos chamados `incident-*.json` são considerados |
+| Histórico de mudanças de configuração | As últimas 1.000 mudanças (só a chave e o tipo de mudança) |
+| Registro de segmentos removidos (`pruned.log`) | Compactado automaticamente |
+| Atualizações baixadas | Só fica o instalador que está sendo instalado |
+
+Para quem compila o projeto: a pasta `target` do Rust pode ser recriada e chegar a dezenas de GB. As compilações de depuração não têm
+símbolos de depuração nem cache incremental, `npm run space` mostra os tamanhos, `npm run clean` apaga `target`, `dist` e backups antigos do
+grafo, e `npm run build` apaga `target` sozinho quando passa de 8 GB (`BB_TARGET_LIMIT_GB` muda o limite).
 
 ## Como a privacidade é garantida
 
