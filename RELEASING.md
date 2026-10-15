@@ -34,6 +34,24 @@ below keep `Cargo.lock`, `package.json` and `package-lock.json` in sync, and `np
    Pre-release versions (`0.2.0-rc.1`) are published as pre-releases.
    Then **sign the Release on your machine** (see "Release signing" below): `node scripts/sign-release.mjs release v0.2.0`.
 6. Back-merge into `develop` with a pull request `main` -> `develop`, then delete `release/0.2.0`.
+7. Update the wiki (see "Wiki" below).
+
+## Wiki
+
+The GitHub wiki is bilingual (English and Brazilian Portuguese) and lives in its own repository, `<repo>.wiki.git`, so it is **not**
+part of the pull request flow: the maintainer updates it after each release is published and signed.
+
+```bash
+git clone https://github.com/<owner>/<repo>.wiki.git wiki
+# 1. In Home.md and PT-Inicio.md, set the version sentence ("version **x.y.z**" / "versão **x.y.z**").
+# 2. Read the new version's CHANGELOG section and update every page it affects, in BOTH languages.
+node scripts/wiki-check.mjs wiki 0.2.0
+git -C wiki commit -am "Wiki: 0.2.0" && git -C wiki push
+```
+
+`wiki-check` fails when the version on the two home pages is not the release version, when a page of one language does not link to its
+counterpart in the other, when an internal link is broken, when there is a dash (em or en) anywhere, or when a page mentions anything about
+the signing keys or a real user path. Wiki rules: both languages always, synthetic data only, no information about signing keys.
 
 ## Hotfix
 
