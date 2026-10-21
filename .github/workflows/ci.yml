@@ -62,3 +62,26 @@ jobs:
 
       - name: Version files are consistent
         run: node scripts/version.mjs check
+
+  # Pesquisa do Linux (#112): confere que o NUCLEO portavel compila e passa nos testes em Linux. Informativo: o app (Tauri) e o
+  # que e do Windows nao entram, e este job NAO e exigido pelas branches protegidas (so o "Tests" acima).
+  linux-core:
+    name: Linux core (informativo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+
+      - name: Download dependencies for every target
+        # Os testes que provam "sem biblioteca de rede" examinam o grafo de dependencias do alvo Windows (cargo tree --offline).
+        run: cargo fetch --locked
+
+      - name: Rust tests of the portable crates
+        run: >
+          cargo test --locked
+          -p bb-core -p bb-recorder -p bb-store -p bb-query -p bb-engine -p bb-collector -p bb-update -p bb-tray
+
