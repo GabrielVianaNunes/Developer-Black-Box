@@ -16,6 +16,7 @@ pub mod pdh_win;
 pub mod power;
 #[cfg(windows)]
 pub mod power_win;
+pub mod procfs;
 pub mod sample;
 #[cfg(windows)]
 pub mod startup;
@@ -36,6 +37,9 @@ pub use pdh_win::WindowsTelemetrySource;
 pub use power::{PowerReading, PowerSource};
 #[cfg(windows)]
 pub use power_win::WindowsPowerSource;
+#[cfg(target_os = "linux")]
+pub use procfs::LinuxProcessSource;
+pub use procfs::{ProcFs, ProcfsProcessSource, RealProc};
 pub use sample::{CollectError, ContextSource, ProcessSample, ProcessSource, SystemSample};
 pub use telemetry::{RawCounters, SampleBuilder, TelemetrySource};
 #[cfg(windows)]

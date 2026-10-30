@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- Linux research, phase 1 (#126, nothing is user-visible yet): a process source for Linux that reads `/proc` without privileges and delivers
+  the same fields as the Windows collector (instance key, executable name, parent, CPU time, memory). It reads only `stat` and `statm`
+  of each process and the `exe` link, plus `stat` and `meminfo` of the system, never `cmdline`, `environ`, `cwd`, `fd` or `maps`. The name
+  is the file the `exe` link points to (never `comm`, which is truncated and can be changed by the process); processes whose name cannot
+  be read (other users, kernel threads) are dropped and only counted. The boot time is read once per run so a clock adjustment never
+  changes the instance keys. The text parsing is portable and tested with synthetic fixtures on every system; a new **Linux core** CI job
+  also tests it against the real `/proc`. The app for Linux is not available: this only prepares the core (see the research in #112).
+
 ### Changed
 - The release procedure (`RELEASING.md`) now includes updating the bilingual GitHub wiki, and `node scripts/wiki-check.mjs <wiki-folder>
   [version]` checks it: the version on both home pages, a link to the other language on every page, no broken internal links, no dashes,
