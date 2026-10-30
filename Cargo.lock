@@ -323,6 +323,7 @@ name = "bb-collector"
 version = "0.6.0"
 dependencies = [
  "bb-core",
+ "libc",
  "tempfile",
  "windows 0.61.3",
 ]
