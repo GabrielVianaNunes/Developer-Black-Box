@@ -13,8 +13,15 @@ name = "privacy_collector_windows"
 path = "../../tests/privacy/collector_windows.rs"
 
 [[test]]
+name = "privacy_collector_linux"
+path = "../../tests/privacy/collector_linux.rs"
+
+[[test]]
 name = "privacy_startup_windows"
 path = "../../tests/privacy/startup_windows.rs"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.61"
